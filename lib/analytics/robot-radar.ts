@@ -58,7 +58,7 @@ export type RadarTeamStat = {
   ratings: number;
 };
 
-export type RadarRow = { key: RadarAxisKey; label: string; full: string; a: number; b: number | null; overlap: number | null; highlight: boolean };
+export type RadarRow = { key: string; label: string; full: string; a: number; b: number | null; overlap: number | null; highlight: boolean };
 
 const clamp10 = (v: number): number => (Number.isFinite(v) ? Math.max(0, Math.min(10, v)) : 0);
 const avg = (xs: readonly number[]): number => (xs.length ? xs.reduce((s, v) => s + v, 0) / xs.length : 0);

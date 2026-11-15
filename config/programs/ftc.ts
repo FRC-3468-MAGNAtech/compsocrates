@@ -1,5 +1,6 @@
 import { BRAND } from "@/config/brand";
 import { FTC_GAME_DEFINITIONS, FTC_GAME_ID_LIST } from "@/config/games/ftc";
+import { resolveRadarSource, type RadarProfile } from "@/config/games/radar";
 import { FTC_STARTER_ENTRIES } from "@/lib/ftc/changelog-seed";
 import type { ProgramConfig } from "./types";
 
@@ -8,9 +9,15 @@ export const FTC_UNAVAILABLE_PATHS = [
   "/analytics/accuracy-compare",
   "/analytics/accuracy-verification",
   "/analytics/match-prediction",
-  "/analytics/robot-radar",
   "/judge-book",
 ] as const;
+
+/** Each FTC game's radar profile (the axes it declares, with its fields' points filled in), by season id. */
+const FTC_RADAR: Record<string, RadarProfile> = {};
+for (const id of FTC_GAME_ID_LIST) {
+  const def = FTC_GAME_DEFINITIONS[id];
+  if (def.radar) FTC_RADAR[id.toLowerCase()] = resolveRadarSource(def.label, def.radar, def.fields);
+}
 
 export const FTC_PROGRAM: ProgramConfig = {
   id: "ftc",
@@ -82,6 +89,7 @@ export const FTC_PROGRAM: ProgramConfig = {
       "/changelog",
       "/events/[eventKey]",
       "/analytics/performance-reliability",
+      "/analytics/robot-radar",
     ],
     features: { assignments: true, subIns: false, practice: true, live: true, lobby: true, library: true, pickList: true, accuracy: true, csvImport: true, changelog: true, applications: false, joinRequests: true, announcements: false, eventLookup: true },
   },
@@ -97,4 +105,5 @@ export const FTC_PROGRAM: ProgramConfig = {
   practice: { noScoreIsResult: true, liveTileText: "Scout a real, livestreamed FTC match." },
   // The practice difficulty cut-offs come from each game's own config (its alliance score thresholds), read by `lib/difficulty.ts` for this program.
   gameDifficulty: Object.fromEntries(FTC_GAME_ID_LIST.map((id) => [id, FTC_GAME_DEFINITIONS[id].thresholds.difficulty])),
+  radar: FTC_RADAR,
 };

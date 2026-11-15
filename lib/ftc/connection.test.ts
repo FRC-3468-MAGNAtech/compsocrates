@@ -17,13 +17,13 @@ describe("program connection config", () => {
       "/dashboard", "/my-scouting", "/people", "/team-management", "/account", "/profile", "/credits", "/analytics",
       "/analytics/match-scout", "/analytics/lead-scout", "/analytics/pit-scout", "/analytics/team-strategy", "/analytics/match-strategy", "/analytics/drive-reflection", "/analytics/helper",
       "/practice-scouting", "/scout-accuracy", "/team-settings", "/changelog", "/analytics/pick-list", "/analytics/scout-status", "/analytics/match-breakdown", "/analytics/teams", "/analytics/team-averages", "/analytics/team-breakdown", "/analytics/rankings", "/admin",
-      "/events/[eventKey]", "/analytics/performance-reliability",
+      "/events/[eventKey]", "/analytics/performance-reliability", "/analytics/robot-radar",
     ];
     expect(PROGRAMS.ftc.multiTeam).toBe(true);
     expect([...(PROGRAMS.ftc.connection.paths as readonly string[])].sort()).toEqual([...connected].sort());
     for (const path of [...connected, "/scout/anything", "/pit-scout-form/x", "/analytics/teams/4242", "/events/2025-USCALAB"]) expect(isPathConnected("ftc", path), path).toBe(true);
     // everything else shows the notice, including the neighbours of a connected path
-    for (const path of ["/", "/dashboards", "/match-lists", "/events", "/eventual", "/scouting", "/scoutish", "/analytics-x", "/analytics/accuracy-compare", "/analytics/robot-radar", "/my-scouting-x", "/judge-book", "/pit-scout-forms"]) {
+    for (const path of ["/", "/dashboards", "/match-lists", "/events", "/eventual", "/scouting", "/scoutish", "/analytics-x", "/analytics/accuracy-compare", "/my-scouting-x", "/judge-book", "/pit-scout-forms"]) {
       expect(isPathConnected("ftc", path), path).toBe(false);
     }
   });

@@ -1,4 +1,5 @@
 import { BRAND } from "@/config/brand";
+import { CURRENT_GAME_ID } from "@/config/games";
 import { ADMIN_TAB_IDS, type ProgramConfig } from "./types";
 
 export const FRC_PROGRAM: ProgramConfig = {
@@ -39,4 +40,6 @@ export const FRC_PROGRAM: ProgramConfig = {
   // FRC keeps the skeleton until accuracy exists (CS behavior, unchanged); see the note in components/practice/results-screen.tsx.
   library: { scoresRequired: true, importKind: "played", scheduledTime: false, editImportedScores: false, backfill: true, placeholderVideoSwitch: true, videoCsv: true },
   practice: { noScoreIsResult: false, liveTileText: "Scout a real, livestreamed FRC match." },
+  // The radar is the hand-built profile of the default game (its numbers are pinned by lib/analytics/robot-radar.golden.test.ts).
+  radar: { [CURRENT_GAME_ID.toLowerCase()]: { kind: "rebuilt", name: CURRENT_GAME_ID } },
 };

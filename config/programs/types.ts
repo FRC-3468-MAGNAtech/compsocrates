@@ -4,6 +4,7 @@
  */
 
 import type { StarterEntry } from "@/lib/changelog/seed";
+import type { RadarProfile } from "@/config/games/radar";
 import type { EventKeyShape } from "@/lib/events/event-key";
 
 export const PROGRAM_IDS = ["frc", "ftc"] as const;
@@ -171,4 +172,9 @@ export type ProgramConfig = {
    */
   library: { scoresRequired: boolean; importKind: "played" | "schedule"; scheduledTime: boolean; editImportedScores: boolean; backfill: boolean; placeholderVideoSwitch: boolean; videoCsv: boolean };
   gameDifficulty?: Readonly<Record<string, { readonly easyMax: number; readonly mediumMax: number }>>;
+  /**
+   * The Robot Radar profile of each game that has one, by season id (`rebuilt`, `biobuzz`). The radar page uses the viewed game's profile, else the first one
+   * listed (the program's radar game), and skips entries of other games.
+   */
+  radar: Readonly<Record<string, RadarProfile>>;
 };

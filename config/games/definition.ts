@@ -12,6 +12,7 @@
  * a top-level CS field keeps its name. A field spells out both (`key` and `path`) so nothing is guessed.
  */
 import type { StatRole } from "@/lib/forms/types";
+import type { RadarSource } from "@/config/games/radar";
 import type { RescoutFieldSpec } from "@/config/games/shared";
 
 export type GameId = "REBUILT" | "REEFSCAPE" | "CHARGED_UP";
@@ -127,6 +128,8 @@ export type PointTableGameDefinition<Id extends string = GameId> = GameBase<Id> 
    * role's are stored absent). `lib/forms/alliance-role.ts` chooses the split. Absent for a game where every robot records everything.
    */
   allianceRoles?: readonly { id: string; label: string; fieldKeys: readonly string[] }[];
+  /** What the Robot Radar plots for this game, by field key (resolved with the fields' points by `resolveRadarSource`). Absent: no radar for the game. */
+  radar?: RadarSource;
   /** CS doc path of the penalty points the official result adds to a total. */
   penaltyPath?: string;
   /** Auto-flag rules, for a game that has them (CS raises none for CHARGED UP). */

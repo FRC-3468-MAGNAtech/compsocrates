@@ -1,8 +1,8 @@
 "use client";
 
-import { RADAR_AXES, type RadarRow } from "@/lib/analytics/robot-radar";
+import type { RadarRow } from "@/lib/analytics/robot-radar";
 
-// The five-axis robot profile as plain SVG on the theme tokens (no chart dependency). The same numbers are printed in a table under the
+// The robot profile (any number of axes, 3 or more) as plain SVG on the theme tokens (no chart dependency). The same numbers are printed in a table under the
 // chart, which is the screen-reader view: the SVG itself is a labelled image.
 
 const SIZE = 320;
@@ -17,7 +17,7 @@ const point = (i: number, n: number, value: number) => {
 };
 const polygon = (values: number[]) => values.map((v, i) => point(i, values.length, v).map((n) => n.toFixed(1)).join(",")).join(" ");
 
-export function RobotRadarChart({ rows, teamA, teamB }: { rows: RadarRow[]; teamA: number; teamB: number | null }) {
+export function RobotRadarChart({ rows, axes, teamA, teamB }: { rows: RadarRow[]; axes: readonly { key: string; full: string; help: string }[]; teamA: number; teamB: number | null }) {
   const n = rows.length;
   const summary = rows.map((r) => `${r.full} ${r.a.toFixed(1)}${r.b !== null ? ` versus ${r.b.toFixed(1)}` : ""}`).join(", ");
 
@@ -122,7 +122,7 @@ export function RobotRadarChart({ rows, teamA, teamB }: { rows: RadarRow[]; team
       </div>
 
       <dl className="grid w-full gap-1 text-xs text-[var(--muted-foreground)]">
-        {RADAR_AXES.map((a) => (
+        {axes.map((a) => (
           <div key={a.key} className="flex flex-wrap gap-x-2">
             <dt className="font-semibold text-[var(--foreground)]">{a.full}:</dt>
             <dd>{a.help}</dd>

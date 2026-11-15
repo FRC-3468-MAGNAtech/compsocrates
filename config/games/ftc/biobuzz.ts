@@ -101,6 +101,22 @@ export const BIOBUZZ_CONFIG = {
     { id: "garden", label: "Garden", fieldKeys: ["flowerBottomNectar", "flowerPollenNectar", "gardenPollenNectar"] },
   ],
 
+  /**
+   * The Robot Radar: five axes from the fields above. Auto and Endgame are the robot's own points (Leave and Park out of 8, Park out of 5). Hive and
+   * Garden are ALLIANCE objectives (one scout per alliance records them): each is the mean over the entries that recorded it, relative to the best team,
+   * and labelled as an alliance stat. Reliability is the share of matches with none of the reliability incidents (died, never started, disabled, ...).
+   * There is no Agility axis (no lead-scout skill rating exists for this program) and no climb box plot (no climb).
+   */
+  radar: {
+    axes: [
+      { key: "auto", label: "Auto", full: "Auto (Leave and Park)", help: "Average autonomous Leave and Park points, out of 8.", metric: { kind: "points", fieldKeys: ["autoLeave", "autoPark"], scale: { max: 8 } } },
+      { key: "hive", label: "Hive", full: "Hive points", help: "Average Tip Hive points of the alliance, over the matches where the Hive was recorded, relative to the best team.", alliance: true, metric: { kind: "points", fieldKeys: ["autoTipHive", "teleTipHive"], scale: "best" } },
+      { key: "garden", label: "Garden", full: "Garden and Flower points", help: "Average Flower and Garden points of the alliance, over the matches where they were recorded, relative to the best team.", alliance: true, metric: { kind: "points", fieldKeys: ["flowerBottomNectar", "flowerPollenNectar", "gardenPollenNectar"], scale: "best" } },
+      { key: "reliability", label: "Reliability", full: "Reliability", help: "Share of matches with no died, never started, disabled, recovered-from-freeze or tipped-over incident.", metric: { kind: "clean" } },
+      { key: "endgame", label: "Endgame", full: "Endgame Park", help: "How often the robot parked in the endgame, scaled to 10.", metric: { kind: "points", fieldKeys: ["endgamePark"], scale: { max: 5 } } },
+    ],
+  },
+
   /** Stored entries carry their incidents as the flat boolean fields above. */
   incidents: [],
   rescoutFields: [],

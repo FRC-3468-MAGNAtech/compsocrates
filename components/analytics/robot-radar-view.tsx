@@ -8,15 +8,16 @@ import { Button } from "@/components/ui/button";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Input, Label } from "@/components/ui/input";
 import { Shimmer } from "@/components/ui/shimmer";
-import { CURRENT_GAME_ID } from "@/config/games";
 import { useAnalyticsData, useAnalyticsEntries } from "@/lib/analytics/data-context";
 import { useAnalyticsFilters } from "@/lib/analytics/filter-context";
 import { resolveEventCodes } from "@/lib/analytics/filters";
 import { selectFormEntries } from "@/lib/analytics/form-analytics";
-import { buildClimbBoxes } from "@/lib/analytics/climb-box";
-import { RADAR_MAX_TEAMS, buildRadarStats, leadSkillByTeam, normalizeSelectedTeams, radarRows, radarSamples } from "@/lib/analytics/robot-radar";
+import { buildRadarModel } from "@/lib/analytics/radar-view-model";
+import { RADAR_MAX_TEAMS, normalizeSelectedTeams } from "@/lib/analytics/robot-radar";
 import { useAuth } from "@/lib/auth";
 import { useFormEntries } from "@/lib/form-entries";
+import { useForms } from "@/lib/forms/forms-context";
+import { useProgramConfig } from "@/lib/program/context";
 import { cn } from "@/lib/utils";
 import { storageKey } from "@/config/brand";
 
@@ -40,7 +41,13 @@ export function RobotRadarView() {
   const data = useAnalyticsData();
   const { filters } = useAnalyticsFilters();
   const { entries, loaded } = useAnalyticsEntries();
-  const { entries: formEntries } = useFormEntries(profile?.teamId ?? null);
+  // The viewed game's radar profile, else the program's own radar game (a program lists its radar games in its config).
+  const radar = useProgramConfig().radar;
+  const season = useForms().seasonFor(filters.gameId);
+  const profileConfig = radar[season.id] ?? Object.values(radar)[0];
+  // Only a profile with an Agility axis reads Lead Scout entries.
+  const needsLead = profileConfig?.kind === "rebuilt";
+  const { entries: formEntries } = useFormEntries(needsLead ? (profile?.teamId ?? null) : null);
 
   const [selected, setSelected] = useState<number[]>([]);
   const [query, setQuery] = useState("");
@@ -58,23 +65,22 @@ export function RobotRadarView() {
     }
   };
 
-  const { samples, skipped } = useMemo(() => radarSamples(entries), [entries]);
-
   const leadEntries = useMemo(() => {
     const codes = resolveEventCodes(filters, data.activeEventCodes);
     return selectFormEntries(formEntries, "lead-scout", codes).filter((e) => (e.legacy?.practiceScouted === true) === filters.practice);
   }, [formEntries, filters, data.activeEventCodes]);
-  const skill = useMemo(() => leadSkillByTeam(leadEntries), [leadEntries]);
-
-  const { stats, maxAuto, maxActiveFuel } = useMemo(() => buildRadarStats(samples, skill), [samples, skill]);
-  const teamOptions = useMemo(() => [...stats.values()].sort((a, b) => a.teamNumber - b.teamNumber), [stats]);
+  const model = useMemo(() => (profileConfig ? buildRadarModel(profileConfig, entries, leadEntries) : null), [profileConfig, entries, leadEntries]);
+  const gameName = model?.name ?? "";
+  const skipped = model?.skipped ?? 0;
+  const teamOptions = model?.teams ?? [];
   const visibleOptions = teamOptions.filter((t) => query.trim() === "" || String(t.teamNumber).includes(query.replace(/\D/g, "")));
 
   const [teamA, teamB = null] = selected;
-  const statA = teamA !== undefined ? stats.get(teamA) : undefined;
-  const statB = teamB !== null ? stats.get(teamB) : undefined;
-  const rows = useMemo(() => radarRows(statA, statB, maxAuto, maxActiveFuel), [statA, statB, maxAuto, maxActiveFuel]);
-  const boxes = useMemo(() => buildClimbBoxes(samples, selected), [samples, selected]);
+  const statA = teamA !== undefined ? teamOptions.find((t) => t.teamNumber === teamA) : undefined;
+  const statB = teamB !== null ? teamOptions.find((t) => t.teamNumber === teamB) : undefined;
+  const rows = useMemo(() => model?.rows(teamA, teamB ?? undefined) ?? [], [model, teamA, teamB]);
+  const boxes = useMemo(() => model?.climbBoxes?.(selected) ?? null, [model, selected]);
+  const notes = model?.notes(teamA, teamB ?? undefined) ?? [];
 
   const toggle = (team: number) => choose(selected.includes(team) ? selected.filter((t) => t !== team) : selected.length >= RADAR_MAX_TEAMS ? selected : [...selected, team]);
 
@@ -83,7 +89,7 @@ export function RobotRadarView() {
       <div>
         <h2 className="text-xl font-semibold tracking-tight">Robot Radar</h2>
         <p className="max-w-2xl text-sm text-[var(--muted-foreground)]">
-          Normalized 0-10 build profile for {CURRENT_GAME_ID} robots. Add a second team to compare overlap and synergy.
+          Normalized 0-10 build profile for {gameName} robots. Add a second team to compare overlap and synergy.
         </p>
       </div>
 
@@ -94,8 +100,10 @@ export function RobotRadarView() {
         </div>
       ) : teamOptions.length === 0 ? (
         <GlassPanel className="py-12 text-center text-sm text-[var(--muted-foreground)]">
-          {entries.length > 0
-            ? `The radar is built for ${CURRENT_GAME_ID} scouting; the entries in this view are from another game.`
+          {!model
+            ? "Robot Radar isn't available for this game."
+            : entries.length > 0
+            ? `The radar is built for ${gameName} scouting; the entries in this view are from another game.`
             : "No scouted data with the current filters. Try lowering the Accuracy threshold, or confirm accuracy has been recalculated."}
         </GlassPanel>
       ) : (
@@ -158,26 +166,28 @@ export function RobotRadarView() {
           {selected.length === 0 ? (
             <GlassPanel className="py-10 text-center text-sm text-[var(--muted-foreground)]">Pick a team above to generate its radar.</GlassPanel>
           ) : !statA ? (
-            <GlassPanel className="py-10 text-center text-sm text-[var(--muted-foreground)]">No {CURRENT_GAME_ID} scouting data available for team {teamA} with these filters.</GlassPanel>
+            <GlassPanel className="py-10 text-center text-sm text-[var(--muted-foreground)]">No {gameName} scouting data available for team {teamA} with these filters.</GlassPanel>
           ) : (
             <>
               <GlassPanel className="p-4">
-                <RobotRadarChart rows={rows} teamA={statA.teamNumber} teamB={statB ? statB.teamNumber : null} />
-                {(statA.ratings === 0 || (statB && statB.ratings === 0)) && (
-                  <p className="mt-3 text-xs text-[var(--muted-foreground)]">
-                    Agility reads 0 for a team with no Lead Scout rating in these events.
+                <RobotRadarChart rows={rows} axes={model?.axes ?? []} teamA={statA.teamNumber} teamB={statB ? statB.teamNumber : null} />
+                {notes.map((line) => (
+                  <p key={line} className="mt-3 text-xs text-[var(--muted-foreground)]">
+                    {line}
                   </p>
-                )}
-                {teamB !== null && !statB && <p className="mt-3 text-xs text-[var(--muted-foreground)]">No {CURRENT_GAME_ID} scouting data for team {teamB} with these filters, so it is drawn as zero.</p>}
+                ))}
+                {teamB !== null && !statB && <p className="mt-3 text-xs text-[var(--muted-foreground)]">No {gameName} scouting data for team {teamB} with these filters, so it is drawn as zero.</p>}
               </GlassPanel>
 
-              <GlassPanel className="p-4">
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="text-base font-semibold">Climb Reliability ({CURRENT_GAME_ID})</h3>
-                  <span className="text-xs text-[var(--muted-foreground)]">Follows the Accuracy filter</span>
-                </div>
-                <ClimbBoxPlot boxes={boxes} />
-              </GlassPanel>
+              {boxes && (
+                <GlassPanel className="p-4">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="text-base font-semibold">Climb Reliability ({gameName})</h3>
+                    <span className="text-xs text-[var(--muted-foreground)]">Follows the Accuracy filter</span>
+                  </div>
+                  <ClimbBoxPlot boxes={boxes} />
+                </GlassPanel>
+              )}
             </>
           )}
         </>
