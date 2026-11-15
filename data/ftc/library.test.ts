@@ -38,10 +38,11 @@ vi.mock("firebase/firestore", () => ({
 }));
 vi.mock("@/lib/firebase/client", () => ({ db: { fake: true }, auth: { currentUser: { uid: "u1" } }, isFirebaseConfigured: () => true }));
 
-import { createManualEvent, deleteManualEvent, deleteManualMatches, importSchedule, setMatchesPublished, subscribeLibraryEvents, subscribeLibraryMatches, upsertManualMatches } from "@/data/ftc/library";
+import { createManualEvent, deleteManualEvent, deleteManualMatches, importSchedule, setMatchesPublished, setMatchesVideoLink, setMatchVideo, subscribeLibraryEvents, subscribeLibraryMatches, updateManualEvent, upsertManualMatches } from "@/data/ftc/library";
 import { setMatchesPublished as frcSetMatchesPublished } from "@/lib/library/store";
 import { libraryAllQuery, libraryEventQuery, librarySeasonQuery } from "@/lib/practice-queries";
 import { programData } from "@/lib/program/data";
+import { emptyRawMatch, validateRawMatch } from "@/lib/library/manual-match";
 import type { EventMatch } from "@/lib/events/types";
 import type { LibraryEvent } from "@/lib/library/store";
 
@@ -169,13 +170,29 @@ describe("FTC library writes", () => {
     expect(h.commits[0].find((o) => o.path.endsWith("EV_Q1"))?.data).toMatchObject({ published: true, needsReview: false });
   });
 
-  it("deleting a manual event deletes its matches in batches, then the event; an imported event cannot be deleted", async () => {
-    h.getDocs.mockResolvedValue({ docs: ids(450).map((id) => ({ id, data: () => ({ origin: "manual" }) })) });
+  it("deleting a manual event follows the default program: refused while it has matches, then only the event doc goes; an imported event cannot be deleted", async () => {
+    h.getDocs.mockResolvedValue({ docs: ids(3).map((id) => ({ id, data: () => ({ origin: "manual" }) })) });
+    await expect(deleteManualEvent(actor, manualEvent)).rejects.toThrow("Delete this event's matches first.");
+    expect(h.commits).toHaveLength(0);
+    h.getDocs.mockResolvedValue({ docs: [] });
     await deleteManualEvent(actor, manualEvent);
-    const deletes = h.commits.map((c) => c.filter((o) => o.kind === "delete").map((o) => o.path));
-    expect(deletes.map((d) => d.length)).toEqual([400, 50, 1]);
-    expect(deletes[2]).toEqual(["programs/ftc/libraryEvents/MAN-X-AAAA"]);
+    expect(h.commits.flat().filter((o) => o.kind === "delete").map((o) => o.path)).toEqual(["programs/ftc/libraryEvents/MAN-X-AAAA"]);
     await expect(deleteManualEvent(actor, { ...manualEvent, origin: "api" })).rejects.toThrow(/Only hand-made/);
+  });
+
+  it("edits an event and copies a new name onto its matches (400 per batch); videos are set under programs/ftc only", async () => {
+    await updateManualEvent(actor, manualEvent, { name: " New ", date: "", sourceUrl: "", defaultVideoUrl: "https://youtu.be/dQw4w9WgXcQ" }, ids(450));
+    const ops = h.commits.map((c) => c.filter((o) => o.kind === "update").map((o) => o.path));
+    expect(ops[0]).toEqual(["programs/ftc/libraryEvents/MAN-X-AAAA"]);
+    expect(h.commits[0].find((o) => o.kind === "update")?.data).toMatchObject({ eventName: "New", defaultVideoUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" });
+    expect(ops.slice(1).map((d) => d.length)).toEqual([400, 50]);
+    h.commits.length = 0;
+    await setMatchesVideoLink(actor, [{ id: "EV_Q1", video: { youtubeUrl: "x", startSec: 3, endSec: null } }], "dQw4w9WgXcQ");
+    await setMatchVideo(actor, "EV_Q2", null);
+    const writes = h.commits.flat().filter((o) => o.kind === "update");
+    expect(writes.map((o) => o.path)).toEqual(["programs/ftc/libraryMatches/EV_Q1", "programs/ftc/libraryMatches/EV_Q2"]);
+    expect(writes[0].data).toMatchObject({ video: { youtubeUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", startSec: 3, endSec: null } });
+    expect(writes[1].data).toMatchObject({ video: null });
   });
 });
 
@@ -256,5 +273,27 @@ describe("FRC still reads and writes the root collections", () => {
     expect(paths).toContain("libraryMatches/2025wasno_Q1");
     expect(paths.some((p) => p.startsWith("auditLog/"))).toBe(true);
     expect(paths.some((p) => p.startsWith("programs/"))).toBe(false);
+  });
+});
+
+describe("the shared panel's writes through the FTC port", () => {
+  it("every write stays under programs/ftc (no root collection), and a match keeps its typed score, video and time", async () => {
+    const lib = programData("ftc")!.library;
+    h.getDocs.mockResolvedValue({ empty: true, docs: [] });
+    const valid = validateRawMatch({ ...emptyRawMatch(), matchNumber: "1", red1: "1", red2: "2", blue1: "3", blue2: "4", redScore: "30", youtubeUrl: "https://youtu.be/dQw4w9WgXcQ", scheduledTime: "2026-11-15T09:30" }, { allianceSize: 2, scoresRequired: false }).match!;
+    await lib.upsertMatches(actor, manualEvent, [valid], { newPublished: true, newNeedsReview: false });
+    await lib.setPublished(actor, ["EV_Q1"], true);
+    await lib.setScores(actor, "EV_Q1", { red: { score: 1, penaltyPoints: 0 }, blue: { score: 2, penaltyPoints: 0 } });
+    await lib.setVideoLink(actor, [{ id: "EV_Q1", video: null }], "dQw4w9WgXcQ");
+    await lib.setMatchVideo(actor, "EV_Q1", null);
+    await lib.updateEvent(actor, manualEvent, { name: "Renamed", date: "", sourceUrl: "", defaultVideoUrl: "" }, ["EV_Q1"]);
+    await lib.deleteMatches(actor, ["EV_Q1"]);
+    const ops = h.commits.flat();
+    expect(ops.length).toBeGreaterThan(8);
+    for (const o of ops) expect(o.path, o.path).toMatch(/^programs\/ftc\//);
+    const written = ops.find((o) => o.kind === "set" && o.path === "programs/ftc/libraryMatches/MAN-X-AAAA_Q1")!;
+    expect(written.data).toMatchObject({ alliances: { red: { teams: [1, 2], score: 30, penaltyPoints: 0 }, blue: { teams: [3, 4] } }, video: { youtubeUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" }, published: true });
+    expect((written.data as { alliances: { blue: object } }).alliances.blue).not.toHaveProperty("score");
+    expect(written.data?.scheduledTime).toMatch(/^2026-11-15T/);
   });
 });

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { EventMatch } from "@/lib/events/types";
 import { ftcAllianceSize, ftcDocToLibraryMatch, ftcDocsToLibraryMatches, ftcMatchId, createMergedFeed, generateFtcManualEventCode, importErrorMessage, normalizeApiEventCode, planScheduleImport } from "@/lib/ftc/library";
-import { LIBRARY_BATCH_SIZE, buildManualMatchDoc, chunk, emptyRawScheduleMatch, publishedLabel, summarizeEvents, validateRawScheduleMatch } from "@/lib/library/schedule";
-import type { LibraryEvent } from "@/lib/library/store";
+import { LIBRARY_BATCH_SIZE, buildManualMatchDoc, chunk } from "@/lib/library/schedule";
+import { emptyRawMatch, validateRawMatch } from "@/lib/library/manual-match";
 
 const NOW = "2026-11-15T10:00:00.000Z";
 const EVENT = { eventCode: "USWASEAQ", eventName: "Seattle Qualifier", seasonId: "biobuzz" };
@@ -31,31 +31,29 @@ describe("FTC alliance size and ids", () => {
   });
 });
 
-describe("manual match validation", () => {
-  const good = { matchType: "Q", matchNumber: "12", red: ["111", "222"], blue: ["333", "444"], scheduledTime: "" };
-  it("accepts two teams per alliance and an empty time", () => {
-    const r = validateRawScheduleMatch(good, 2);
-    expect(r.ok && r.match).toEqual({ matchType: "Qualification", matchNumber: 12, red: [111, 222], blue: [333, 444], scheduledTime: null });
+describe("manual match validation (the shared form, two robots, scores optional)", () => {
+  const good = { ...emptyRawMatch(), matchType: "Q", matchNumber: "12", red1: "111", red2: "222", blue1: "333", blue2: "444" };
+  const opts = { allianceSize: 2, scoresRequired: false };
+  it("accepts two teams per alliance, blank scores (no official score) and an empty time", () => {
+    const r = validateRawMatch({ ...good, scheduledTime: "" }, opts);
+    expect(r.ok).toBe(true);
+    expect(r.match).toMatchObject({ matchNumber: 12, red: { teams: [111, 222], scoreKnown: false }, blue: { teams: [333, 444], scoreKnown: false }, scheduledTime: null });
   });
-  it("accepts P and F and an ISO-able time", () => {
-    expect(validateRawScheduleMatch({ ...good, matchType: "P" }, 2).ok).toBe(true);
-    const r = validateRawScheduleMatch({ ...good, matchType: "F", scheduledTime: "2026-11-15T09:30" }, 2);
-    expect(r.ok && r.match.matchType).toBe("Playoff");
-    expect(r.ok && r.match.scheduledTime).toMatch(/^2026-11-15T/);
+  it("a typed score is known; a time becomes ISO; a blank score with penalty points is refused", () => {
+    expect(validateRawMatch({ ...good, redScore: "40", redPenalty: "5" }, opts).match?.red).toEqual({ teams: [111, 222], score: 40, penaltyPoints: 5 });
+    expect(validateRawMatch({ ...good, matchType: "F", scheduledTime: "2026-11-15T09:30" }, opts).match?.scheduledTime).toMatch(/^2026-11-15T/);
+    expect(validateRawMatch({ ...good, redPenalty: "3" }, opts).errors.redPenalty).toBeTruthy();
   });
   it("rejects a bad type, number, missing slot, non-digits, a repeated team and a bad time", () => {
-    expect(validateRawScheduleMatch({ ...good, matchType: "X" }, 2)).toMatchObject({ ok: false, errors: { matchType: expect.any(String) } });
-    expect(validateRawScheduleMatch({ ...good, matchNumber: "0" }, 2)).toMatchObject({ ok: false, errors: { matchNumber: expect.any(String) } });
-    expect(validateRawScheduleMatch({ ...good, matchNumber: "" }, 2)).toMatchObject({ ok: false });
-    expect(validateRawScheduleMatch({ ...good, red: ["111", ""] }, 2)).toMatchObject({ ok: false, errors: { red: expect.any(String) } });
-    expect(validateRawScheduleMatch({ ...good, blue: ["abc", "444"] }, 2)).toMatchObject({ ok: false, errors: { blue: expect.any(String) } });
-    expect(validateRawScheduleMatch({ ...good, blue: ["111", "444"] }, 2)).toMatchObject({ ok: false, errors: { teams: expect.any(String) } });
-    expect(validateRawScheduleMatch({ ...good, scheduledTime: "soonish" }, 2)).toMatchObject({ ok: false, errors: { scheduledTime: expect.any(String) } });
+    expect(validateRawMatch({ ...good, matchType: "X" }, opts).errors.matchType).toBeTruthy();
+    expect(validateRawMatch({ ...good, matchNumber: "0" }, opts).errors.matchNumber).toBeTruthy();
+    expect(validateRawMatch({ ...good, red2: "" }, opts).errors.red2).toBeTruthy();
+    expect(validateRawMatch({ ...good, blue1: "abc" }, opts).errors.blue1).toBeTruthy();
+    expect(validateRawMatch({ ...good, blue1: "111" }, opts).ok).toBe(false);
+    expect(validateRawMatch({ ...good, scheduledTime: "soonish" }, opts).errors.scheduledTime).toBeTruthy();
   });
-  it("an empty form has two slots per alliance", () => {
-    const raw = emptyRawScheduleMatch(ftcAllianceSize());
-    expect(raw.red).toHaveLength(2);
-    expect(raw.blue).toHaveLength(2);
+  it("a program that requires scores still refuses a blank one (the default)", () => {
+    expect(validateRawMatch({ ...good }, { allianceSize: 2 }).errors.redScore).toBeTruthy();
   });
 });
 
@@ -133,21 +131,6 @@ describe("reading stored docs", () => {
     ]);
     expect(matches.map((x) => x.id)).toEqual(["d", "a"]);
     expect(unreadable).toBe(2);
-  });
-});
-
-describe("event summaries", () => {
-  const events = [{ eventCode: "B", eventName: "Beta", origin: "api" }, { eventCode: "A", eventName: "Alpha", origin: "manual" }, { eventCode: "C", eventName: "Empty", origin: "manual" }] as LibraryEvent[];
-  const match = (eventCode: string, published: boolean) => ({ eventCode, published }) as never;
-  it("counts matches and published ones per event, and an event with no matches has zero", () => {
-    const rows = summarizeEvents(events, [match("A", true), match("A", false), match("B", true)]);
-    expect(rows.map((r) => [r.event.eventCode, r.matchCount, r.publishedCount])).toEqual([["A", 2, 1], ["B", 1, 1], ["C", 0, 0]]);
-  });
-  it("labels the published state", () => {
-    expect(publishedLabel(0, 0)).toBe("Draft");
-    expect(publishedLabel(3, 0)).toBe("Draft");
-    expect(publishedLabel(3, 3)).toBe("Published");
-    expect(publishedLabel(5, 2)).toBe("Partly published (2 of 5)");
   });
 });
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { EventMatch } from "@/lib/events/types";
 import { ftcDocToLibraryMatch, planScheduleImport } from "@/lib/ftc/library";
-import { buildManualMatchDoc, rawScoresOf, scoreLabel, validateRawScores } from "@/lib/library/schedule";
+import { buildManualMatchDoc, rawScoresOf, validateRawScores } from "@/lib/library/schedule";
 import { resolveLobbyPairScoring } from "@/lib/lobby/scoring";
 import type { ScoutEntry } from "@/lib/scout-entries";
 
@@ -14,7 +14,6 @@ describe("a library match official score (FTC)", () => {
     expect(m.alliances.red).toMatchObject({ scoreKnown: false, score: 0, penaltyPoints: 0 });
     expect(m.alliances.blue.scoreKnown).toBe(false);
     expect(m.scheduleOnly).toBe(true);
-    expect(scoreLabel(m)).toBe("No score");
   });
 
   it("a scored alliance is known, with its difficulty from the game own cut-offs (40 / 79)", () => {
@@ -34,7 +33,6 @@ describe("a library match official score (FTC)", () => {
     const m = ftcDocToLibraryMatch("x", doc({ score: 10 }, {}))!;
     expect([m.alliances.red.scoreKnown, m.alliances.blue.scoreKnown]).toEqual([true, false]);
     expect(m.scheduleOnly).toBe(false);
-    expect(scoreLabel(m)).toBe("R 10 · B ?");
   });
 
   it("an admin score form: both scores required, a blank penalty is 0, nothing is stored as a blank turned into 0", () => {
