@@ -10,15 +10,24 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { EntryEditDialog } from "@/components/admin/entry-edit-dialog";
 import { useAuth } from "@/lib/auth";
+import { useProgram, useProgramConfig } from "@/lib/program/context";
+import { LoadError } from "@/components/practice/load-error";
 import { useTeamMembers } from "@/lib/team-members";
 import { getSeason, SEASONS } from "@/lib/seasons";
 import { getPercentColor } from "@/lib/accuracy/engine";
 import { dismissSessionFlag, hardResetScoutData, setSessionExcluded } from "@/lib/scout-stats/actions";
+import type { ProgramId } from "@/config/programs/types";
 import { getEntriesForSession, type ScoutEntry } from "@/lib/scout-entries";
 import { getPracticeSession, useAllTeamPracticeSessions, type PracticeSession, type SessionMode } from "@/lib/practice-sessions";
 
 type KindFilter = "all" | "solo" | "live" | "lobby";
 type ModeFilter = "all" | "trial" | "competitive";
+
+/** A session with no official score has no accuracy: say so, never 0 or 0%. */
+function accuracyText(s: Pick<PracticeSession, "accuracy" | "status">): string {
+  if (s.accuracy !== null) return `${Math.round(s.accuracy)}%`;
+  return s.status === "completed" ? "No official score" : "?";
+}
 
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
@@ -28,7 +37,9 @@ function formatDate(iso: string | null): string {
 export function SessionsPanel() {
   const { user, profile } = useAuth();
   const teamId = profile?.teamId ?? null;
-  const { sessions: allSessions } = useAllTeamPracticeSessions(teamId);
+  const program = useProgram();
+  const { connection } = useProgramConfig();
+  const { sessions: allSessions, loaded, error } = useAllTeamPracticeSessions(teamId);
   const { members } = useTeamMembers(teamId);
 
   const [lookupId, setLookupId] = useState("");
@@ -45,7 +56,7 @@ export function SessionsPanel() {
   const handleLookup = async () => {
     if (!lookupId.trim()) return;
     setLookupError(null);
-    const result = await getPracticeSession(lookupId.trim());
+    const result = await getPracticeSession(lookupId.trim(), program);
     setLookupResult(result);
     if (!result) setLookupError(`No session with id "${lookupId.trim()}".`);
     else setDetailSession(result);
@@ -106,8 +117,8 @@ export function SessionsPanel() {
           <SelectContent>
             <SelectItem value="all">All kinds</SelectItem>
             <SelectItem value="solo">Solo</SelectItem>
-            <SelectItem value="live">Live</SelectItem>
-            <SelectItem value="lobby">Lobby</SelectItem>
+            {connection.features.live && <SelectItem value="live">Live</SelectItem>}
+            {connection.features.lobby && <SelectItem value="lobby">Lobby</SelectItem>}
           </SelectContent>
         </Select>
 
@@ -130,8 +141,13 @@ export function SessionsPanel() {
         <span className="ml-auto text-xs text-[var(--muted-foreground)]">{filtered.length} sessions</span>
       </GlassPanel>
 
+      {error && <LoadError failure={error} />}
       <GlassPanel className="flex flex-col gap-2">
-        {filtered.length === 0 ? (
+        {!loaded && !error ? (
+          <div className="glass-card h-24 animate-pulse" />
+        ) : error ? (
+          <p className="py-8 text-center text-sm text-[var(--muted-foreground)]">The sessions couldn&apos;t be loaded, so none are listed.</p>
+        ) : filtered.length === 0 ? (
           <p className="py-8 text-center text-sm text-[var(--muted-foreground)]">No sessions match these filters.</p>
         ) : (
           filtered.slice(0, 200).map((s) => (
@@ -149,9 +165,12 @@ export function SessionsPanel() {
               <span className="text-xs text-[var(--muted-foreground)]">{s.mode ?? "—"}</span>
               <span className="text-xs text-[var(--muted-foreground)]">{formatDate(s.startedAt)}</span>
               {s.flags.some((f) => !f.dismissed) && <AlertTriangle className="h-3.5 w-3.5 text-amber-400" />}
-              <span className={`ml-auto font-semibold tabular-nums ${s.accuracy !== null ? getPercentColor(s.accuracy) : ""}`}>
-                {s.accuracy === null ? "?" : `${Math.round(s.accuracy)}%`}
-              </span>
+              {s.malformed !== undefined && (
+                <span className="flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] text-amber-300" title={s.malformed}>
+                  <AlertTriangle className="h-3 w-3" aria-hidden /> Couldn&apos;t be read in full
+                </span>
+              )}
+              <span className={`ml-auto font-semibold tabular-nums ${s.accuracy !== null ? getPercentColor(s.accuracy) : ""}`}>{accuracyText(s)}</span>
             </button>
           ))
         )}
@@ -166,6 +185,7 @@ export function SessionsPanel() {
           open={detailSession !== null}
           onOpenChange={(open) => !open && setDetailSession(null)}
           teamId={teamId}
+          program={program}
           actorUid={user.uid}
           actorName={profile.name}
           allSessionsForScout={detailSession ? allSessions.filter((s) => s.uid === detailSession.uid) : []}
@@ -180,6 +200,7 @@ function SessionDetailDialog({
   open,
   onOpenChange,
   teamId,
+  program,
   actorUid,
   actorName,
   allSessionsForScout,
@@ -188,6 +209,7 @@ function SessionDetailDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   teamId: string;
+  program: ProgramId;
   actorUid: string;
   actorName: string;
   allSessionsForScout: PracticeSession[];
@@ -204,13 +226,13 @@ function SessionDetailDialog({
       return;
     }
     let cancelled = false;
-    getEntriesForSession(teamId, session.id).then((result) => {
+    getEntriesForSession(teamId, session.id, program).then((result) => {
       if (!cancelled) setEntries(result);
     });
     return () => {
       cancelled = true;
     };
-  }, [session, teamId]);
+  }, [session, teamId, program]);
 
   if (!session) return null;
   const seasonName = SEASONS.some((s) => s.id === session.seasonId) ? getSeason(session.seasonId).name : session.seasonId;
@@ -218,7 +240,7 @@ function SessionDetailDialog({
   const handleDismissFlag = async (flagType: string) => {
     setBusy(true);
     try {
-      await dismissSessionFlag(teamId, actorUid, actorName, session, flagType);
+      await dismissSessionFlag(teamId, actorUid, actorName, session, flagType, program);
     } finally {
       setBusy(false);
     }
@@ -227,7 +249,7 @@ function SessionDetailDialog({
   const handleToggleExcluded = async () => {
     setBusy(true);
     try {
-      await setSessionExcluded(teamId, actorUid, actorName, session, !session.excluded);
+      await setSessionExcluded(teamId, actorUid, actorName, session, !session.excluded, program);
     } finally {
       setBusy(false);
     }
@@ -237,7 +259,7 @@ function SessionDetailDialog({
     if (session.kind !== "solo" || !session.mode) return;
     setBusy(true);
     try {
-      await hardResetScoutData(teamId, actorUid, actorName, session.uid, session.scoutName, session.mode as Exclude<SessionMode, null>, allSessionsForScout);
+      await hardResetScoutData(teamId, actorUid, actorName, session.uid, session.scoutName, session.mode as Exclude<SessionMode, null>, allSessionsForScout, program);
       setConfirmResetOpen(false);
       onOpenChange(false);
     } finally {
@@ -259,7 +281,7 @@ function SessionDetailDialog({
             <Stat label="Status" value={session.status} />
             <Stat
               label="Accuracy"
-              value={session.accuracy === null ? "?" : `${Math.round(session.accuracy)}%`}
+              value={accuracyText(session)}
               accentClass={session.accuracy !== null ? getPercentColor(session.accuracy) : undefined}
             />
             <Stat label="Platform" value={session.platform} />
@@ -337,7 +359,7 @@ function SessionDetailDialog({
         teamId={teamId}
         actorUid={actorUid}
         actorName={actorName}
-        onSaved={() => getEntriesForSession(teamId, session.id).then(setEntries)}
+        onSaved={() => getEntriesForSession(teamId, session.id, program).then(setEntries)}
       />
 
       <Dialog open={confirmResetOpen} onOpenChange={setConfirmResetOpen}>

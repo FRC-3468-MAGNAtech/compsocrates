@@ -5,6 +5,7 @@ import { entryValues } from "@/lib/forms/entry-values";
 import { builtinFormResolver, type FormResolver } from "@/lib/forms/resolver";
 import { updateEntry, type ScoutEntry } from "@/lib/scout-entries";
 import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
+import { runRescoreWrites } from "@/lib/admin/rescore-apply";
 import { updatePracticeSession, type PracticeSession } from "@/lib/practice-sessions";
 import type { LibraryMatch } from "@/lib/match-library";
 import type { EventMatch } from "@/lib/events/types";
@@ -16,6 +17,19 @@ export type SessionRescoreFilter = {
   dateFrom?: string | null;
   dateTo?: string | null;
 };
+
+export type SessionRescoreOptions = {
+  /**
+   * Keep an admin's dismissal of a flag that is raised again (same `type`). A program whose flags live on the session document keeps its admins' decisions
+   * through a rescore; the default program's rescore is unchanged (it writes the freshly evaluated flags, as it always has).
+   */
+  preserveDismissed?: boolean;
+};
+
+/** The freshly evaluated flags with an admin's earlier dismissal kept on every flag of the same type that is raised again. Pure. */
+export function keepDismissedFlags(previous: PracticeSession["flags"], next: PracticeSession["flags"]): PracticeSession["flags"] {
+  return next.map((f) => (previous.some((p) => p.type === f.type && p.dismissed) ? { ...f, dismissed: true } : f));
+}
 
 export type SessionRescorePatch = {
   /** One session for solo, two for a lobby pair or a live alliance pair. */
@@ -80,8 +94,10 @@ export function buildSessionRescorePlan(
   libraryMatchesById: Map<string, LibraryMatch>,
   liveMatchesByKey: Map<string, EventMatch>,
   filter: SessionRescoreFilter,
-  resolveForm: FormResolver = builtinFormResolver
+  resolveForm: FormResolver = builtinFormResolver,
+  options: SessionRescoreOptions = {}
 ): SessionRescorePatch[] {
+  const keepDismissed = (previous: PracticeSession, flags: PracticeSession["flags"]): PracticeSession["flags"] => (options.preserveDismissed ? keepDismissedFlags(previous.flags, flags) : flags);
   const entriesBySessionId = new Map<string, ScoutEntry[]>();
   for (const e of entries) {
     if (!e.sessionId) continue;
@@ -99,6 +115,8 @@ export function buildSessionRescorePlan(
     const match = libraryMatchesById.get(session.libraryMatchId);
     const sessionEntries = entriesBySessionId.get(session.id) ?? [];
     if (!match || sessionEntries.length !== session.robots.length) continue;
+    // No official score yet (a scheduled match nobody has scored): there is nothing to compare with, so nothing is rewritten (the session keeps what it has; never a 0).
+    if (match.alliances[session.alliance].scoreKnown === false) continue;
     const rescored = sessionEntries.map((e) => rescoredEntry(e, resolveForm));
     const result = resolveLobbyPairScoring(match, session.alliance, rescored, session.mode, false);
 
@@ -116,7 +134,7 @@ export function buildSessionRescorePlan(
       sessionWrites: [
         {
           sessionId: session.id,
-          patch: { accuracy: result.accuracy, scoutedTotal: result.scoutedTotal, officialScore: result.officialScore, penaltyPoints: result.penaltyPoints, flags: result.flags },
+          patch: { accuracy: result.accuracy, scoutedTotal: result.scoutedTotal, officialScore: result.officialScore, penaltyPoints: result.penaltyPoints, flags: keepDismissed(session, result.flags) },
         },
       ],
       entryWrites,
@@ -138,6 +156,7 @@ export function buildSessionRescorePlan(
     const match = libraryMatchesById.get(a.libraryMatchId);
     // A complete group has one session per robot on the alliance, as the match itself lists them.
     if (!match || group.length !== match.alliances[a.alliance].teams.length) continue;
+    if (match.alliances[a.alliance].scoreKnown === false) continue;
     const groupEntries = group.map((s) => (entriesBySessionId.get(s.id) ?? [])[0]);
     if (groupEntries.some((e) => !e)) continue;
     const originals = groupEntries as ScoutEntry[];
@@ -154,7 +173,7 @@ export function buildSessionRescorePlan(
       scoutNames: group.map((s) => s.scoutName),
       before: a.accuracy,
       after: result.accuracy,
-      sessionWrites: group.map((s) => ({ sessionId: s.id, patch: sessionPatch })),
+      sessionWrites: group.map((s) => ({ sessionId: s.id, patch: { ...sessionPatch, flags: keepDismissed(s, sessionPatch.flags) } })),
       entryWrites,
     });
   }
@@ -224,33 +243,40 @@ export function sessionRescorePatchChanges(patch: SessionRescorePatch): boolean 
   return patch.before !== patch.after;
 }
 
-const BATCH_CHUNK_SIZE = 400;
+/** The fields a rescore may write, by document (everything else, the scouted `values` first of all, is never in a patch). */
+export const RESCORE_SESSION_FIELDS = ["accuracy", "scoutedTotal", "officialScore", "penaltyPoints", "flags"] as const;
+export const RESCORE_ENTRY_FIELDS = ["score", "accuracy", "autoFlags"] as const;
 
-function chunk<T>(items: T[], size: number): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
-  return out;
+/** How many sessions the filter selected and what became of them: planned, or skipped (and why). Pure. */
+export function summarizeSessionRescore(
+  sessions: readonly PracticeSession[],
+  patches: readonly SessionRescorePatch[],
+  libraryMatchesById: ReadonlyMap<string, LibraryMatch>,
+  filter: SessionRescoreFilter
+): { selected: number; planned: number; changed: number; skippedNoOfficialScore: number; skippedIncomplete: number } {
+  const planned = new Set(patches.flatMap((p) => p.sessionIds));
+  const selected = sessions.filter((s) => s.status === "completed" && matchesFilter(s, filter));
+  let skippedNoOfficialScore = 0;
+  let skippedIncomplete = 0;
+  for (const s of selected) {
+    if (planned.has(s.id)) continue;
+    const alliance = s.libraryMatchId && s.alliance ? libraryMatchesById.get(s.libraryMatchId)?.alliances[s.alliance] : undefined;
+    if (alliance?.scoreKnown === false) skippedNoOfficialScore++;
+    else skippedIncomplete++;
+  }
+  return { selected: selected.length, planned: planned.size, changed: patches.filter(sessionRescorePatchChanges).length, skippedNoOfficialScore, skippedIncomplete };
 }
 
 /**
- * Applies a rescore plan in chunks (Firestore's write limit is 500 ops per
- * batch; 400 leaves headroom) and reports progress as each chunk finishes —
- * safe to re-run, since `buildSessionRescorePlan` is deterministic given the
- * current data (re-applying an already-applied plan just writes the same
- * values again).
+ * Applies a rescore plan in chunks of 400 (`runRescoreWrites`) and reports progress as each chunk finishes — safe to re-run, since `buildSessionRescorePlan` is
+ * deterministic given the current data (re-applying an already-applied plan just writes the same values again). A failure stops it with a `RescoreApplyError`.
  */
-export async function applySessionRescorePlan(patches: SessionRescorePatch[], onProgress?: (done: number, total: number) => void, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
+export async function applySessionRescorePlan(patches: SessionRescorePatch[], onProgress?: (done: number, total: number) => void, program: ProgramId = DEFAULT_PROGRAM): Promise<{ written: number }> {
   const sessionWrites = patches.flatMap((p) => p.sessionWrites);
   const entryWrites = patches.flatMap((p) => p.entryWrites);
   const allWrites = [
     ...sessionWrites.map((w) => () => updatePracticeSession(w.sessionId, w.patch, undefined, program)),
     ...entryWrites.map((w) => () => updateEntry(w.entryId, w.patch, {}, program)),
   ];
-  const chunks = chunk(allWrites, BATCH_CHUNK_SIZE);
-  let done = 0;
-  for (const group of chunks) {
-    await Promise.all(group.map((write) => write()));
-    done += group.length;
-    onProgress?.(done, allWrites.length);
-  }
+  return runRescoreWrites(allWrites, onProgress);
 }

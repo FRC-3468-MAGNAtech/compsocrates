@@ -1,6 +1,7 @@
 "use client";
 
 import { useProgram } from "@/lib/program/context";
+import { useProgramData } from "@/lib/program/data";
 import { useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { GlassPanel } from "@/components/ui/glass-panel";
@@ -11,17 +12,20 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/lib/auth";
 import { useForms } from "@/lib/forms/forms-context";
-import { SEASONS, getSeason, DEFAULT_SEASON_ID } from "@/lib/seasons";
 import { getMatchesForEvent } from "@/lib/events/actions";
 import { importLibraryEvent, useAllLibraryMatches } from "@/lib/match-library";
 import { useAllTeamPracticeSessions } from "@/lib/practice-sessions";
 import { useTeamScoutEntries } from "@/lib/scout-entries";
 import { logAuditEvent } from "@/lib/audit-log";
-import { applyEventRescorePlan, computeEventRescorePlan, eventRescorePatchChanges, type EventRescorePatch } from "@/lib/analytics/recompute";
+import { applyEventRescorePlan, computeEventRescorePlan, eventRescorePatchChanges, selectEventRescoreWrites, EVENT_RESCORE_FIELDS, type EventRescorePatch } from "@/lib/analytics/recompute";
+import { RescoreApplyError } from "@/lib/admin/rescore-apply";
 import {
   applySessionRescorePlan,
   buildSessionRescorePlan,
   sessionRescorePatchChanges,
+  summarizeSessionRescore,
+  RESCORE_SESSION_FIELDS,
+  RESCORE_ENTRY_FIELDS,
   type SessionRescoreFilter,
   type SessionRescorePatch,
 } from "@/lib/admin/rescore-sessions";
@@ -57,24 +61,31 @@ export function RescorePanel() {
 function EventRescore({ teamId, actorUid, actorName }: { teamId: string; actorUid: string; actorName: string }) {
   // P21: entries are rescored against the account's *current* form for their formId (an edited scoring rule applies to old entries too).
   const forms = useForms();
-  const [seasonId, setSeasonId] = useState(DEFAULT_SEASON_ID);
+  const program = useProgram();
+  // A program with its own entry store has no official score until FIRST posts one: its rescore never replaces a recorded accuracy with a missing one.
+  const skipNoScore = useProgramData()?.practice != null;
+  const [seasonId, setSeasonId] = useState(forms.defaultSeasonId);
   const [eventCode, setEventCode] = useState("");
   const [plan, setPlan] = useState<EventRescorePatch[] | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [applying, setApplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [appliedCount, setAppliedCount] = useState<number | null>(null);
+  const [appliedNote, setAppliedNote] = useState<string | null>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
 
-  const season = getSeason(seasonId);
+  const season = forms.seasonFor(seasonId);
   const changed = plan?.filter(eventRescorePatchChanges) ?? [];
+  const skippedPreview = plan ? selectEventRescoreWrites(plan, skipNoScore).skippedNoOfficialScore : 0;
 
   const handlePreview = async () => {
     if (!eventCode.trim()) return;
     setPreviewing(true);
     setError(null);
     setAppliedCount(null);
+    setAppliedNote(null);
     try {
-      setPlan(await computeEventRescorePlan(teamId, eventCode.trim(), season.apiSeason, forms.currentResolver));
+      setPlan(await computeEventRescorePlan(teamId, eventCode.trim(), season.apiSeason, forms.currentResolver, program));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't compute a rescore plan.");
     } finally {
@@ -85,16 +96,26 @@ function EventRescore({ teamId, actorUid, actorName }: { teamId: string; actorUi
   const handleApply = async () => {
     if (!plan) return;
     setApplying(true);
+    setProgress(null);
+    setError(null);
     try {
-      await applyEventRescorePlan(plan);
-      await logAuditEvent(teamId, actorUid, actorName, "rescore-event", { eventCode: eventCode.trim(), season: season.apiSeason }, null, {
-        entryCount: plan.length,
-        changedCount: changed.length,
-      });
-      setAppliedCount(plan.length);
+      const { apply, skippedNoOfficialScore } = selectEventRescoreWrites(plan, skipNoScore);
+      await applyEventRescorePlan(apply, program, (done, total) => setProgress({ done, total }));
+      await logAuditEvent(
+        teamId,
+        actorUid,
+        actorName,
+        "rescore-event",
+        { eventCode: eventCode.trim(), season: season.apiSeason },
+        null,
+        { entryCount: apply.length, changedCount: changed.length, skippedNoOfficialScore, fields: [...EVENT_RESCORE_FIELDS] },
+        program
+      );
+      setAppliedCount(apply.length);
+      setAppliedNote(skippedNoOfficialScore > 0 ? `Skipped ${skippedNoOfficialScore} with no official score (left as they were). ` : "");
       setPlan(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't apply the rescore.");
+      setError(err instanceof RescoreApplyError ? err.message : err instanceof Error ? err.message : "Couldn't apply the rescore.");
     } finally {
       setApplying(false);
     }
@@ -110,7 +131,7 @@ function EventRescore({ teamId, actorUid, actorName }: { teamId: string; actorUi
               <SelectValue>{season.name}</SelectValue>
             </SelectTrigger>
             <SelectContent>
-              {SEASONS.map((s) => (
+              {forms.allSeasons.map((s) => (
                 <SelectItem key={s.id} value={s.id}>
                   {s.name}
                 </SelectItem>
@@ -129,12 +150,17 @@ function EventRescore({ teamId, actorUid, actorName }: { teamId: string; actorUi
       </Button>
 
       {error && <p className="text-sm text-red-400">{error}</p>}
-      {appliedCount !== null && <p className="text-sm text-emerald-400">Applied — rescored {appliedCount} entries.</p>}
+      {appliedCount !== null && (
+        <p className="text-sm text-emerald-400">
+          Applied — rescored {appliedCount} entries. {appliedNote}Only {EVENT_RESCORE_FIELDS.join(" and ")} were written; nothing a scout recorded changed.
+        </p>
+      )}
 
       {plan && (
         <div className="flex flex-col gap-3 border-t border-[var(--glass-border)] pt-4">
           <p className="text-sm">
             <strong>{changed.length}</strong> of {plan.length} entries would change.
+            {skippedPreview > 0 && `  ${skippedPreview} have no official score yet and will be skipped (left as they are).`}
           </p>
           {changed.length > 0 && (
             <div className="flex max-h-72 flex-col gap-1.5 overflow-y-auto">
@@ -153,7 +179,7 @@ function EventRescore({ teamId, actorUid, actorName }: { teamId: string; actorUi
             </div>
           )}
           <Button variant="danger" disabled={applying} onClick={handleApply} className="self-start">
-            {applying ? "Applying…" : `Apply to ${plan.length} entries`}
+            {applying ? (progress ? `Applying… (${progress.done}/${progress.total})` : "Applying…") : `Apply to ${plan.length - skippedPreview} entries`}
           </Button>
         </div>
       )}
@@ -164,6 +190,9 @@ function EventRescore({ teamId, actorUid, actorName }: { teamId: string; actorUi
 function SessionRescore({ teamId, actorUid, actorName }: { teamId: string; actorUid: string; actorName: string }) {
   const program = useProgram();
   const forms = useForms();
+  const data = useProgramData();
+  // Flags live on the session document in a program with its own session store: a rescore keeps an admin's dismissals there.
+  const ownStore = data?.practice != null;
   const { sessions } = useAllTeamPracticeSessions(teamId);
   const { entries } = useTeamScoutEntries(teamId);
   // P15: Rescore also covers matches that aren't published yet (admin-only screen).
@@ -173,7 +202,7 @@ function SessionRescore({ teamId, actorUid, actorName }: { teamId: string; actor
   const [eventCode, setEventCode] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [refreshSeasonId, setRefreshSeasonId] = useState(DEFAULT_SEASON_ID);
+  const [refreshSeasonId, setRefreshSeasonId] = useState(forms.defaultSeasonId);
   const [refreshEventCode, setRefreshEventCode] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [refreshResult, setRefreshResult] = useState<string | null>(null);
@@ -184,6 +213,8 @@ function SessionRescore({ teamId, actorUid, actorName }: { teamId: string; actor
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [appliedCount, setAppliedCount] = useState<number | null>(null);
+  const [appliedNote, setAppliedNote] = useState<string | null>(null);
+  const [summary, setSummary] = useState<ReturnType<typeof summarizeSessionRescore> | null>(null);
 
   const libraryMatchesById = new Map(libraryMatches.map((m) => [m.id, m]));
   const changed = plan?.filter(sessionRescorePatchChanges) ?? [];
@@ -193,12 +224,24 @@ function SessionRescore({ teamId, actorUid, actorName }: { teamId: string; actor
     setRefreshing(true);
     setRefreshResult(null);
     try {
-      const summary = await importLibraryEvent(refreshSeasonId, refreshEventCode.trim());
-      setRefreshResult(
-        `${summary.eventName}: refreshed ${summary.imported} matches, skipped ${summary.skipped}.` +
-          (summary.skippedManual.length > 0 ? ` Left ${summary.skippedManual.length} manual match${summary.skippedManual.length === 1 ? "" : "es"} untouched (${summary.skippedManual.join(", ")}).` : "")
-      );
-      await logAuditEvent(teamId, actorUid, actorName, "refresh-official-scores", { eventCode: refreshEventCode.trim() }, null, summary);
+      const code = refreshEventCode.trim();
+      let imported: unknown;
+      if (data?.library) {
+        // A program with its own library imports through its port (the keys stay on the server).
+        const outcome = await data.library.importSchedule({ teamId, uid: actorUid, name: actorName }, { eventCode: code, seasonId: refreshSeasonId });
+        if (!outcome.ok) throw new Error(outcome.message);
+        const r = outcome.summary;
+        imported = r;
+        setRefreshResult(`${r.eventName}: ${r.created} new, ${r.updated} refreshed${r.scored ? `, ${r.scored} with official scores` : ""}.` + (r.skippedManual.length > 0 ? ` Left ${r.skippedManual.length} hand-made match(es) untouched.` : ""));
+      } else {
+        const r = await importLibraryEvent(refreshSeasonId, code);
+        imported = r;
+        setRefreshResult(
+          `${r.eventName}: refreshed ${r.imported} matches, skipped ${r.skipped}.` +
+            (r.skippedManual.length > 0 ? ` Left ${r.skippedManual.length} manual match${r.skippedManual.length === 1 ? "" : "es"} untouched (${r.skippedManual.join(", ")}).` : "")
+        );
+      }
+      await logAuditEvent(teamId, actorUid, actorName, "refresh-official-scores", { eventCode: code }, null, imported, program);
     } catch (err) {
       setRefreshResult(err instanceof Error ? err.message : "Couldn't refresh scores.");
     } finally {
@@ -210,6 +253,7 @@ function SessionRescore({ teamId, actorUid, actorName }: { teamId: string; actor
     setPreviewing(true);
     setError(null);
     setAppliedCount(null);
+    setAppliedNote(null);
     try {
       const filter: SessionRescoreFilter = {
         seasonId: seasonId === "all" ? null : seasonId,
@@ -226,14 +270,16 @@ function SessionRescore({ teamId, actorUid, actorName }: { teamId: string; actor
 
       const liveMatchesByKey = new Map<string, EventMatch>();
       for (const { eventCode: code, matchType } of uniqueEventTypes.values()) {
-        const season = seasonId === "all" ? getSeason() : getSeason(seasonId);
-        const res = await getMatchesForEvent(code, matchType, season.apiSeason);
+        const season = forms.seasonFor(seasonId === "all" ? undefined : seasonId);
+        const res = await getMatchesForEvent(code, matchType, season.apiSeason, program);
         if (res.ok) {
           for (const m of res.data) liveMatchesByKey.set(`${code}|${matchType}|${m.matchNumber}`, m);
         }
       }
 
-      setPlan(buildSessionRescorePlan(sessions, entries, libraryMatchesById, liveMatchesByKey, filter, forms.currentResolver));
+      const built = buildSessionRescorePlan(sessions, entries, libraryMatchesById, liveMatchesByKey, filter, forms.currentResolver, { preserveDismissed: ownStore });
+      setSummary(summarizeSessionRescore(sessions, built, libraryMatchesById, filter));
+      setPlan(built);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't compute a rescore plan.");
     } finally {
@@ -246,12 +292,27 @@ function SessionRescore({ teamId, actorUid, actorName }: { teamId: string; actor
     setApplying(true);
     setProgress(null);
     try {
-      await applySessionRescorePlan(plan, (done, total) => setProgress({ done, total }), program);
-      await logAuditEvent(teamId, actorUid, actorName, "rescore-sessions", { seasonId, eventCode, dateFrom, dateTo }, null, {
-        groupCount: plan.length,
-        changedCount: changed.length,
-      });
+      const { written } = await applySessionRescorePlan(plan, (done, total) => setProgress({ done, total }), program);
+      await logAuditEvent(
+        teamId,
+        actorUid,
+        actorName,
+        "rescore-sessions",
+        { seasonId, eventCode, dateFrom, dateTo },
+        null,
+        {
+          groupCount: plan.length,
+          changedCount: changed.length,
+          writes: written,
+          skippedNoOfficialScore: summary?.skippedNoOfficialScore ?? 0,
+          skippedIncomplete: summary?.skippedIncomplete ?? 0,
+          sessionFields: [...RESCORE_SESSION_FIELDS],
+          entryFields: [...RESCORE_ENTRY_FIELDS],
+        },
+        program
+      );
       setAppliedCount(plan.length);
+      setAppliedNote(summary && summary.skippedNoOfficialScore + summary.skippedIncomplete > 0 ? `Skipped ${summary.skippedNoOfficialScore} with no official score and ${summary.skippedIncomplete} that are incomplete (left as they were). ` : "");
       setPlan(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't apply the rescore.");
@@ -271,10 +332,10 @@ function SessionRescore({ teamId, actorUid, actorName }: { teamId: string; actor
         <div className="flex flex-wrap items-end gap-2">
           <Select value={refreshSeasonId} onValueChange={setRefreshSeasonId}>
             <SelectTrigger className="w-36">
-              <SelectValue>{getSeason(refreshSeasonId).name}</SelectValue>
+              <SelectValue>{forms.seasonFor(refreshSeasonId).name}</SelectValue>
             </SelectTrigger>
             <SelectContent>
-              {SEASONS.map((s) => (
+              {forms.allSeasons.map((s) => (
                 <SelectItem key={s.id} value={s.id}>
                   {s.name}
                 </SelectItem>
@@ -301,11 +362,11 @@ function SessionRescore({ teamId, actorUid, actorName }: { teamId: string; actor
             <Label>Season</Label>
             <Select value={seasonId} onValueChange={setSeasonId}>
               <SelectTrigger>
-                <SelectValue>{seasonId === "all" ? "All seasons" : getSeason(seasonId).name}</SelectValue>
+                <SelectValue>{seasonId === "all" ? "All seasons" : forms.seasonFor(seasonId).name}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All seasons</SelectItem>
-                {SEASONS.map((s) => (
+                {forms.allSeasons.map((s) => (
                   <SelectItem key={s.id} value={s.id}>
                     {s.name}
                   </SelectItem>
@@ -332,12 +393,19 @@ function SessionRescore({ teamId, actorUid, actorName }: { teamId: string; actor
         </Button>
 
         {error && <p className="text-sm text-red-400">{error}</p>}
-        {appliedCount !== null && <p className="text-sm text-emerald-400">Applied — rescored {appliedCount} session group(s).</p>}
+        {appliedCount !== null && (
+          <p className="text-sm text-emerald-400">
+            Applied — rescored {appliedCount} session group(s). {appliedNote}Written: {RESCORE_SESSION_FIELDS.join(", ")} on sessions, {RESCORE_ENTRY_FIELDS.join(", ")} on entries; nothing a scout recorded changed.
+          </p>
+        )}
 
         {plan && (
           <div className="flex flex-col gap-3 border-t border-[var(--glass-border)] pt-4">
             <p className="text-sm">
               <strong>{changed.length}</strong> of {plan.length} session groups would change.
+              {summary && summary.skippedNoOfficialScore + summary.skippedIncomplete > 0 && (
+                ` ${summary.skippedNoOfficialScore} session(s) with no official score and ${summary.skippedIncomplete} incomplete will be skipped (left as they are).`
+              )}
             </p>
             {changed.length > 0 && (
               <div className="flex max-h-72 flex-col gap-1.5 overflow-y-auto">

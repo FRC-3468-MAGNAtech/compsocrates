@@ -7,6 +7,7 @@ import { evaluateAutoFlagRuleIds, type FlagContext } from "@/lib/analytics/flags
 import { builtinFormResolver, type FormResolver } from "@/lib/forms/resolver";
 import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
 import { recomputeQuietly, shouldRecomputeAfterSave } from "@/lib/analytics/recompute-policy";
+import { runRescoreWrites } from "@/lib/admin/rescore-apply";
 
 function matchKey(type: MatchType, number: number) {
   return `${type}-${number}`;
@@ -101,8 +102,26 @@ export async function computeEventRescorePlan(teamId: string, eventCode: string,
   return patches;
 }
 
-export async function applyEventRescorePlan(patches: EventRescorePatch[], program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
-  await Promise.all(patches.map((p) => updateEntry(p.entryId, { accuracy: p.after, autoFlags: p.autoFlags }, {}, program)));
+/**
+ * What an event rescore will write. With `skipNoOfficialScore` (a program whose entries have no official score until FIRST posts one) an entry whose new accuracy
+ * has no value is left exactly as it is and counted: a missing official score never replaces a recorded accuracy. Without it (the default program) every entry
+ * is written, as it always was.
+ */
+export function selectEventRescoreWrites(patches: readonly EventRescorePatch[], skipNoOfficialScore: boolean): { apply: EventRescorePatch[]; skippedNoOfficialScore: number } {
+  if (!skipNoOfficialScore) return { apply: [...patches], skippedNoOfficialScore: 0 };
+  const apply = patches.filter((p) => p.after.value !== null);
+  return { apply, skippedNoOfficialScore: patches.length - apply.length };
+}
+
+/** The fields an event rescore writes on a scout entry: its derived accuracy and automatic flags. Nothing the scout recorded is touched. */
+export const EVENT_RESCORE_FIELDS = ["accuracy", "autoFlags"] as const;
+
+/** Writes in chunks of 400; a failure stops the run with a `RescoreApplyError` saying how many went through (re-running is safe). */
+export async function applyEventRescorePlan(patches: EventRescorePatch[], program: ProgramId = DEFAULT_PROGRAM, onProgress?: (done: number, total: number) => void): Promise<{ written: number }> {
+  return runRescoreWrites(
+    patches.map((p) => () => updateEntry(p.entryId, { accuracy: p.after, autoFlags: p.autoFlags }, {}, program)),
+    onProgress
+  );
 }
 
 /**
