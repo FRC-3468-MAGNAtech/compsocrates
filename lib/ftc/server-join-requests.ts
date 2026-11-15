@@ -1,6 +1,7 @@
 import "server-only";
 import { FieldValue, type Firestore } from "firebase-admin/firestore";
 import { programPath } from "@/lib/firebase/paths";
+import { describeAdminProblem } from "@/lib/server/admin-diagnosis";
 import { consumeRateLimit } from "@/lib/server/rate-limit";
 import type { Caller, RouteResult } from "@/lib/server/join-requests";
 
@@ -54,7 +55,10 @@ export async function requestToJoinFtcTeam(db: Firestore, caller: Caller, input:
   } catch (err) {
     if (err instanceof StepTimeout) {
       console.error("ftc join request: step timed out:", err.step);
-      return fail(504, "timeout", `The server could not reach the database in time (${err.step}). Try again; if it keeps happening, the Firebase Admin settings of this deployment need a look.`);
+      // Say what is wrong with the Admin credentials (secret-free), so nobody has to dig through logs to find out.
+      const diagnosis = await describeAdminProblem();
+      console.error("ftc join request: admin diagnosis:", diagnosis);
+      return fail(504, "timeout", `The server could not reach the database in time (${err.step}). ${diagnosis}`);
     }
     throw err;
   }
