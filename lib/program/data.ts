@@ -26,6 +26,7 @@ import type { PickListDoc } from "@/lib/pick-list/store";
 import type { MemberAccess } from "@/lib/member-access";
 import type { TeamMember } from "@/lib/team-members";
 import type { FormDoc } from "@/lib/forms/resolve";
+import type { FormSubmissionSettings } from "@/lib/forms/submission-settings";
 import type { Form, FormValues, StickyNote } from "@/lib/forms/types";
 import { useProgram } from "@/lib/program/context";
 import type { SaveEntryInput, ScoutEntry } from "@/lib/scout-entries";
@@ -58,6 +59,8 @@ export type ProgramData = {
     setActiveEvents(teamId: string, state: ActiveEventsState): Promise<void>;
     /** Writes the team's archived event codes (admins and the owner). Writes that one field and nothing else. */
     setArchivedEvents(teamId: string, codes: string[]): Promise<void>;
+    /** Writes the team's form-submission switches (ADDITIVE `formSubmissionSettings`; admins and the owner). Writes that one field and nothing else. */
+    setFormSubmissionSettings(teamId: string, settings: FormSubmissionSettings): Promise<void>;
   };
   scoutEntries: {
     /** Every entry of the team, all events and sources. */

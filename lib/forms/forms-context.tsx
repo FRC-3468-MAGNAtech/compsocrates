@@ -7,6 +7,8 @@ import { useTeamDoc } from "@/lib/team";
 import { DEFAULT_SEASON_ID, getEnabledSeasons, getSeason } from "@/lib/seasons";
 import { getDefaultSeason, getSelectableSeasons } from "@/lib/events/config";
 import { useProgramData, type ProgramData, type ProgramSeason } from "@/lib/program/data";
+import { useProgram } from "@/lib/program/context";
+import { rememberSubmissionSettings } from "@/lib/forms/submission-guard";
 import { DEFAULT_FORM_ID, getBuiltinForm } from "@/lib/forms/builtin";
 import { unionForms } from "@/lib/analytics/game-schema";
 import type { Form } from "@/lib/forms/types";
@@ -106,6 +108,12 @@ export function FormsProvider({ children }: { children: ReactNode }) {
   const { team } = useTeamDoc(teamId);
   // A namespaced program's forms, versions, built-ins and seasons come through its data port; the default program's are read as ever.
   const data = useProgramData();
+  const program = useProgram();
+  // Session E: the team's submission switches, handed to the shared write path (lib/forms/submission-guard.ts) on every team doc snapshot.
+  const submissionSettings = team?.formSubmissionSettings;
+  useEffect(() => {
+    if (teamId && team) rememberSubmissionSettings(program, teamId, submissionSettings);
+  }, [program, teamId, team, submissionSettings]);
   const [docs, setDocs] = useState<ReadonlyMap<string, FormDoc>>(new Map());
   const [loaded, setLoaded] = useState(() => !isFirebaseConfigured());
   const [versions, setVersions] = useState<ReadonlyMap<string, Form>>(new Map());

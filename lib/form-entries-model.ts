@@ -5,6 +5,7 @@ import type { ScoutEntry } from "@/lib/scout-entries";
 import { derivedComments } from "@/lib/scout-entries";
 import { MATCH_TYPE_PREFIX } from "@/lib/analytics/game-schema";
 import type { CsFormCollection } from "@/data/cs/form-field-keys";
+import type { SubmissionGateInput } from "@/lib/forms/submission-guard";
 
 // P27: `formEntries/{entryId}`: one entry of one of the team's non-match-scout forms (Lead Scout, Pit Scout, Team Strategy, Match Strategy, Drive Reflection,
 // Helper, custom). Match Scout entries stay in `scoutEntries`. Pure (no Firestore client): the hooks are in lib/form-entries.ts.
@@ -94,6 +95,11 @@ export type NewFormEntry = {
   stickyNotes?: StickyNote[];
   linkedEntryId?: string | null;
   planDifferences?: number;
+  /**
+   * Session E: the season (game) the entry is for. The team's submission switches apply to it (checked by `saveFormEntry`), and a new CS-backed entry is stored
+   * with that season's `game` instead of always the current game. Never written by `formEntryDoc` (the custom and second-program collections have no `game`).
+   */
+  gate?: SubmissionGateInput;
 };
 
 /**

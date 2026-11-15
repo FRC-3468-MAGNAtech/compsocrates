@@ -10,6 +10,7 @@ import { programData, useProgramData } from "@/lib/program/data";
 import type { ActiveEventsState } from "@/lib/active-events";
 import type { CsSubmissionControls, CsTeamDoc, SubmissionLockout } from "@/data/cs/types";
 import { readArchivedEvents } from "@/lib/events/archive";
+import type { FormSubmissionSettings } from "@/lib/forms/submission-settings";
 import { csTeamToTeamDoc, selectedEventNamesPatch, selectedEventsPatch } from "@/data/cs/teams";
 
 export type TeamDoc = {
@@ -51,6 +52,8 @@ export type TeamDoc = {
   selectedEventNames?: Record<string, string>;
   /** ADDITIVE (Session D): event codes an admin archived (both programs). They stay selected; only the event pickers skip them. Absent: none. */
   archivedEvents?: string[];
+  /** ADDITIVE (Session E, both programs): the team's form-submission switches (master and per season). Absent: everything is open. See lib/forms/submission-settings.ts. */
+  formSubmissionSettings?: FormSubmissionSettings;
   /** D1: CS `submissionControls` as stored. Use `submissionLockout` to gate a new submission. */
   submissionControls?: CsSubmissionControls;
   /** D1: the lockout CS's `assertSubmissionsOpen` enforces on every NEW submission (edit mode bypasses it). */
@@ -149,6 +152,16 @@ export async function setArchivedEvents(teamId: string, codes: string[], program
   const data = programData(program);
   if (data) return data.team.setArchivedEvents(teamId, readArchivedEvents(codes));
   await setDoc(doc(db, "teams", teamId), { archivedEvents: readArchivedEvents(codes) }, { merge: true });
+}
+
+/**
+ * Session E: writes the team's form-submission switches, ADDITIVE field `formSubmissionSettings`, with a merge write (nothing else on the team doc is
+ * touched). Team admins and owners only, by the rules and at the call site. A namespaced program writes it through its data port (its own path).
+ */
+export async function setFormSubmissionSettings(teamId: string, settings: FormSubmissionSettings, program: ProgramId = DEFAULT_PROGRAM) {
+  const data = programData(program);
+  if (data) return data.team.setFormSubmissionSettings(teamId, settings);
+  await setDoc(doc(db, "teams", teamId), { formSubmissionSettings: settings }, { merge: true });
 }
 
 /** Single-event convenience over setActiveEvents() — replaces the whole selection with this one event (or clears it). */

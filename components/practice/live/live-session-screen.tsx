@@ -20,6 +20,7 @@ import type { StickyNote } from "@/lib/forms/types";
 import { joinNotes } from "@/lib/forms/values";
 import { notesForSave } from "@/lib/sticky-notes";
 import { LoadError } from "@/components/practice/load-error";
+import { SubmissionLockoutBanner, useSubmissionLockout } from "@/components/forms/submission-lockout";
 import { describeFirestoreError, type FirestoreFailure } from "@/lib/firestore-errors";
 
 /**
@@ -44,6 +45,8 @@ export function LiveSessionScreen({
 }) {
   const { user } = useAuth();
   const form = useLockedForm(session.seasonId);
+  // Session E: the team's submission switches for this session's season (the scout's answers stay on screen; saving the entry is what is closed)
+  const lockout = useSubmissionLockout(session.teamId, session.seasonId);
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
   const [validationError, setValidationError] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -106,6 +109,7 @@ export function LiveSessionScreen({
         mode: null,
         sessionId: session.id,
         libraryMatchId: session.libraryMatchId,
+        gate: { seasonId: session.seasonId },
       });
       const entries = await getEntriesForSession(session.teamId, session.id);
       await updatePracticeSession(session.id, {
@@ -168,6 +172,7 @@ export function LiveSessionScreen({
         comments={{ notes, onChange: setNotes, label: `Robot: #${teamNumber}` }}
         notice={
           <>
+            <SubmissionLockoutBanner lockout={lockout} editAllowed={false} />
             {validationError && <p className="mt-2 text-sm font-medium text-red-300">Fill in the form before submitting.</p>}
             {error && <LoadError failure={error} />}
           </>
@@ -177,7 +182,7 @@ export function LiveSessionScreen({
             <Button variant="ghost" className="gap-1.5 text-red-300" onClick={() => setCancelConfirmOpen(true)}>
               <X className="h-4 w-4" /> Cancel
             </Button>
-            <Button size="lg" className="gap-2" onClick={handleSubmit} disabled={submitting}>
+            <Button size="lg" className="gap-2" onClick={handleSubmit} disabled={submitting || lockout.locked}>
               <Send className="h-4 w-4" /> {submitting ? "Submitting…" : "Submit Scouting"}
             </Button>
           </>

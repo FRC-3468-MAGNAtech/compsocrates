@@ -35,6 +35,7 @@ import { joinNotes } from "@/lib/forms/values";
 import { notesForSave } from "@/lib/sticky-notes";
 import type { LibraryMatch } from "@/lib/match-library";
 import { LoadError } from "@/components/practice/load-error";
+import { SubmissionLockoutBanner, useSubmissionLockout } from "@/components/forms/submission-lockout";
 import { describeFirestoreError, type FirestoreFailure } from "@/lib/firestore-errors";
 
 type PendingRobot = { teamNumber: number; values: ScoutFormValues; score: ScoreResult; stickyNotes: StickyNote[] };
@@ -75,6 +76,8 @@ export function SessionScreen({
   const season = getSeason(session.seasonId);
   // The season's form, fixed for this session so every robot is scouted with the same version.
   const form = useLockedForm(session.seasonId);
+  // Session E: the team's submission switches for this session's season (the scout's answers stay on screen; saving the entries is what is closed)
+  const lockout = useSubmissionLockout(session.teamId, session.seasonId);
   const teamNumber = session.robots[robotIndex];
   const isLastRobot = robotIndex === session.robots.length - 1;
 
@@ -100,6 +103,7 @@ export function SessionScreen({
       mode: session.mode,
       sessionId: session.id,
       libraryMatchId: session.libraryMatchId!,
+      gate: { seasonId: session.seasonId },
     });
   };
 
@@ -283,6 +287,7 @@ export function SessionScreen({
         comments={{ notes, onChange: setNotes, label: `Robot ${robotIndex + 1}: #${teamNumber}` }}
         notice={
           <>
+            <SubmissionLockoutBanner lockout={lockout} editAllowed={false} />
             {validationError && <p className="mt-2 text-sm font-medium text-red-300">Fill in the form before continuing.</p>}
             {error && <LoadError failure={error} />}
           </>
@@ -292,7 +297,7 @@ export function SessionScreen({
             <Button variant="ghost" className="gap-1.5 text-red-300" onClick={() => setCancelConfirmOpen(true)}>
               <X className="h-4 w-4" /> Cancel
             </Button>
-            <Button size="lg" className="gap-2" onClick={handleNextOrFinish} disabled={saving}>
+            <Button size="lg" className="gap-2" onClick={handleNextOrFinish} disabled={saving || lockout.locked}>
               <Send className="h-4 w-4" />
               {saving ? "Saving…" : isLastRobot ? "Finish Session" : `Next Robot (${robotIndex + 1}/${session.robots.length})`}
             </Button>

@@ -83,6 +83,8 @@ export function ImportCsvDialog({
             matchNumber: row.matchNumber,
             teamNumber: row.teamNumber,
             ...entryPayloadFor(form, values, calculateScore(form, values)),
+            // an admin's import is not a scout submitting: the team's submission switches do not apply
+            gate: { bypass: true },
           });
         })
       );

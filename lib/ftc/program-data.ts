@@ -21,6 +21,7 @@ import {
   saveScoutEntry,
   setActiveEvents,
   setArchivedEvents,
+  setFormSubmissionSettings,
   setEventAttendance,
   updateFormEntry,
   updateMemberAccess,
@@ -38,7 +39,7 @@ export const FTC_SEASONS: readonly ProgramSeason[] = FTC_GAME_ID_LIST.map((id) =
 
 export const ftcProgramData: ProgramData = {
   profile: { subscribe: subscribeUserProfile, update: updateUserProfile },
-  team: { subscribe: subscribeTeamDoc, setActiveEvents, setArchivedEvents },
+  team: { subscribe: subscribeTeamDoc, setActiveEvents, setArchivedEvents, setFormSubmissionSettings },
   scoutEntries: { subscribeTeam: subscribeTeamScoutEntries, save: saveScoutEntry, update: updateScoutEntry, delete: deleteScoutEntry },
   formEntries: {
     subscribe: (teamId, query, onData, onError) => subscribeFormEntries(teamId, query, onData, onError),

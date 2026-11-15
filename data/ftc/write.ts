@@ -18,6 +18,7 @@ import type { ActiveEventsState } from "@/lib/active-events";
 import { buildAuditEntry, newAuditLogRef } from "@/lib/audit-log";
 import { diffEntryValues, formEntryDoc, type FormEntry, type NewFormEntry } from "@/lib/form-entries-model";
 import type { FormValues, StickyNote } from "@/lib/forms/types";
+import type { FormSubmissionSettings } from "@/lib/forms/submission-settings";
 import { stripUndefined } from "@/data/ftc/util";
 import { ftcProfilePatch, type FtcProfilePatch } from "@/data/ftc/users";
 import { ftcAttendanceDoc, ftcAttendanceDocId } from "@/data/ftc/attendance";
@@ -99,6 +100,16 @@ export async function setArchivedEvents(teamId: string, codes: string[]): Promis
     await updateDoc(programDoc(db, PROGRAM, TEAMS, teamId), { archivedEvents: codes });
   } catch (err) {
     reportFirestoreError("Couldn't save the archived events", err, `${programPath(PROGRAM, TEAMS)}/${teamId}`);
+    throw err;
+  }
+}
+
+/** Sets the team's form-submission switches (ADDITIVE field `formSubmissionSettings`; admins and the owner, by the rules). Writes that field and nothing else. */
+export async function setFormSubmissionSettings(teamId: string, settings: FormSubmissionSettings): Promise<void> {
+  try {
+    await updateDoc(programDoc(db, PROGRAM, TEAMS, teamId), { formSubmissionSettings: stripUndefined({ ...settings }) });
+  } catch (err) {
+    reportFirestoreError("Couldn't save the submission settings", err, `${programPath(PROGRAM, TEAMS)}/${teamId}`);
     throw err;
   }
 }

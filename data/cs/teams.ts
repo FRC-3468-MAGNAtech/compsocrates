@@ -15,6 +15,7 @@
  */
 import { dedupeEventKeys, EVENT_CONFIG, getSeasonFromEventKey, normalizeEventKey } from "@/config/event";
 import { readArchivedEvents } from "@/lib/events/archive";
+import { readFormSubmissionSettings } from "@/lib/forms/submission-settings";
 import { collectStoredEventNames } from "@/lib/events/stored-names";
 import type { CsRecord, CsSubmissionControls, CsTeamDoc, SubmissionLockout } from "@/data/cs/types";
 import { isRecord, str } from "@/data/cs/util";
@@ -98,6 +99,7 @@ export function csTeamToTeamDoc(id: string, doc: CsTeamDoc): TeamDoc {
     selectedEvents,
     ...(Object.keys(selectedEventNames).length > 0 ? { selectedEventNames } : {}),
     ...(archivedEvents.length > 0 ? { archivedEvents } : {}),
+    ...(isRecord(record.formSubmissionSettings) ? { formSubmissionSettings: readFormSubmissionSettings(record.formSubmissionSettings) } : {}),
     ...(controls ? { submissionControls: controls } : {}),
     submissionLockout: readSubmissionLockout(controls),
     ...(isRecord(doc.eventAttendees) ? { eventAttendees: doc.eventAttendees as Record<string, string[]> } : {}),

@@ -275,7 +275,7 @@ export function FormAnalyticsPage({ slug }: { slug: FormAnalyticsSlug }) {
       initialView={searchParams.get("view") === "summary" ? "summary" : "table"}
       onUpdate={(id, patch) => void adminUpdateFormEntry(id, patch, program)}
       onDelete={(id) => void deleteFormEntry(id, program)}
-      onImportSave={(input) => (teamId && user ? saveFormEntry(teamId, user.uid, input, program) : Promise.reject(new Error("Not signed in.")))}
+      onImportSave={(input) => (teamId && user ? saveFormEntry(teamId, user.uid, { ...input, gate: { bypass: true } }, program) : Promise.reject(new Error("Not signed in.")))}
     />
   );
 }

@@ -21,10 +21,11 @@ import { RecoveryPanel } from "@/components/admin/recovery-panel";
 import { SetupCheckPanel } from "@/components/admin/setup-check-panel";
 import { FormsPanel } from "@/components/forms/forms-panel";
 import { PageAccessPanel } from "@/components/page-access/page-access-panel";
+import { SubmissionControlsPanel } from "@/components/admin/submission-controls-panel";
 import { ReviewPanelHost } from "@/components/templates/review-panel";
 import { usePendingApplicationCount } from "@/lib/applications-client";
 
-type AdminTab = "match-library" | "forms" | "page-access" | "sessions" | "match-scout-ids" | "practice-session-ids" | "rescore" | "audit-log" | "backups" | "applications" | "templates" | "recovery" | "setup-check";
+type AdminTab = "match-library" | "forms" | "page-access" | "submissions" | "sessions" | "match-scout-ids" | "practice-session-ids" | "rescore" | "audit-log" | "backups" | "applications" | "templates" | "recovery" | "setup-check";
 
 const TAB_LABELS: Record<AdminTab, string> = {
   "match-library": "Match Library",
@@ -32,6 +33,8 @@ const TAB_LABELS: Record<AdminTab, string> = {
   forms: "Forms",
   // P26: who can open which page (admins only: this whole panel is admin-only)
   "page-access": "Page Access",
+  // Session E: close new submissions for every form, or for one season's forms (team admins and owners)
+  submissions: "Form Submissions",
   sessions: "Sessions",
   // CS's two admin ID utilities (/admin/match-scout-ids, /admin/practice-session-ids), now tabs here
   "match-scout-ids": "Match Scout IDs",
@@ -142,6 +145,7 @@ export default function AdminPanelPage() {
       {tab === "match-library" && <MatchLibraryPanel onOpenRescore={() => setTab("rescore")} />}
       {tab === "forms" && can("manageForms") && <FormsPanel onOpenRescore={() => setTab("rescore")} />}
       {tab === "page-access" && <PageAccessPanel />}
+      {tab === "submissions" && <SubmissionControlsPanel />}
       {tab === "sessions" && <SessionsPanel />}
       {tab === "match-scout-ids" && <MatchScoutIdsPanel />}
       {tab === "practice-session-ids" && <PracticeSessionIdsPanel />}

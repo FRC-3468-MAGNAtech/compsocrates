@@ -24,6 +24,7 @@ import { str, stripUndefined } from "@/data/cs/util";
 import { auth, db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
 import { programData, useProgramData } from "@/lib/program/data";
+import { assertSubmissionOpen, type SubmissionGateInput } from "@/lib/forms/submission-guard";
 import type { MatchType } from "@/lib/events/types";
 import type { Form, FormValues, StickyNote } from "@/lib/forms/types";
 import { storableScore, type ScoreResult } from "@/lib/forms/scoring";
@@ -169,7 +170,10 @@ export const isScored = (entry: Pick<ScoutEntry, "scored">): boolean => entry.sc
 
 export type SaveEntryInput = Pick<ScoutEntry, "scoutName" | "eventCode" | "matchType" | "matchNumber" | "teamNumber"> &
   EntryPayload &
-  Partial<Pick<ScoutEntry, "source" | "mode" | "sessionId" | "libraryMatchId">>;
+  Partial<Pick<ScoutEntry, "source" | "mode" | "sessionId" | "libraryMatchId">> & {
+    /** Session E: which season this entry is for, so the team's submission switches apply to it. Checked by `saveEntry`, never written to the document. */
+    gate?: SubmissionGateInput;
+  };
 
 /**
  * D1: entries are stored in CS's `scouting` collection (and their manual flags in `scoutingFlagStates`), through the pure
@@ -364,6 +368,8 @@ export function entryDocForSave(teamId: string, uid: string, input: SaveEntryInp
 
 /** `program` picks where the entry is written: the default program's `scouting` collection (below), or a namespaced program's own through its data port. */
 export async function saveEntry(teamId: string, uid: string, input: SaveEntryInput, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
+  // Session E: the team's submission switches, enforced here for every new entry (the one place; edits go through updateEntry and are never gated).
+  assertSubmissionOpen(program, teamId, input.gate);
   const data = programData(program);
   if (data) return data.scoutEntries.save(teamId, uid, input);
   // Throws for a form CS cannot store: nothing is written.

@@ -3,7 +3,8 @@
 import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where, writeBatch, type QueryConstraint } from "firebase/firestore";
 import { buildAuditEntry, newAuditLogRef } from "@/lib/audit-log";
 import { useEffect, useMemo, useState } from "react";
-import { CURRENT_GAME_ID } from "@/config/games";
+import { CURRENT_GAME_ID, GAME_ID_LIST, seasonIdOfGame } from "@/config/games";
+import { assertSubmissionOpen } from "@/lib/forms/submission-guard";
 import { auth, db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { reportFirestoreError } from "@/lib/firestore-errors";
 import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
@@ -107,8 +108,15 @@ function withoutUndefined<T extends Record<string, unknown>>(data: T): T {
   return JSON.parse(JSON.stringify(data)) as T;
 }
 
+/** The CS `game` of a season id of the default program (`charged_up` -> `CHARGED_UP`), or undefined for no season or one that is not a game of it. */
+export function csGameOfSeason(seasonId: string | null | undefined): string | undefined {
+  return GAME_ID_LIST.find((id) => seasonIdOfGame(id) === seasonId);
+}
+
 /** Saves an entry as yourself. Resolves with its id (so a photo still uploading can be attached to it afterwards). */
 export async function saveFormEntry(teamId: string, uid: string, input: NewFormEntry, program: ProgramId = DEFAULT_PROGRAM): Promise<string> {
+  // Session E: the team's submission switches, enforced here for every new entry (the one place; edits are never gated).
+  assertSubmissionOpen(program, teamId, input.gate);
   // A namespaced program stores every form's entries in its own `formEntries` collection, written through its data port.
   const data = programData(program);
   if (data) return data.formEntries.save(teamId, uid, input);
@@ -140,7 +148,11 @@ export async function saveFormEntry(teamId: string, uid: string, input: NewFormE
     createdAtMs: now,
     updatedAtMs: now,
   };
-  const ref = await addDoc(collection(db, spec.collection), withoutUndefined(formEntryToCsPatch(entry)));
+  const csDoc = withoutUndefined(formEntryToCsPatch(entry));
+  // Session E: a new entry carries the season it was scouted for (the adapter's own default is the current game).
+  const game = csGameOfSeason(input.gate?.seasonId);
+  if (game) csDoc.game = game;
+  const ref = await addDoc(collection(db, spec.collection), csDoc);
   known.set(ref.id, { collection: spec.collection, formType: input.formType });
   return ref.id;
 }
