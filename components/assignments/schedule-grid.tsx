@@ -5,18 +5,19 @@ import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { MATCH_TYPE_PREFIX } from "@/lib/analytics/game-schema";
-import { ALLIANCE_SIZE, allianceSlots, slotIndex, slotLabel } from "@/config/alliance";
+import { allianceSlots, slotIndex, slotLabel } from "@/config/alliance";
+import { useProgramConfig } from "@/lib/program/context";
 import type { ScheduleResult, SlotId } from "@/lib/scheduler/types";
 import type { TeamMember } from "@/lib/team-members";
 
 /**
  * The grid's columns: Red 1..n then Blue 1..n, where n is the widest alliance in the schedule itself
  * (a stored 2-slot schedule keeps its 4 columns even when the event is configured for 3), or the
- * configured alliance size while there are no slots yet.
+ * active program's alliance size (3 or 2) while there are no slots yet.
  */
-function slotColumns(slots: ScheduleResult["slots"]): SlotId[] {
+export function slotColumns(slots: ScheduleResult["slots"], allianceSize: number): SlotId[] {
   const widest = slots.reduce((max, s) => Math.max(max, slotIndex(s.slot) + 1), 0);
-  return allianceSlots(widest || ALLIANCE_SIZE) as SlotId[];
+  return allianceSlots(widest || allianceSize) as SlotId[];
 }
 
 function nameFor(members: TeamMember[], uid: string | null): string {
@@ -25,7 +26,7 @@ function nameFor(members: TeamMember[], uid: string | null): string {
 }
 
 /**
- * Matches as rows, Red 1..n / Blue 1..n as columns (n = 3), scout names in cells,
+ * Matches as rows, Red 1..n / Blue 1..n as columns (n = the alliance size), scout names in cells,
  * per-scout totals at the bottom. Editable (click a cell to swap) when
  * `onSwap` is given — omitted for the read-only view non-admins see and
  * for an unpublished draft (only takes `slots`/`counts`/`fair`/`warning`,
@@ -46,7 +47,7 @@ export function ScheduleGrid({
   const matchKeys = [...new Map(version.slots.map((s) => [`${s.matchType}-${s.matchNumber}`, { matchType: s.matchType, matchNumber: s.matchNumber }])).values()];
   matchKeys.sort((a, b) => a.matchNumber - b.matchNumber || a.matchType.localeCompare(b.matchType));
 
-  const columns = slotColumns(version.slots);
+  const columns = slotColumns(version.slots, useProgramConfig().event.allianceSize);
 
   const cell = (matchType: string, matchNumber: number, slot: SlotId) =>
     version.slots.find((s) => s.matchType === matchType && s.matchNumber === matchNumber && s.slot === slot) ?? null;

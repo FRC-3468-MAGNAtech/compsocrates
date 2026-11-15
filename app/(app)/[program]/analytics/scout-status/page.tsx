@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { ChevronDown, Lock } from "lucide-react";
 import { CoverageList } from "@/components/scout-status/coverage-list";
+import { ALL_EVENTS, EventTargetSelect } from "@/components/scout-status/event-target-select";
 import { FormStatusPanel } from "@/components/scout-status/form-status-panel";
 import { IndividualTargets, MaxTargets, RangeEntry, type SetupChange } from "@/components/scout-status/setup-panels";
 import { StatusTable } from "@/components/scout-status/status-table";
@@ -19,8 +20,6 @@ import { assignedTeamCounts } from "@/lib/team-assignments/model";
 import { useTeamAssignmentDocs } from "@/lib/team-assignments/store";
 import { useScoutStatus } from "@/lib/scout-status/use-scout-status";
 import { cn } from "@/lib/utils";
-
-const ALL_EVENTS = "__all__";
 
 /** A collapsible setup section (the setup data behind the table and coverage). Open for editors, collapsed for everyone else. */
 function Section({ title, hint, defaultOpen, children }: { title: string; hint?: string; defaultOpen: boolean; children: React.ReactNode }) {
@@ -144,17 +143,7 @@ export default function ScoutStatusPage() {
                 </span>
               )}
               {multiEvent && (
-                <label className="ml-auto flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
-                  Editing targets for
-                  <select value={selected ? selected.eventCode : ALL_EVENTS} onChange={(e) => setEditing(e.target.value)} className="h-9 rounded-xl border border-[var(--glass-border)] bg-white/5 px-2.5 text-sm text-[var(--foreground)] [&>option]:bg-[#1b1b26] [&>option]:text-white">
-                    <option value={ALL_EVENTS}>All selected events (totals, read-only)</option>
-                    {status.views.map((v) => (
-                      <option key={v.eventCode} value={v.eventCode}>
-                        {v.eventName}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <EventTargetSelect value={selected ? selected.eventCode : ALL_EVENTS} events={status.views} onChange={setEditing} />
               )}
             </div>
             {summed && <p className="rounded-xl bg-white/5 px-3 py-2 text-xs text-[var(--muted-foreground)]">The table and coverage below add up all {status.views.length} events. Choose one event above to change its ranges and targets.</p>}
