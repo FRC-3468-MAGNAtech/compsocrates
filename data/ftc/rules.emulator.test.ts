@@ -16,6 +16,9 @@ import { ftcProfilePatch, ftcUserToMember, ftcUserToProfile } from "@/data/ftc/u
 import { ftcJoinRequestDoc, ftcNewTeamDocs } from "@/data/ftc/enrollment";
 import { ftcApprovedProfileDoc, ftcJoinDecisionFields } from "@/data/ftc/join-request-docs";
 import { programPath } from "@/lib/firebase/paths";
+import { ftcMatchId, planScheduleImport } from "@/lib/ftc/library";
+import { buildManualMatchDoc } from "@/lib/library/schedule";
+import type { EventMatch } from "@/lib/events/types";
 import type { SaveEntryInput, ScoutEntry } from "@/lib/scout-entries";
 
 // The FTC data layer against the real firestore.rules (the `programs/ftc` block), in the Firestore emulator: the documents it writes are accepted, and
@@ -688,5 +691,188 @@ describe("approving and denying a join request (team admin of the same team)", (
     const db = as(uid);
     await assertSucceeds(deleteDoc(doc(db, P("teams"), T1, "joinRequests", uid)));
     await assertSucceeds(setDoc(doc(db, P("teams"), T1, "joinRequests", uid), ftcJoinRequestDoc({ uid, name: "Again" }, serverTimestamp())));
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------
+// Batch 2: the FTC match library and the Admin Panel's data. Exactly the queries and writes of data/ftc/library.ts (whose constraints
+// data/ftc/library.test.ts pins): a read is two queries (`origin == 'api'` for the shared API docs, `teamId == <mine>` for the team's own hand-made docs).
+// ---------------------------------------------------------------------------------------------------------------------------------------------------
+describe("the FTC match library (Batch 2)", () => {
+  const ADMIN_B = "ftc-admin-lib-b";
+  const EV_API = "USWASEAQ";
+  const EV_T1 = "MAN-ONE-AAAA";
+  const EV_T2 = "MAN-TWO-BBBB";
+  const base = { seasonId: "biobuzz", eventName: "E", alliances: { red: { teams: [1, 2] }, blue: { teams: [3, 4] } }, scheduledTime: null, createdBy: "seed", updatedAt: "2026-01-01T00:00:00.000Z" };
+  const match = (eventCode: string, type: string, n: number, extra: Record<string, unknown>) => ({ ...base, eventCode, matchType: type, matchNumber: n, ...extra });
+  const L = (name: string) => programPath("ftc", name);
+  const col = (uid: string, name: string) => collection(as(uid), L(name));
+  const qMatches = (uid: string, ...c: ReturnType<typeof where>[]) => getDocs(query(col(uid, "libraryMatches"), ...c));
+  const ids = (snap: { docs: { id: string }[] }) => snap.docs.map((d) => d.id).sort();
+
+  beforeAll(async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore();
+      await setDoc(doc(db, P("users"), ADMIN_B), { name: "Admin B", email: "b@example.org", teamId: T2, primaryRole: "team-coach", secondaryRoles: [], isAdmin: true, isOwner: false });
+      const ev = (code: string, origin: string, teamId?: string) => ({ eventCode: code, eventName: code, seasonId: "biobuzz", origin, date: null, sourceUrl: null, defaultVideoUrl: null, createdBy: "seed", ...(teamId ? { teamId } : {}) });
+      await setDoc(doc(db, L("libraryEvents"), EV_API), ev(EV_API, "api"));
+      await setDoc(doc(db, L("libraryEvents"), EV_T1), ev(EV_T1, "manual", T1));
+      await setDoc(doc(db, L("libraryEvents"), EV_T2), ev(EV_T2, "manual", T2));
+      await setDoc(doc(db, L("libraryMatches"), `${EV_API}_Q1`), match(EV_API, "Qualification", 1, { origin: "api", published: true }));
+      await setDoc(doc(db, L("libraryMatches"), `${EV_API}_Q2`), match(EV_API, "Qualification", 2, { origin: "api", published: false }));
+      await setDoc(doc(db, L("libraryMatches"), `${EV_T1}_Q1`), match(EV_T1, "Qualification", 1, { origin: "manual", published: true, teamId: T1 }));
+      await setDoc(doc(db, L("libraryMatches"), `${EV_T1}_Q2`), match(EV_T1, "Qualification", 2, { origin: "manual", published: false, teamId: T1 }));
+      await setDoc(doc(db, L("libraryMatches"), `${EV_T2}_Q1`), match(EV_T2, "Qualification", 1, { origin: "manual", published: true, teamId: T2 }));
+    });
+  });
+
+  it("a plain member reads only PUBLISHED matches: the shared API ones and their own team's, by the two queries", async () => {
+    const api = await assertSucceeds(qMatches(SCOUT, where("eventCode", "==", EV_API), where("published", "==", true), where("origin", "==", "api")));
+    expect(ids(api)).toEqual([`${EV_API}_Q1`]);
+    const own = await assertSucceeds(qMatches(SCOUT, where("eventCode", "==", EV_T1), where("published", "==", true), where("teamId", "==", T1)));
+    expect(ids(own)).toEqual([`${EV_T1}_Q1`]);
+    const season = await assertSucceeds(qMatches(SCOUT, where("seasonId", "==", "biobuzz"), where("published", "==", true), where("origin", "==", "api")));
+    expect(ids(season)).toEqual([`${EV_API}_Q1`]);
+  });
+
+  it("a plain member cannot read drafts, an unfiltered list, or a single unpublished match", async () => {
+    await assertFails(qMatches(SCOUT, where("eventCode", "==", EV_API), where("origin", "==", "api")));
+    await assertFails(qMatches(SCOUT, where("eventCode", "==", EV_T1), where("teamId", "==", T1)));
+    await assertFails(getDocs(col(SCOUT, "libraryMatches")));
+    await assertFails(qMatches(SCOUT, where("published", "==", true)));
+    await assertFails(getDoc(doc(as(SCOUT), L("libraryMatches"), `${EV_T1}_Q2`)));
+    await assertFails(getDoc(doc(as(SCOUT), L("libraryMatches"), `${EV_API}_Q2`)));
+    await assertSucceeds(getDoc(doc(as(SCOUT), L("libraryMatches"), `${EV_API}_Q1`)));
+  });
+
+  it("an admin reads drafts of the shared and their own team's events", async () => {
+    expect(ids(await assertSucceeds(qMatches(ADMIN, where("eventCode", "==", EV_API), where("origin", "==", "api"))))).toEqual([`${EV_API}_Q1`, `${EV_API}_Q2`]);
+    expect(ids(await assertSucceeds(qMatches(ADMIN, where("eventCode", "==", EV_T1), where("teamId", "==", T1))))).toEqual([`${EV_T1}_Q1`, `${EV_T1}_Q2`]);
+    await assertSucceeds(getDocs(query(col(ADMIN, "libraryEvents"), where("origin", "==", "api"))));
+    await assertSucceeds(getDocs(query(col(ADMIN, "libraryEvents"), where("teamId", "==", T1), where("seasonId", "==", "biobuzz"))));
+  });
+
+  it("another team's admin cannot read this team's library (drafts or published), only the shared API docs and their own", async () => {
+    await assertFails(qMatches(ADMIN_B, where("eventCode", "==", EV_T1), where("teamId", "==", T1)));
+    await assertFails(qMatches(ADMIN_B, where("eventCode", "==", EV_T1), where("published", "==", true), where("teamId", "==", T1)));
+    await assertFails(getDoc(doc(as(ADMIN_B), L("libraryMatches"), `${EV_T1}_Q1`)));
+    await assertFails(getDocs(query(col(ADMIN_B, "libraryEvents"), where("teamId", "==", T1))));
+    await assertFails(getDoc(doc(as(ADMIN_B), L("libraryEvents"), EV_T1)));
+    expect(ids(await assertSucceeds(qMatches(ADMIN_B, where("eventCode", "==", EV_T2), where("teamId", "==", T2))))).toEqual([`${EV_T2}_Q1`]);
+    await assertSucceeds(qMatches(ADMIN_B, where("eventCode", "==", EV_API), where("origin", "==", "api")));
+  });
+
+  it("an admin creates a hand-made event and draft matches for their team, edits, publishes and deletes them", async () => {
+    const db = as(ADMIN);
+    const code = "MAN-NEW-CCCC";
+    const event = { eventCode: code, eventName: "New", seasonId: "biobuzz", origin: "manual", date: null, sourceUrl: null, defaultVideoUrl: null, createdBy: ADMIN, createdAt: "t", updatedAt: "t", teamId: T1 };
+    await assertSucceeds(setDoc(doc(db, L("libraryEvents"), code), event));
+    const ref = { eventCode: code, eventName: "New", seasonId: "biobuzz" };
+    const vm = { matchType: "Qualification" as const, matchNumber: 1, red: [111, 222], blue: [333, 444], scheduledTime: "2026-11-15T09:00:00.000Z" };
+    const id = ftcMatchId(code, vm.matchType, vm.matchNumber);
+    const created = buildManualMatchDoc(vm, ref, null, T1, ADMIN, "2026-11-15T00:00:00.000Z");
+    await assertSucceeds(setDoc(doc(db, L("libraryMatches"), id), created));
+    expect(created.published).toBe(false);
+    await assertSucceeds(setDoc(doc(db, L("libraryMatches"), id), buildManualMatchDoc({ ...vm, red: [111, 999] }, ref, created, T1, ADMIN, "2026-11-15T01:00:00.000Z")));
+    await assertSucceeds(updateDoc(doc(db, L("libraryMatches"), id), { published: true, updatedAt: "2026-11-15T02:00:00.000Z" }));
+    await assertSucceeds(updateDoc(doc(db, L("libraryMatches"), id), { published: false, updatedAt: "2026-11-15T03:00:00.000Z" }));
+    await assertSucceeds(deleteDoc(doc(db, L("libraryMatches"), id)));
+    await assertSucceeds(deleteDoc(doc(db, L("libraryEvents"), code)));
+  });
+
+  it("refuses hand-made docs that break the shape: another team's id, no teamId, wrong id, three teams, a bad time", async () => {
+    const db = as(ADMIN);
+    const ref = { eventCode: EV_T1, eventName: "E", seasonId: "biobuzz" };
+    const vm = { matchType: "Qualification" as const, matchNumber: 9, red: [1, 2], blue: [3, 4], scheduledTime: null };
+    const good = buildManualMatchDoc(vm, ref, null, T1, ADMIN, "t");
+    const id = ftcMatchId(EV_T1, "Qualification", 9);
+    await assertFails(setDoc(doc(db, L("libraryMatches"), id), { ...good, teamId: T2 }));
+    const noTeam = { ...good } as Record<string, unknown>;
+    delete noTeam.teamId;
+    await assertFails(setDoc(doc(db, L("libraryMatches"), id), noTeam));
+    await assertFails(setDoc(doc(db, L("libraryMatches"), `${EV_T1}_Q10`), good));
+    await assertFails(setDoc(doc(db, L("libraryMatches"), id), { ...good, alliances: { red: { teams: [1, 2, 3] }, blue: { teams: [3, 4] } } }));
+    await assertFails(setDoc(doc(db, L("libraryMatches"), id), { ...good, scheduledTime: 12345 }));
+    await assertFails(setDoc(doc(db, L("libraryEvents"), "MAN-BAD-DDDD"), { eventCode: "MAN-BAD-DDDD", eventName: "x", seasonId: "biobuzz", origin: "manual", createdBy: ADMIN, teamId: T2 }));
+    await assertFails(setDoc(doc(db, L("libraryEvents"), "MAN-BAD-EEEE"), { eventCode: "MAN-BAD-EEEE", eventName: "x", seasonId: "biobuzz", origin: "manual", createdBy: ADMIN }));
+  });
+
+  it("an admin imports a schedule (events and matches, 2-team alliances, no scores) and re-imports it as updates", async () => {
+    const event = { eventCode: "USWAIMP1", eventName: "Import", seasonId: "biobuzz" };
+    const m = (n: number): EventMatch => ({ id: `Q-${n}`, matchNumber: n, type: "Qualification", description: null, series: null, played: false, redTeams: [1, 2], blueTeams: [3], redScore: null, blueScore: null, redPenaltyPoints: null, bluePenaltyPoints: null, startTime: "2026-12-01T09:00:00" });
+    const run = async (existing: Map<string, Record<string, unknown>>, withEvent: boolean) => {
+      const plan = planScheduleImport({ event, matches: [m(1), m(2)], existing, uid: ADMIN, now: "2026-11-15T00:00:00.000Z" });
+      const adb = as(ADMIN);
+      const batch = writeBatch(adb);
+      if (withEvent) batch.set(doc(adb, L("libraryEvents"), event.eventCode), { ...event, origin: "api", date: null, sourceUrl: null, defaultVideoUrl: null, createdBy: ADMIN, createdAt: "t", updatedAt: "t" });
+      for (const w of plan.writes) batch.set(doc(adb, L("libraryMatches"), w.id), w.data, { merge: w.merge });
+      await assertSucceeds(batch.commit());
+      return plan;
+    };
+    const first = await run(new Map(), true);
+    expect(first.created).toBe(2);
+    const stored = new Map(first.writes.map((w) => [w.id, w.data]));
+    const second = await run(stored, false);
+    expect(second).toMatchObject({ created: 0, updated: 2 });
+    expect(ids(await assertSucceeds(qMatches(ADMIN, where("eventCode", "==", "USWAIMP1"), where("origin", "==", "api"))))).toEqual(["USWAIMP1_Q1", "USWAIMP1_Q2"]);
+    // a plain member sees the published import
+    expect(ids(await assertSucceeds(qMatches(SCOUT, where("eventCode", "==", "USWAIMP1"), where("published", "==", true), where("origin", "==", "api"))))).toEqual(["USWAIMP1_Q1", "USWAIMP1_Q2"]);
+  });
+
+  it("an API doc cannot be turned into a hand-made one or deleted, and an API import cannot land under a hand-made event", async () => {
+    const db = as(ADMIN);
+    await assertFails(deleteDoc(doc(db, L("libraryMatches"), `${EV_API}_Q1`)));
+    await assertFails(deleteDoc(doc(db, L("libraryEvents"), EV_API)));
+    await assertFails(updateDoc(doc(db, L("libraryMatches"), `${EV_API}_Q1`), { origin: "manual" }));
+    await assertFails(setDoc(doc(db, L("libraryMatches"), `${EV_T1}_Q7`), match(EV_T1, "Qualification", 7, { origin: "api", published: true })));
+  });
+
+  it("a plain member cannot write the library at all", async () => {
+    const db = as(SCOUT);
+    await assertFails(updateDoc(doc(db, L("libraryMatches"), `${EV_T1}_Q1`), { published: false }));
+    await assertFails(updateDoc(doc(db, L("libraryMatches"), `${EV_API}_Q1`), { published: false }));
+    await assertFails(deleteDoc(doc(db, L("libraryMatches"), `${EV_T1}_Q1`)));
+    await assertFails(setDoc(doc(db, L("libraryMatches"), `${EV_T1}_Q8`), match(EV_T1, "Qualification", 8, { origin: "manual", published: false, teamId: T1, createdBy: SCOUT })));
+    await assertFails(setDoc(doc(db, L("libraryEvents"), "MAN-MEM-FFFF"), { eventCode: "MAN-MEM-FFFF", eventName: "x", seasonId: "biobuzz", origin: "manual", createdBy: SCOUT, teamId: T1 }));
+    await assertFails(deleteDoc(doc(db, L("libraryEvents"), EV_T1)));
+  });
+
+  it("another team's admin cannot write, publish or delete this team's hand-made docs, or create docs for it", async () => {
+    const db = as(ADMIN_B);
+    await assertFails(updateDoc(doc(db, L("libraryMatches"), `${EV_T1}_Q1`), { published: false, updatedAt: "x" }));
+    await assertFails(deleteDoc(doc(db, L("libraryMatches"), `${EV_T1}_Q1`)));
+    await assertFails(deleteDoc(doc(db, L("libraryEvents"), EV_T1)));
+    await assertFails(updateDoc(doc(db, L("libraryEvents"), EV_T1), { eventName: "Hijacked" }));
+    await assertFails(setDoc(doc(db, L("libraryMatches"), `${EV_T1}_Q9`), match(EV_T1, "Qualification", 9, { origin: "manual", published: false, teamId: T1, createdBy: ADMIN_B })));
+    await assertFails(setDoc(doc(db, L("libraryMatches"), `${EV_T1}_Q9`), match(EV_T1, "Qualification", 9, { origin: "manual", published: false, teamId: T2, createdBy: ADMIN_B })));
+  });
+});
+
+describe("the Admin Panel's data (Batch 2)", () => {
+  const sidebar = (rev: number, uid: string) => ({ version: 1, rev, entries: [{ id: "dashboard", kind: "page", parent: null, order: 0 }], updatedBy: uid, updatedAt: serverTimestamp() });
+
+  it("a plain member cannot read the audit log or write an audit entry for the library", async () => {
+    await assertFails(getDocs(query(collection(as(SCOUT), P("auditLog")), where("teamId", "==", T1))));
+    await assertFails(addDoc(collection(as(SCOUT), P("auditLog")), buildAuditEntry(T1, SCOUT, "Ada", "edit-match-library", { op: "publish-matches" }, null, null)));
+    await assertSucceeds(addDoc(collection(as(ADMIN), P("auditLog")), buildAuditEntry(T1, ADMIN, "Admin", "edit-match-library", { op: "import-event" }, null, null)));
+    await assertSucceeds(getDocs(query(collection(as(ADMIN), P("auditLog")), where("teamId", "==", T1))));
+  });
+
+  it("a team admin writes the sidebar config and page access under the FTC team path; a member and another team's admin cannot", async () => {
+    await assertSucceeds(setDoc(doc(as(ADMIN), P("teams"), T1, "settings", "sidebar"), sidebar(1, ADMIN)));
+    await assertSucceeds(setDoc(doc(as(ADMIN), P("teams"), T1, "settings", "sidebar"), sidebar(2, ADMIN)));
+    await assertSucceeds(getDoc(doc(as(SCOUT), P("teams"), T1, "settings", "sidebar")));
+    await assertFails(setDoc(doc(as(SCOUT), P("teams"), T1, "settings", "sidebar"), sidebar(3, SCOUT)));
+    await assertFails(setDoc(doc(as("ftc-admin-lib-b"), P("teams"), T1, "settings", "sidebar"), sidebar(3, "ftc-admin-lib-b")));
+    await assertFails(getDoc(doc(as(OTHER), P("teams"), T1, "settings", "sidebar")));
+    await assertSucceeds(setDoc(doc(as(ADMIN), P("teams"), T1, "settings", "pageAccess"), { roleGrants: {}, pageRoles: {}, memberOverrides: {}, updatedBy: ADMIN, updatedAt: serverTimestamp() }));
+    await assertFails(setDoc(doc(as(SCOUT), P("teams"), T1, "settings", "pageAccess"), { roleGrants: {}, pageRoles: {}, memberOverrides: {}, updatedBy: SCOUT, updatedAt: serverTimestamp() }));
+  });
+
+  it("only a team admin switches form submissions off (the additive team-document field); a member cannot", async () => {
+    const settings = { formSubmissionSettings: { enabled: true, seasons: { biobuzz: false } } };
+    await assertSucceeds(updateDoc(doc(as(ADMIN), P("teams"), T1), settings));
+    await assertFails(updateDoc(doc(as(SCOUT), P("teams"), T1), settings));
+    await assertFails(updateDoc(doc(as("ftc-admin-lib-b"), P("teams"), T1), settings));
   });
 });

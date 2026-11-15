@@ -1631,11 +1631,19 @@ service cloud.firestore {
           + string(d.matchNumber);
       }
 
+      // Batch 2: an FTC library match is a SCHEDULED match, so the score fields are optional (an alliance with no score is valid); when present they
+      // keep the old bounds. A hand-made alliance still has exactly two teams.
       function ftc_validLibAlliance(a) {
         return a.teams is list && a.teams.size() == 2
-          && a.score is int && a.score >= 0 && a.score <= 9999
-          && a.penaltyPoints is int && a.penaltyPoints >= 0 && a.penaltyPoints <= a.score
-          && a.difficulty in ['easy', 'medium', 'hard'];
+          && (!('score' in a) || (a.score is int && a.score >= 0 && a.score <= 9999))
+          && (!('penaltyPoints' in a) || (a.penaltyPoints is int && a.penaltyPoints >= 0 && a.penaltyPoints <= 9999))
+          && (!('difficulty' in a) || a.difficulty in ['easy', 'medium', 'hard']);
+      }
+
+      // Batch 2: a hand-made library doc (event or match) belongs to ONE team: `teamId`, set at creation to the writer's own team and never changed.
+      // Only that team's admins write it; only that team reads it. API-imported docs (origin 'api') are shared public competition data and carry no `teamId`.
+      function ftc_ownsLibDoc(d) {
+        return ftc_sameTeam(d.get('teamId', ''));
       }
 
       // P15: a hand-entered match. It may only live under a *manual* event (so it can
@@ -1649,6 +1657,10 @@ service cloud.firestore {
           && d.eventCode is string
           && exists(/databases/$(database)/documents/programs/ftc/libraryEvents/$(d.eventCode))
           && get(/databases/$(database)/documents/programs/ftc/libraryEvents/$(d.eventCode)).data.origin == 'manual'
+          && d.teamId is string
+          && d.teamId == ftc_myProfile().teamId
+          && get(/databases/$(database)/documents/programs/ftc/libraryEvents/$(d.eventCode)).data.teamId == d.teamId
+          && (!('scheduledTime' in d) || d.scheduledTime == null || d.scheduledTime is string)
           && d.matchType in ['Practice', 'Qualification', 'Playoff']
           && d.matchNumber is int && d.matchNumber >= 1 && d.matchNumber <= 9999
           && matchId == ftc_libMatchIdFor(d)
@@ -1680,11 +1692,19 @@ service cloud.firestore {
       //    even if a client tries to (lib/library/ids.ts's decideMatchWrite skips them first).
       //  - API-origin writes can't land under a manual event's code.
       //  - Only manual matches can be deleted.
+      //
+      // Batch 2 (FTC): a READ is two queries, so the rules can prove each from its constraints: the shared API docs (`origin == 'api'`) and the
+      // team's own hand-made docs (`teamId == <mine>`); in both, a non-admin's query must also say `published == true`. Another team's admin
+      // can neither read nor write this team's hand-made docs. API docs stay shared (any FTC admin may import or publish them: public data).
       match /libraryMatches/{matchId} {
-        allow read: if ftc_isSignedIn() && (resource.data.published == true || ftc_isAdmin());
+        allow read: if ftc_isSignedIn() && (
+          (resource.data.origin == 'api' && (resource.data.published == true || ftc_isAdmin()))
+          || (ftc_ownsLibDoc(resource.data) && (resource.data.published == true || ftc_isAdmin()))
+        );
 
         allow create: if ftc_isAdmin() && (
           (ftc_libOrigin(request.resource.data) == 'api'
+            && !('teamId' in request.resource.data)
             && request.resource.data.get('published', true) is bool
             && (!exists(/databases/$(database)/documents/programs/ftc/libraryEvents/$(request.resource.data.eventCode))
                 || get(/databases/$(database)/documents/programs/ftc/libraryEvents/$(request.resource.data.eventCode)).data.origin == 'api'))
@@ -1695,9 +1715,9 @@ service cloud.firestore {
           && ftc_libOrigin(request.resource.data) == ftc_libOrigin(resource.data)
           && request.resource.data.eventCode == resource.data.eventCode
           && request.resource.data.get('published', true) is bool
-          && (ftc_libOrigin(request.resource.data) == 'api' || ftc_validManualMatch(matchId, request.resource.data));
+          && (ftc_libOrigin(request.resource.data) == 'api' || (ftc_ownsLibDoc(resource.data) && ftc_validManualMatch(matchId, request.resource.data)));
 
-        allow delete: if ftc_isAdmin() && ftc_libOrigin(resource.data) == 'manual';
+        allow delete: if ftc_isAdmin() && ftc_libOrigin(resource.data) == 'manual' && ftc_ownsLibDoc(resource.data);
       }
 
       // P15: libraryEvents/{eventCode} — one doc per imported or hand-made event
@@ -1705,9 +1725,13 @@ service cloud.firestore {
       // `defaultVideoUrl`). Every member reads; admins write. `origin` is fixed at
       // creation, so a manual event's code can never be taken over by an API import
       // (or the reverse). Only a manual event can be deleted.
+      //
+      // Batch 2 (FTC): like the matches, an event is readable as the shared API events (`origin == 'api'`) or the team's own (`teamId == <mine>`); a
+      // hand-made event is created with the writer's `teamId` and only that team's admins change or delete it.
       match /libraryEvents/{eventCode} {
-        allow read: if ftc_isSignedIn();
+        allow read: if ftc_isSignedIn() && (resource.data.origin == 'api' || ftc_ownsLibDoc(resource.data));
         allow create: if ftc_isAdmin()
+          && (request.resource.data.origin == 'api' ? !('teamId' in request.resource.data) : request.resource.data.get('teamId', '') == ftc_myProfile().teamId)
           && request.resource.data.origin in ['api', 'manual']
           && request.resource.data.eventCode == eventCode
           && request.resource.data.eventName is string && request.resource.data.eventName.size() > 0 && request.resource.data.eventName.size() <= 120
@@ -1722,8 +1746,10 @@ service cloud.firestore {
           && request.resource.data.origin == resource.data.origin
           && request.resource.data.eventCode == resource.data.eventCode
           && request.resource.data.createdBy == resource.data.createdBy
+          && request.resource.data.get('teamId', '') == resource.data.get('teamId', '')
+          && (resource.data.origin == 'api' || ftc_ownsLibDoc(resource.data))
           && request.resource.data.eventName is string && request.resource.data.eventName.size() > 0 && request.resource.data.eventName.size() <= 120;
-        allow delete: if ftc_isAdmin() && resource.data.origin == 'manual';
+        allow delete: if ftc_isAdmin() && resource.data.origin == 'manual' && ftc_ownsLibDoc(resource.data);
       }
 
       // P6: eventAttendance/{teamId}_{eventCode} — one doc per (team, event),
