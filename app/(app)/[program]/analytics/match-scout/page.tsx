@@ -18,7 +18,10 @@ import { buildGameSchema, withPracticeColumns } from "@/lib/analytics/game-schem
 import { useActiveForm, useForms } from "@/lib/forms/forms-context";
 import { entriesToCsv } from "@/lib/analytics/csv";
 import { currentEventName } from "@/lib/events/event-names";
-import { recomputeForEvent } from "@/lib/analytics/recompute";
+import { recomputeAfterSave, recomputeForEvent } from "@/lib/analytics/recompute";
+import { canRecalculateAccuracy } from "@/lib/analytics/recompute-policy";
+import { canImportCsv } from "@/lib/analytics/csv-import";
+import { useProgramData } from "@/lib/program/data";
 import { useAnalyticsData, useAnalyticsEntries, useSingleEvent } from "@/lib/analytics/data-context";
 import { useAnalyticsFilters, useSingleEventMode } from "@/lib/analytics/filter-context";
 import { setSessionExcluded } from "@/lib/scout-stats/actions";
@@ -32,6 +35,7 @@ export default function MatchScoutAnalyticsPage() {
   // Edits and deletes are written to the active program's own collection; CSV import and the accuracy recompute exist only where they are connected.
   const program = useProgram();
   const { features } = useProgramConfig().connection;
+  const ownEntryStore = useProgramData() != null;
 
   // Game / Event / Practice now come from the shared filter bar (P10). Import
   // and Recalculate act on a single event, so this page asks the bar's Event
@@ -61,6 +65,7 @@ export default function MatchScoutAnalyticsPage() {
   const [deleteTarget, setDeleteTarget] = useState<ScoutEntry | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [recalculating, setRecalculating] = useState(false);
+  const [recalcError, setRecalcError] = useState<string | null>(null);
 
   // P21: the table is derived from the form(s) the visible entries were scouted with; importing writes with the season's active form.
   const forms = useForms();
@@ -125,8 +130,15 @@ export default function MatchScoutAnalyticsPage() {
   const handleRecalculate = async () => {
     if (!eventCode || !teamId) return;
     setRecalculating(true);
-    await recomputeForEvent(teamId, eventCode, eventSeason, forms.currentResolver);
-    setRecalculating(false);
+    setRecalcError(null);
+    try {
+      await recomputeForEvent(teamId, eventCode, eventSeason, forms.currentResolver, program);
+    } catch (err) {
+      // an explicit admin action says what went wrong (a save never does)
+      setRecalcError(`Could not recalculate accuracy: ${err instanceof Error && err.message ? err.message : "something went wrong."}`);
+    } finally {
+      setRecalculating(false);
+    }
   };
 
   const withEntry = (id: string, patch: (entry: ScoutEntry) => Partial<ScoutEntry>) => {
@@ -154,7 +166,7 @@ export default function MatchScoutAnalyticsPage() {
       return;
     }
     withEntry(id, (e) => ({ excluded: !e.excluded }));
-    if (features.accuracy && eventCode && teamId) void recomputeForEvent(teamId, eventCode, eventSeason, forms.currentResolver);
+    if (features.accuracy && eventCode && teamId) recomputeAfterSave({ teamId, eventCode, season: eventSeason, resolveForm: forms.currentResolver, program, ownEntryStore, isAdmin: profile?.isAdmin ?? false });
   };
 
   const confirmDelete = () => {
@@ -195,12 +207,12 @@ export default function MatchScoutAnalyticsPage() {
           </Button>
           {!practiceMode && (
             <>
-              {features.csvImport && (
+              {features.csvImport && (!ownEntryStore || canImportCsv(profile)) && (
                 <Button variant="glass" size="sm" className="gap-2" onClick={() => setImportOpen(true)}>
                   <Upload className="h-4 w-4" /> Import CSV
                 </Button>
               )}
-              {features.accuracy && (
+              {features.accuracy && canRecalculateAccuracy({ ownEntryStore, isAdmin: profile?.isAdmin ?? false }) && (
                 <Button size="sm" className="gap-2" onClick={handleRecalculate} disabled={recalculating}>
                   <RefreshCw className={recalculating ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
                   {recalculating ? "Recalculating…" : "Recalculate Accuracy"}
@@ -210,6 +222,12 @@ export default function MatchScoutAnalyticsPage() {
           )}
         </div>
       </div>
+
+      {recalcError && (
+        <p role="alert" className="text-sm text-red-300">
+          {recalcError}
+        </p>
+      )}
 
       <AnalyticsToolbar
         entryCount={visibleEntries.length}
@@ -277,7 +295,7 @@ export default function MatchScoutAnalyticsPage() {
           eventCode={eventCode}
           existingEntries={sourceEntries}
           onImported={() => {
-            void recomputeForEvent(teamId, eventCode, eventSeason, forms.currentResolver);
+            recomputeAfterSave({ teamId, eventCode, season: eventSeason, resolveForm: forms.currentResolver, program, ownEntryStore, isAdmin: profile?.isAdmin ?? false });
           }}
         />
       )}

@@ -16,7 +16,7 @@ describe("program connection config", () => {
       "/lead-scout-form", "/pit-scout-form", "/team-strategy-form", "/match-strategy-form", "/drive-reflection-form", "/helper-form",
       "/dashboard", "/my-scouting", "/people", "/team-management", "/account", "/profile", "/credits", "/analytics",
       "/analytics/match-scout", "/analytics/lead-scout", "/analytics/pit-scout", "/analytics/team-strategy", "/analytics/match-strategy", "/analytics/drive-reflection", "/analytics/helper",
-      "/practice-scouting", "/analytics/pick-list", "/analytics/scout-status", "/analytics/match-breakdown", "/analytics/teams", "/analytics/team-averages", "/analytics/team-breakdown", "/analytics/rankings", "/admin",
+      "/practice-scouting", "/scout-accuracy", "/analytics/pick-list", "/analytics/scout-status", "/analytics/match-breakdown", "/analytics/teams", "/analytics/team-averages", "/analytics/team-breakdown", "/analytics/rankings", "/admin",
     ];
     expect(PROGRAMS.ftc.multiTeam).toBe(true);
     expect([...(PROGRAMS.ftc.connection.paths as readonly string[])].sort()).toEqual([...connected].sort());
@@ -29,9 +29,9 @@ describe("program connection config", () => {
 
   it("only the data features FTC has a program-aware layer for are on", () => {
     const on = Object.entries(PROGRAMS.ftc.connection.features).filter(([, enabled]) => enabled).map(([name]) => name);
-    expect(on).toEqual(["assignments", "practice", "library", "pickList", "joinRequests", "eventLookup"]);
-    // csvImport, live, lobby and accuracy stay off until their data layers are ported (solo practice is on: it has its own session store)
-    for (const off of ["csvImport", "live", "lobby", "accuracy"] as const) expect(PROGRAMS.ftc.connection.features[off], off).toBe(false);
+    expect(on).toEqual(["assignments", "practice", "library", "pickList", "accuracy", "csvImport", "joinRequests", "eventLookup"]);
+    // live and lobby stay off until their data layers are ported (solo practice is on: it has its own session store; accuracy and csvImport went on in Batch 4)
+    for (const off of ["live", "lobby"] as const) expect(PROGRAMS.ftc.connection.features[off], off).toBe(false);
     // the default program has live and lobby on, as before
     expect(PROGRAMS.frc.connection.features.live).toBe(true);
     expect(PROGRAMS.frc.connection.features.lobby).toBe(true);

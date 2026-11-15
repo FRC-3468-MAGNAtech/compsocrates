@@ -59,6 +59,7 @@ export const FTC_PROGRAM: ProgramConfig = {
       "/analytics/helper",
       "/analytics/pick-list",
       "/practice-scouting",
+      "/scout-accuracy",
       "/analytics/match-breakdown",
       "/analytics/teams",
       "/analytics/scout-status",
@@ -67,7 +68,7 @@ export const FTC_PROGRAM: ProgramConfig = {
       "/analytics/rankings",
       "/admin",
     ],
-    features: { assignments: true, subIns: false, practice: true, live: false, lobby: false, library: true, pickList: true, accuracy: false, csvImport: false, changelog: false, applications: false, joinRequests: true, announcements: false, eventLookup: true },
+    features: { assignments: true, subIns: false, practice: true, live: false, lobby: false, library: true, pickList: true, accuracy: true, csvImport: true, changelog: false, applications: false, joinRequests: true, announcements: false, eventLookup: true },
   },
   // Only the tabs whose data layer is ported: Forms, Sessions, Rescore, Backups, Templates and the platform-owner tabs are not listed, so they do not exist here.
   admin: { tabs: ["match-library", "page-access", "sidebar", "submissions", "audit-log"], platformSettings: false },

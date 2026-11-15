@@ -5,16 +5,18 @@ import { getEventEntries, notApplicableAccuracy, updateEntry, type AccuracyResul
 import { allianceForTeam, computeAllianceAccuracy } from "@/lib/analytics/accuracy";
 import { evaluateAutoFlagRuleIds, type FlagContext } from "@/lib/analytics/flags";
 import { builtinFormResolver, type FormResolver } from "@/lib/forms/resolver";
+import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
+import { recomputeQuietly, shouldRecomputeAfterSave } from "@/lib/analytics/recompute-policy";
 
 function matchKey(type: MatchType, number: number) {
   return `${type}-${number}`;
 }
 
-async function buildMatchLookup(eventCode: string, season: number): Promise<Map<string, EventMatch>> {
+async function buildMatchLookup(eventCode: string, season: number, program: ProgramId): Promise<Map<string, EventMatch>> {
   const lookup = new Map<string, EventMatch>();
   const [qual, playoff] = await Promise.all([
-    getMatchesForEvent(eventCode, "Qualification", season),
-    getMatchesForEvent(eventCode, "Playoff", season),
+    getMatchesForEvent(eventCode, "Qualification", season, program),
+    getMatchesForEvent(eventCode, "Playoff", season, program),
   ]);
   for (const res of [qual, playoff]) {
     if (res.ok) {
@@ -48,9 +50,9 @@ export function eventRescorePatchChanges(patch: EventRescorePatch): boolean {
  * P21: `resolveForm` says which form each entry was scouted with (default: the built-in with its `formId`), because accuracy needs scoring: an
  * entry whose form has `scoringEnabled: false` is simply "n/a" (never an error), and its automatic flags are evaluated against its own form.
  */
-export async function computeEventRescorePlan(teamId: string, eventCode: string, season: number, resolveForm: FormResolver = builtinFormResolver): Promise<EventRescorePatch[]> {
-  const matchLookup = await buildMatchLookup(eventCode, season);
-  const entries = await getEventEntries(teamId, eventCode);
+export async function computeEventRescorePlan(teamId: string, eventCode: string, season: number, resolveForm: FormResolver = builtinFormResolver, program: ProgramId = DEFAULT_PROGRAM): Promise<EventRescorePatch[]> {
+  const matchLookup = await buildMatchLookup(eventCode, season, program);
+  const entries = await getEventEntries(teamId, eventCode, program);
 
   const patches: EventRescorePatch[] = [];
   for (const entry of entries) {
@@ -99,8 +101,8 @@ export async function computeEventRescorePlan(teamId: string, eventCode: string,
   return patches;
 }
 
-export async function applyEventRescorePlan(patches: EventRescorePatch[]): Promise<void> {
-  await Promise.all(patches.map((p) => updateEntry(p.entryId, { accuracy: p.after, autoFlags: p.autoFlags })));
+export async function applyEventRescorePlan(patches: EventRescorePatch[], program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
+  await Promise.all(patches.map((p) => updateEntry(p.entryId, { accuracy: p.after, autoFlags: p.autoFlags }, {}, program)));
 }
 
 /**
@@ -110,7 +112,23 @@ export async function applyEventRescorePlan(patches: EventRescorePatch[]): Promi
  * just the new entry) is what lets a *different* robot's entry flip from
  * "Needs Robots" to "Complete" once its alliance partner gets scouted too.
  */
-export async function recomputeForEvent(teamId: string, eventCode: string, season: number, resolveForm: FormResolver = builtinFormResolver): Promise<void> {
-  const patches = await computeEventRescorePlan(teamId, eventCode, season, resolveForm);
-  await applyEventRescorePlan(patches);
+export async function recomputeForEvent(teamId: string, eventCode: string, season: number, resolveForm: FormResolver = builtinFormResolver, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
+  const patches = await computeEventRescorePlan(teamId, eventCode, season, resolveForm, program);
+  await applyEventRescorePlan(patches, program);
+}
+
+/**
+ * The recompute that follows a save, import or exclusion on a scout page. Fire-and-forget: it returns at once and never throws.
+ * - The default program: exactly as before (`recomputeForEvent`, not awaited).
+ * - A program with its own entry store: only an admin writes the derived fields (the rules allow no one else to update an entry), so everyone else skips it
+ *   and the next admin recompute covers it. A failure is reported quietly and retried; it never reaches the scout.
+ */
+export function recomputeAfterSave(args: { teamId: string; eventCode: string; season: number; resolveForm: FormResolver; program: ProgramId; ownEntryStore: boolean; isAdmin: boolean }): void {
+  const { teamId, eventCode, season, resolveForm, program, ownEntryStore, isAdmin } = args;
+  if (!shouldRecomputeAfterSave({ ownEntryStore, isAdmin })) return;
+  if (!ownEntryStore) {
+    void recomputeForEvent(teamId, eventCode, season, resolveForm, program);
+    return;
+  }
+  void recomputeQuietly(() => recomputeForEvent(teamId, eventCode, season, resolveForm, program));
 }

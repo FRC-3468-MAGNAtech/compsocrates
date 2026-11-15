@@ -33,7 +33,8 @@ import { useFormSeason } from "@/lib/forms/use-form-season";
 import { useFormDisplayNames } from "@/lib/forms/use-form-display-name";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { fieldWithRole } from "@/lib/forms/meta";
-import { recomputeForEvent } from "@/lib/analytics/recompute";
+import { recomputeAfterSave } from "@/lib/analytics/recompute";
+import { useProgramData } from "@/lib/program/data";
 import { nextAssignment as findNextAssignment } from "@/lib/dashboard/insights";
 import type { EventMatch } from "@/lib/events/types";
 
@@ -82,6 +83,8 @@ function MatchScoutFormContent() {
   const teamId = profile?.teamId ?? null;
   const program = useProgram();
   const { features } = useProgramConfig().connection;
+  // A program with its own entry store lets only an admin write the derived accuracy fields; for everyone else the recompute after a save is skipped.
+  const ownEntryStore = useProgramData() != null;
   const forms = useForms();
   // Session E: the scout's game is kept in the URL (`?game=`): the active event's season by default, else the program's current one. P21: they fill in that game's
   // active form (the built-in unless an admin chose another or edited it), and the event picker offers that season's events.
@@ -211,7 +214,8 @@ function MatchScoutFormContent() {
     // its alliance partner is scouted too. Fire-and-forget: it never throws
     // (every call inside is already error-handled) and shouldn't block reset.
     // (Only in a program whose accuracy is connected: it reads official results and rewrites entries in the default program's collections.)
-    if (features.accuracy) void recomputeForEvent(profile.teamId, activeEvent.code, activeEvent.season, forms.currentResolver);
+    // A scout's save never shows an error because of it: a skipped or failed recompute is silent (the next admin recompute covers it).
+    if (features.accuracy) recomputeAfterSave({ teamId: profile.teamId, eventCode: activeEvent.code, season: activeEvent.season, resolveForm: forms.currentResolver, program, ownEntryStore, isAdmin: profile.isAdmin });
     // The just-saved entry's realtime update will advance `nextAssignment` —
     // clear the loaded override so the form reflects whatever that becomes.
     setLoadedAssignment(null);
