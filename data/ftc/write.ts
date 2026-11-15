@@ -6,14 +6,15 @@
  * So far: saving, editing and deleting a Match Scout entry, and setting the active events. (Form entries and form publishing are not ported yet.) Editing and deleting are admin-only in the
  * rules; a refusal is reported and rethrown like any other failure.
  */
-import { addDoc, deleteDoc, getDoc, runTransaction, serverTimestamp, setDoc, updateDoc, writeBatch } from "firebase/firestore";
+import { addDoc, deleteDoc, runTransaction, serverTimestamp, setDoc, updateDoc, writeBatch } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
+import { authedApi } from "@/lib/api-client";
 import { programCollection, programDoc, programPath } from "@/lib/firebase/paths";
 import { reportFirestoreError } from "@/lib/firestore-errors";
 import type { SaveEntryInput, ScoutEntry } from "@/lib/scout-entries";
 import { ftcScoutEntryDoc, ftcScoutEntryPatch } from "@/data/ftc/scouting";
 import { ftcActiveEventsFields } from "@/data/ftc/teams";
-import { ftcJoinRequestDoc, ftcNewTeamDocs, newFtcJoinCode, type JoinRequestInput, type NewTeamInput } from "@/data/ftc/enrollment";
+import { ftcNewTeamDocs, newFtcJoinCode, type JoinRequestInput, type NewTeamInput } from "@/data/ftc/enrollment";
 import type { ActiveEventsState } from "@/lib/active-events";
 import { buildAuditEntry, newAuditLogRef } from "@/lib/audit-log";
 import { diffEntryValues, formEntryDoc, type FormEntry, type NewFormEntry } from "@/lib/form-entries-model";
@@ -265,17 +266,18 @@ export async function createTeam(input: NewTeamInput): Promise<{ teamId: string;
   });
 }
 
-/** Asks to join the team with this join code: `teams/{code}/joinRequests/{uid}`, pending. The rules refuse a code that matches no team. */
-export function requestToJoinTeam(joinCode: string, input: JoinRequestInput): Promise<void> {
-  const path = `${programPath(PROGRAM, TEAMS)}/${joinCode}/joinRequests/${input.uid}`;
-  const ref = programDoc(db, PROGRAM, TEAMS, joinCode, "joinRequests", input.uid);
-  return reported("Couldn't send your request", path, async () => {
-    // A request an admin denied can be sent again: the applicant removes the old one first (the rules let them delete their own), because a
-    // decided request is never rewritten in place.
-    const existing = await getDoc(ref).catch(() => null);
-    if (existing?.exists() && existing.data()?.status === "denied") await deleteDoc(ref);
-    await setDoc(ref, ftcJoinRequestDoc(input, serverTimestamp()));
-  });
+/**
+ * Asks to join the team with this join code. Goes through our server route (`/api/ftc/team/request-join`, lib/ftc/server-join-requests.ts), which finds the
+ * team by its document id or its `joinCode` field and files `teams/{teamId}/joinRequests/{uid}` as pending. A failure carries the route's own words
+ * (no such team, already a member, too many tries) as an `ApiError`, so the form can say which.
+ */
+export async function requestToJoinTeam(joinCode: string, input: JoinRequestInput): Promise<void> {
+  try {
+    await authedApi("/api/ftc/team/request-join", { body: { joinCode, name: input.name } });
+  } catch (err) {
+    reportFirestoreError("Couldn't send your request", err, `${programPath(PROGRAM, TEAMS)} (join code ${joinCode})`);
+    throw err;
+  }
 }
 
 // ---------------------------------------------------------------------------------------------------------------------

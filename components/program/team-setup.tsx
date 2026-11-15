@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useAuth } from "@/lib/auth";
+import { ApiError } from "@/lib/api-client";
 import { useProgramConfig } from "@/lib/program/context";
 import { useProgramData } from "@/lib/program/data";
 import { parseJoinCode, validateNewTeam, LOCATION_MAX, NAME_MAX, type SetupFormErrors } from "@/lib/team-setup";
@@ -86,7 +87,8 @@ export function TeamSetup() {
       await enrollment.requestToJoin(code, { uid: user.uid, name: displayName });
       setSentTo(code);
     } catch (err) {
-      setFailure(isDenied(err) ? "That code did not match a team, or you have already sent a request to it." : "Could not send your request. Check your connection and try again.");
+      // The route says which: no such team, this account already has a team, too many tries, or the server is not set up.
+      setFailure(err instanceof ApiError ? err.message : "Could not send your request. Check your connection and try again.");
     } finally {
       setBusy(false);
     }

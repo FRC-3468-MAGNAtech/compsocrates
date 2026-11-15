@@ -34,6 +34,7 @@ const ALLOWED: Record<string, string> = {
   ".env.example": "lists the per-program environment variables",
   "lib/server/env.ts": "the one reader of environment variables, including the FTC ones",
   "lib/events/actions.ts": "dispatches event data calls to the FTC provider",
+  "app/api/ftc/team/request-join/route.ts": "the server route for asking to join an FTC team; hands the call to the FTC-scoped server module",
   "lib/program/data.ts": "the one shared place that maps a program id to its data port",
   "config/programs/types.ts": "the program id list",
   "config/programs/index.ts": "the program registry",
