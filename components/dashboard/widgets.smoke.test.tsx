@@ -44,6 +44,21 @@ vi.mock("@/lib/announcements/store", () => ({
   deleteAnnouncement: async () => ({ ok: true }),
 }));
 
+// The Judge Book card (Session G) owns its live read, the page-access check and the program: replaced by a fixed state each test can change.
+const judgeBookFixture: { canOpen: boolean; unavailable: boolean; cards: { id: string; prompt: string; updatedAt: number }[] } = { canOpen: true, unavailable: false, cards: [] };
+vi.mock("@/lib/judge-book/use-judge-book-session", () => ({
+  useJudgeBookSession: () => ({ cards: judgeBookFixture.cards, loaded: true, error: null }),
+}));
+vi.mock("@/lib/page-access/store", async (orig) => ({
+  ...(await orig<typeof import("@/lib/page-access/store")>()),
+  usePageAccess: () => ({ config: {}, loaded: true, can: () => judgeBookFixture.canOpen }),
+}));
+vi.mock("@/lib/program/context", async (orig) => {
+  const actual = await orig<typeof import("@/lib/program/context")>();
+  const { programConfig } = await import("@/config/programs");
+  return { ...actual, useProgramConfig: () => ({ ...programConfig("frc"), unavailablePaths: judgeBookFixture.unavailable ? ["/judge-book"] : [] }) };
+});
+
 // A smoke harness for the dashboard (P13): every widget of every role is
 // rendered against realistic, loading, and empty data. It can't judge layout,
 // but it proves no widget throws on any of the data shapes it will meet, that
@@ -305,8 +320,8 @@ describe("dashboard widgets render against every data shape", () => {
       const data = makeData(role, "loading");
       for (const w of dashboardRegistry[role]) {
         // sub-ins: its data comes from its own listener (mocked above, always loaded), so it cannot show the provider's loading state
-        // announcements: same (its own mocked listener)
-        if (w.id.endsWith("-soon") || w.id === "team-lookup" || w.id === "sub-ins" || w.id === "announcements") continue;
+        // announcements, judge-book: same (their own mocked listeners)
+        if (w.id.endsWith("-soon") || w.id === "team-lookup" || w.id === "sub-ins" || w.id === "announcements" || w.id === "judge-book") continue;
         const html = render(data, w.render());
         // A few widgets are interactive shells that stay usable while loading (e.g. the lookup box) — everything else must skeleton.
         expect(html.includes('aria-busy="true"'), `${role}/${w.id} should show a skeleton while loading`).toBe(true);
@@ -467,12 +482,39 @@ describe("what the widgets show", () => {
     expect(html).toContain("Estimate, not a prediction");
   });
 
-  it("Judge Awards and Media get exactly one visible 'Coming soon' card each (the Pit Scout has real widgets since P29)", () => {
-    for (const role of ["judge-awards", "media"] as const) {
+  it("Media gets exactly one visible 'Coming soon' card (the Pit Scout since P29 and Judge Awards since Session G have real widgets)", () => {
+    for (const role of ["media"] as const) {
       const data = makeData(role, "rich");
       const count = dashboardRegistry[role].map((w) => render(data, w.render())).filter((h) => h.includes("Coming soon")).length;
       expect(count, role).toBe(1);
     }
+  });
+
+  it("Judge Awards: the Judge Book card counts the cards, lists the latest and links to the Judge Book", () => {
+    judgeBookFixture.cards = [
+      { id: "a", prompt: "Older question", updatedAt: 1 },
+      { id: "b", prompt: "Newest question", updatedAt: 3 },
+    ];
+    const widget = dashboardRegistry["judge-awards"].find((w) => w.id === "judge-book")!;
+    const html = render(makeData("judge-awards", "rich"), widget.render());
+    expect(html).toContain("Judge Book");
+    expect(html).toContain("Open Judge Book");
+    expect(html).toContain("/judge-book");
+    expect(html.indexOf("Newest question")).toBeGreaterThan(-1);
+    expect(html.indexOf("Newest question")).toBeLessThan(html.indexOf("Older question"));
+    judgeBookFixture.cards = [];
+    expect(render(makeData("judge-awards", "rich"), widget.render())).toContain("No cards yet");
+  });
+
+  it("Judge Awards: the Judge Book card never shows to someone who cannot open the page, or in a program where the page is unavailable", () => {
+    const widget = dashboardRegistry["judge-awards"].find((w) => w.id === "judge-book")!;
+    judgeBookFixture.canOpen = false;
+    expect(render(makeData("judge-awards", "rich"), widget.render())).toBe("");
+    judgeBookFixture.canOpen = true;
+    judgeBookFixture.unavailable = true;
+    expect(render(makeData("judge-awards", "rich"), widget.render())).toBe("");
+    judgeBookFixture.unavailable = false;
+    expect(render(makeData("judge-awards", "rich"), widget.render())).toContain("Judge Book");
   });
 
   it("an empty dashboard shows friendly empty states, never a raw error", () => {

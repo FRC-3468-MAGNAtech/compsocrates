@@ -9,7 +9,7 @@ import { PhaseVsEventWidget, ScoutsSawWidget } from "@/components/dashboard/widg
 import { FormCoverageWidget, FormMissingTeamsWidget, HelperLogWidget, MyAssignedTeamsWidget } from "@/components/dashboard/widgets/team-forms";
 import { NextMatchWidget, OurResultsWidget, UpcomingMatchesWidget } from "@/components/dashboard/widgets/schedule-widgets";
 import { AttendanceWidget, EventOverviewWidget, InterventionWidget, ScoutingHealthWidget } from "@/components/dashboard/widgets/team-coach";
-import { StrengthBulletsWidget, TeamSummaryWidget } from "@/components/dashboard/widgets/judge";
+import { JudgeBookWidget, StrengthBulletsWidget, TeamSummaryWidget } from "@/components/dashboard/widgets/judge";
 import { SubInRequestsWidget } from "@/components/dashboard/widgets/sub-ins";
 import { AnnouncementsWidget } from "@/components/dashboard/widgets/announcements";
 import type { DashboardWidget } from "@/lib/dashboard/types";
@@ -102,6 +102,6 @@ export const dashboardRegistry: Record<RoleId, DashboardWidget[]> = {
   "judge-awards": [
     { id: "team-summary", title: "Our team summary", size: "medium", render: () => <TeamSummaryWidget /> },
     { id: "strengths", title: "Our strengths", size: "medium", render: () => <StrengthBulletsWidget /> },
-    { id: "judging-soon", title: "Judging notes", size: "small", render: () => <ComingSoonCard title="Judging notes" description="Judging notes aren't in the app yet." /> },
+    { id: "judge-book", title: "Judge Book", size: "small", render: () => <JudgeBookWidget /> },
   ],
 };

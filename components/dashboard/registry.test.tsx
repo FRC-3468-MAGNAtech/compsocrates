@@ -30,7 +30,7 @@ describe("dashboardRegistry", () => {
   it("gives the roles whose feature doesn't exist exactly one 'Coming soon' card, and every other role none", () => {
     const soon = (role: string) => dashboardRegistry[role as keyof typeof dashboardRegistry].filter((w) => w.id.endsWith("-soon")).length;
     expect(soon("pit-scout")).toBe(0); // P29: the pit forms exist now
-    expect(soon("judge-awards")).toBe(1);
+    expect(soon("judge-awards")).toBe(0); // Session G: the Judge Book card replaced the "Judging notes" placeholder
     expect(soon("media")).toBe(1);
     for (const role of ["match-scout", "pit-scout", "pit-team", "drive-team", "lead-scout", "lead-strategist", "team-coach"]) expect(soon(role), role).toBe(0);
   });

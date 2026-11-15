@@ -4,8 +4,11 @@ import { useMemo } from "react";
 import { ReliabilityPill } from "@/components/analytics/reliability-pill";
 import { Widget } from "@/components/dashboard/widget";
 import { KeyNumber, teamHref } from "@/components/dashboard/shared";
-import { Check, Medal, Star } from "lucide-react";
+import { BookOpen, Check, Medal, Star } from "lucide-react";
 import { useDashboard } from "@/lib/dashboard/data";
+import { useJudgeBookSession } from "@/lib/judge-book/use-judge-book-session";
+import { usePageAccess } from "@/lib/page-access/store";
+import { useProgramConfig } from "@/lib/program/context";
 import { strengthBullets } from "@/lib/dashboard/insights";
 import { formatRecord } from "@/lib/dashboard/schedule";
 
@@ -59,6 +62,48 @@ export function StrengthBulletsWidget() {
           </li>
         ))}
       </ul>
+    </Widget>
+  );
+}
+
+/**
+ * Judge Awards dashboard: points at the Judge Book (replaces the old "Judging notes" placeholder). Only for a program that has the page: one that lists
+ * `/judge-book` among its unavailable paths renders nothing and never touches the Judge Book data. Also nothing for someone who cannot open the
+ * page (page access, id "judge-book"), so the card is never a dead link.
+ */
+export function JudgeBookWidget() {
+  const program = useProgramConfig();
+  const access = usePageAccess();
+  if (program.unavailablePaths.includes("/judge-book") || !access.can("judge-book")) return null;
+  return <JudgeBookCard />;
+}
+
+/** Mounted only when the viewer may open the Judge Book, so its live read is never started otherwise. */
+function JudgeBookCard() {
+  const { cards, loaded, error } = useJudgeBookSession();
+  const latest = useMemo(() => [...cards].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 3), [cards]);
+
+  return (
+    <Widget
+      title="Judge Book"
+      icon={BookOpen}
+      size="small"
+      status={error ? "error" : !loaded ? "loading" : cards.length === 0 ? "empty" : "ready"}
+      href="/judge-book"
+      linkLabel="Open Judge Book"
+      emptyText="No cards yet. Open the Judge Book to add the questions judges ask and your answers."
+    >
+      <p className="text-sm text-[var(--muted-foreground)]">Your team&apos;s questions and answers for judging, in one place.</p>
+      <KeyNumber label="Cards" value={String(cards.length)} />
+      {latest.length > 0 && (
+        <ul className="flex flex-col gap-1 text-sm">
+          {latest.map((c) => (
+            <li key={c.id} className="truncate">
+              {c.prompt}
+            </li>
+          ))}
+        </ul>
+      )}
     </Widget>
   );
 }
