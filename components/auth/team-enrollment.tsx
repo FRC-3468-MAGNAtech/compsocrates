@@ -17,6 +17,7 @@ import { cancelJoinRequest, fetchTeamLabel, useMyJoinRequests } from "@/lib/join
 import { isFallbackCodeLabel, type JoinRequest } from "@/data/cs/join-requests";
 import { DEFAULT_ROLE_ID, getRole, ROLES, type RoleId } from "@/lib/roles";
 import { TeamSetupCard } from "@/components/auth/team-setup-card";
+import { SignOutButton } from "@/components/auth/sign-out-button";
 import { ApplicationStatusCard } from "@/components/applications/application-status-card";
 import { useMyApplications } from "@/lib/applications-client";
 
@@ -327,8 +328,10 @@ export function TeamEnrollmentScreen({
       children
     ) : (
     <div className="flex min-h-[70vh] items-center justify-center py-16">
-      <motion.div variants={cardEntranceVariants} initial="hidden" animate="show" className={`w-full ${width}`}>
+      <motion.div variants={cardEntranceVariants} initial="hidden" animate="show" className={`flex w-full flex-col gap-4 ${width}`}>
         {children}
+        {/* Standalone (not inside the shared setup frame, which has its own): every state here has the same way out. */}
+        <SignOutButton />
       </motion.div>
     </div>
     );

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { useAuth } from "@/lib/auth";
 import { DEFAULT_ROLE_ID, getRole, ROLES, type RoleId } from "@/lib/roles";
 import { validateCreate, validateJoin } from "@/lib/team-setup";
 import { Button } from "@/components/ui/button";
@@ -49,7 +48,6 @@ export type TeamSetupCardProps = {
  * the two screens cannot drift apart. Created teams ask for no location here.
  */
 export function TeamSetupCard({ programLabel, greeting, creation, defaultName, notice, onJoin, onCreate, onApply, footnote }: TeamSetupCardProps) {
-  const { logout } = useAuth();
   const [mode, setMode] = useState<Mode>("join");
   const [joinCode, setJoinCode] = useState("");
   const [displayName, setDisplayName] = useState(defaultName);
@@ -59,7 +57,6 @@ export function TeamSetupCard({ programLabel, greeting, creation, defaultName, n
   const [errors, setErrors] = useState<{ joinCode?: string; displayName?: string; teamNumber?: string; teamName?: string }>({});
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [loggingOut, setLoggingOut] = useState(false);
 
   const applying = creation === "apply";
 
@@ -103,15 +100,6 @@ export function TeamSetupCard({ programLabel, greeting, creation, defaultName, n
     if (number === null || Object.keys(found).length > 0) return;
     await run(() => onCreate({ teamNumber: number, teamName: name, role, name: displayName.trim() || defaultName.trim() }), "Could not create your team. Check your connection and try again.");
   }
-
-  const handleLogout = async () => {
-    setLoggingOut(true);
-    try {
-      await logout();
-    } finally {
-      setLoggingOut(false);
-    }
-  };
 
   return (
     <div className="glass-card flex flex-col gap-4 p-5 sm:p-6">
@@ -204,12 +192,6 @@ export function TeamSetupCard({ programLabel, greeting, creation, defaultName, n
         </form>
       )}
 
-      <p className="text-sm text-[var(--muted-foreground)]">
-        Wrong account?{" "}
-        <button type="button" onClick={() => void handleLogout()} disabled={loggingOut} className="inline-flex min-h-11 items-center font-medium text-[var(--foreground)] underline underline-offset-4 disabled:opacity-60">
-          {loggingOut ? "Logging out…" : "Log out"}
-        </button>
-      </p>
       {footnote && <p className="text-xs text-[var(--muted-foreground)]">{footnote}</p>}
     </div>
   );
