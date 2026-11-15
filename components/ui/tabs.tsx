@@ -61,8 +61,9 @@ export function TabsTrigger({
     <TabsPrimitive.Trigger
       value={value}
       className={cn(
+        // No `outline-none`: the global focus-visible ring (app/globals.css, theme-fitted) is the keyboard focus state.
         // Roomy by default (px-5, min-h-10 on a mouse; the global coarse-pointer rule lifts buttons to 44px) and never wraps its label.
-        "relative z-10 inline-flex min-h-10 items-center justify-center whitespace-nowrap rounded-full px-5 py-2 text-sm font-medium text-[var(--muted-foreground)] outline-none transition-colors duration-200 data-[state=active]:text-[var(--color-primary-foreground)]",
+        "relative z-10 inline-flex min-h-10 pointer-coarse:min-h-11 items-center justify-center whitespace-nowrap rounded-full px-5 py-2 text-sm font-medium text-[var(--muted-foreground)] transition-colors duration-200 data-[state=active]:text-[var(--color-primary-foreground)]",
         className
       )}
       {...props}
@@ -78,7 +79,8 @@ export function TabsTrigger({
           }}
         />
       )}
-      <span className="relative">{children}</span>
+      {/* One row: an icon beside the label (an svg is block-level by default and used to stack above it), never wrapping. */}
+      <span className="relative inline-flex items-center justify-center gap-1.5 whitespace-nowrap">{children}</span>
     </TabsPrimitive.Trigger>
   );
 }
