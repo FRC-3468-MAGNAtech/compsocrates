@@ -19,6 +19,7 @@ CompSocrates (CS): scouting app for two FIRST programs, FRC and FTC, on Next.js 
 - FTC event data: `lib/ftc/` (FTC Events API) behind `lib/events/actions.ts`, which takes an optional trailing `program` (default FRC). Missing keys return a typed `missing_credentials` error; FRC is unaffected.
 - Migration: `scripts/migrate-ce-to-ftc.ts` (dry run by default; never run by the build or tests) with pure rules in `lib/ftc/migration.ts`.
 - A guard test (`config/brand-guard.test.ts`) keeps FTC names inside FTC-scoped files (and an allowlist with reasons) and FRC names out of them.
+- Parity (`docs/PARITY_REPORT.md`, `docs/PARITY_RESULTS.md`): FRC and FTC share one page and one set of components per feature; a program supplies data and config only (`ProgramConfig`, e.g. `practice`, `event.allianceSize`). `config/parity-guard.test.ts` fails on a program-id comparison in `app/` or `components/` and on a new `useProgramData()` reader that is not listed with a reason. A page a program lacks is hidden, never greyed out. Next parity task: merge the two Match Library admin panels.
 
 ## Reference folders (read-only; the only place the old app is named)
 This repo sits in `compsocrates-rebuild/` next to two read-only folders the maintainers still need:

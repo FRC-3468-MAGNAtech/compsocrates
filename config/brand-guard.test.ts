@@ -51,6 +51,11 @@ const ALLOWED: Record<string, string> = {
   "docs/BATCH2_RESULTS.md": "the results of the FTC match library and Admin Panel batch, which names the program",
   "docs/BATCH3_RESULTS.md": "the results of the FTC solo practice batch, which names the program",
   "docs/BATCH1_RESULTS.md": "the results of the FTC foundation fixes and join-request approval batch, which names the program",
+  "docs/PARITY_REPORT.md": "the FRC/FTC parity report: lists where the programs' pages differ",
+  "docs/PARITY_RESULTS.md": "the results of the FRC/FTC parity sweep",
+  "config/parity-guard.test.ts": "the parity guard names both program ids and lists the files that still read a program's data port",
+  "components/practice/practice-parity.test.tsx": "renders the shared practice screens under each program id",
+  "components/assignments/schedule-grid.test.tsx": "renders the schedule grid under each program id (2 and 3 slots)",
 };
 
 const inFtcScope = (file: string) => FTC_SCOPE.some((re) => re.test(file));
