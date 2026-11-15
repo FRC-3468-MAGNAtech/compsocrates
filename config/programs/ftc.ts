@@ -73,6 +73,7 @@ export const FTC_PROGRAM: ProgramConfig = {
   // Only the tabs whose data layer is ported: Forms, Sessions, Rescore, Backups, Templates and the platform-owner tabs are not listed, so they do not exist here.
   admin: { tabs: ["match-library", "page-access", "sidebar", "submissions", "audit-log"], platformSettings: false },
   multiTeam: true,
+  practice: { noScoreIsResult: true, liveTileText: "Scout a real, livestreamed FTC match." },
   // The practice difficulty cut-offs come from each game's own config (its alliance score thresholds), read by `lib/difficulty.ts` for this program.
   gameDifficulty: Object.fromEntries(FTC_GAME_ID_LIST.map((id) => [id, FTC_GAME_DEFINITIONS[id].thresholds.difficulty])),
 };

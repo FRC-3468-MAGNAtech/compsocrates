@@ -18,7 +18,6 @@ import { LobbyFlow } from "@/components/practice/lobby/lobby-flow";
 import { useAuth } from "@/lib/auth";
 import { useTeamDoc } from "@/lib/team";
 import { detectPlatform } from "@/lib/platform";
-import { GameSelect } from "@/components/scout/game-select";
 import { UnreadableSessionsNotice } from "@/components/practice/unreadable-sessions-notice";
 import { useForms } from "@/lib/forms/forms-context";
 import { useProgram, useProgramConfig } from "@/lib/program/context";
@@ -270,21 +269,6 @@ export default function PracticeScoutingPage() {
                 Finish or discard your paused session before starting a new one.
               </p>
             </>
-          ) : ownStore ? (
-            // One game: the shared game dropdown, disabled with the game's name, then on to the mode.
-            <div className="flex flex-col gap-4">
-              <GameSelect value={forms.defaultSeasonId} onChange={() => undefined} disabled id="practice-game" />
-              <Button
-                size="lg"
-                className="min-h-11 self-start"
-                onClick={() => {
-                  setSeasonId(forms.defaultSeasonId);
-                  setStep("mode");
-                }}
-              >
-                Start practice
-              </Button>
-            </div>
           ) : (
             <SeasonSelect
               onSelect={(id) => {
@@ -326,14 +310,10 @@ export default function PracticeScoutingPage() {
               setDifficulty(d);
               setStep("match-select");
             }}
-            onSelectAny={
-              ownStore
-                ? () => {
-                    setDifficulty("any");
-                    setStep("match-select");
-                  }
-                : undefined
-            }
+            onSelectAny={() => {
+              setDifficulty("any");
+              setStep("match-select");
+            }}
             onSelectLive={
               liveConnected
                 ? () => {

@@ -124,6 +124,12 @@ export type ProgramConfig = {
   /** May one account hold several teams and switch between them (lib/our-team.ts)? Off: one team per account, and no switcher is shown. */
   multiTeam: boolean;
   /**
+   * Practice Scouting copy and rules that differ by program (the screens themselves are shared).
+   * `noScoreIsResult`: a finished session whose library match has no official score yet shows its result (no accuracy) instead of a loading skeleton.
+   * `liveTileText`: the sentence under the "Live" tile (only shown where `connection.features.live` is on).
+   */
+  practice: { noScoreIsResult: boolean; liveTileText: string };
+  /**
    * The practice difficulty cut-offs of the games this program has that the default program's registry does not know, by game id (upper case):
    * `lib/difficulty.ts` reads them for this program. Absent: the default program's own game table applies.
    */

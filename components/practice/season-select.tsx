@@ -1,10 +1,11 @@
 "use client";
 
 import { GlassPanel } from "@/components/ui/glass-panel";
-import { getEnabledSeasons } from "@/lib/seasons";
+import { useForms } from "@/lib/forms/forms-context";
 
+/** One card per game the active program scouts (one card for a program with a single game). The same screen in every program. */
 export function SeasonSelect({ onSelect }: { onSelect: (seasonId: string) => void }) {
-  const seasons = getEnabledSeasons();
+  const seasons = useForms().seasons;
 
   return (
     <div className="flex flex-col gap-4">

@@ -49,21 +49,20 @@ export function MatchSelect({
   const loadError = matchesError ?? sessionsError;
   const seasonName = useForms().seasonFor(seasonId).name;
 
-  // The events that have published matches, from the library (not the team's own event list or its archived events). Only a program with its own library
-  // picks an event first; the default program lists every match of the season, as before.
+  // The events that have published matches, from the library (not the team's own event list or its archived events). Every program picks an event first.
   const events = useMemo(() => {
     const byCode = new Map<string, string>();
     for (const m of matches) if (!byCode.has(m.eventCode)) byCode.set(m.eventCode, m.eventName || m.eventCode);
     return [...byCode].map(([code, name]) => ({ code, name })).sort((a, b) => a.name.localeCompare(b.name));
   }, [matches]);
   const [chosenEvent, setChosenEvent] = useState<string | null>(null);
-  const eventCode = ownLibrary ? (events.find((e) => e.code === chosenEvent)?.code ?? events[0]?.code ?? null) : null;
+  const eventCode = events.find((e) => e.code === chosenEvent)?.code ?? events[0]?.code ?? null;
 
   const rows = useMemo(() => {
     if (!user) return [];
     const all = buildMatchRows(matches, sessions, user.uid, difficulty);
-    return ownLibrary ? all.filter((r) => r.eventCode === eventCode) : all;
-  }, [matches, sessions, user, difficulty, ownLibrary, eventCode]);
+    return all.filter((r) => r.eventCode === eventCode);
+  }, [matches, sessions, user, difficulty, eventCode]);
   const startable = useMemo(() => rows.filter((r) => r.hasVideo || usePlaceholder), [rows, usePlaceholder]);
 
   const handleRandomize = () => {
@@ -72,7 +71,7 @@ export function MatchSelect({
   };
 
   const loaded = matchesLoaded && sessionsLoaded;
-  const nothingPublished = ownLibrary && matches.length === 0;
+  const nothingPublished = matches.length === 0;
 
   return (
     <div className="flex flex-col gap-4">
@@ -86,7 +85,7 @@ export function MatchSelect({
       <div className="flex flex-wrap items-end justify-between gap-3">
         <h2 className="text-lg font-bold">Pick a match</h2>
         <div className="flex flex-wrap items-end gap-3">
-          {ownLibrary && events.length > 0 && (
+          {events.length > 0 && (
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="practice-event">Event</Label>
               <Select value={eventCode ?? ""} onValueChange={setChosenEvent}>
@@ -125,12 +124,7 @@ export function MatchSelect({
         </GlassPanel>
       ) : rows.length === 0 ? (
         <GlassPanel className="py-10 text-center text-sm text-[var(--muted-foreground)]">
-          {difficulty === null
-            ? "No matches to scout in this event yet."
-            : `No ${DIFFICULTY_LABELS[difficulty].toLowerCase()} matches ${ownLibrary ? "in this event" : "in the library"} yet`}
-          {ownLibrary
-            ? ". Try another event or difficulty, or ask an admin to publish more matches."
-            : " — ask an admin to import one in the Admin Panel (or, if matches were imported before and are missing, to press Update library in Admin Panel > Match Library)."}
+          {difficulty === null ? "No matches to scout in this event yet" : `No ${DIFFICULTY_LABELS[difficulty].toLowerCase()} matches in this event yet`}. Try another event or difficulty, or ask an admin to publish more matches.
         </GlassPanel>
       ) : (
         <div className="flex flex-col gap-2">

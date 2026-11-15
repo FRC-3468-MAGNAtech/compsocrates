@@ -13,6 +13,7 @@ import { LIVE_CONFIG } from "@/lib/live/config";
 import { AddToHomeScreenHint } from "@/components/ui/add-to-home-screen-hint";
 import { requestAndRegisterPush } from "@/lib/notifications";
 import { useProgramData } from "@/lib/program/data";
+import { ComparisonRow, Stat } from "@/components/practice/comparison-row";
 import { cardEntranceVariants } from "@/lib/motion";
 import type { PracticeSession } from "@/lib/practice-sessions";
 
@@ -94,13 +95,7 @@ export function LiveResultsScreen({ session, onBackToPracticeScouting }: { sessi
 
       <GlassPanel className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Comparison</h2>
-        <div className={`grid grid-cols-2 gap-3 text-sm ${COMPARISON_COLUMNS[robotStats.length + 2] ?? "sm:grid-cols-4"}`}>
-          {robotStats.map((r) => (
-            <Stat key={r.team} label={`Team ${r.team}`} value={r.total} />
-          ))}
-          <Stat label="+ Penalties" value={session.penaltyPoints ?? 0} />
-          <Stat label="= Scouted total" value={session.scoutedTotal ?? 0} emphasize />
-        </div>
+        <ComparisonRow robots={robotStats} penalties={session.penaltyPoints ?? 0} totalLabel="= Scouted total" total={session.scoutedTotal ?? 0} />
         <div className="my-1 h-px bg-[var(--glass-border)]" />
         <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
           <Stat label="Scouted total" value={session.scoutedTotal ?? 0} />
@@ -116,15 +111,3 @@ export function LiveResultsScreen({ session, onBackToPracticeScouting }: { sessi
   );
 }
 
-// Full literal class names so Tailwind picks them up: the robots' tiles plus the penalties and total tiles.
-const COMPARISON_COLUMNS: Record<number, string> = { 3: "sm:grid-cols-3", 4: "sm:grid-cols-4", 5: "sm:grid-cols-5" };
-
-function Stat({ label, value, emphasize, signed }: { label: string; value: number; emphasize?: boolean; signed?: boolean }) {
-  const display = signed && value > 0 ? `+${value}` : String(value);
-  return (
-    <div className="glass-card flex flex-col gap-1 p-3">
-      <span className="text-[11px] text-[var(--muted-foreground)]">{label}</span>
-      <span className={emphasize ? "text-lg font-bold text-gradient" : "text-lg font-semibold"}>{display}</span>
-    </div>
-  );
-}

@@ -10,8 +10,8 @@ import { ChipSummary } from "@/components/practice/chip-summary";
 import { getStatus, getPercentColor } from "@/lib/accuracy/engine";
 import { getEntriesForSession, type ScoutEntry } from "@/lib/scout-entries";
 import { useForms } from "@/lib/forms/forms-context";
-import { useProgram } from "@/lib/program/context";
-import { useProgramData } from "@/lib/program/data";
+import { useProgram, useProgramConfig } from "@/lib/program/context";
+import { ComparisonRow, Stat } from "@/components/practice/comparison-row";
 import { cardEntranceVariants } from "@/lib/motion";
 import type { LibraryMatch } from "@/lib/match-library";
 import type { PracticeSession } from "@/lib/practice-sessions";
@@ -30,8 +30,10 @@ export function ResultsScreen({
   const [entries, setEntries] = useState<ScoutEntry[] | null>(null);
   const program = useProgram();
   const seasonName = useForms().seasonFor(session.seasonId).name;
-  // A program with its own session store can finish a session with no accuracy (the match has no official score yet): that is a result, not a loading state.
-  const noAccuracyIsResult = useProgramData()?.practice != null;
+  // `practice.noScoreIsResult` (program config): a finished session with no accuracy (the match has no official score yet) is a result, not a loading state.
+  // NOTE: with the flag off (FRC), the skeleton below shows until `session.accuracy` is set, so a session whose library match never gets an official score
+  // can hang on the skeleton. FRC behavior is deliberately unchanged here; flip FRC's flag in `config/programs/frc.ts` once that is accepted.
+  const noAccuracyIsResult = useProgramConfig().practice.noScoreIsResult;
   const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
@@ -98,13 +100,7 @@ export function ResultsScreen({
 
       <GlassPanel className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Comparison</h2>
-        <div className={`grid grid-cols-2 gap-3 text-sm ${COMPARISON_COLUMNS[robotStats.length + (hasOfficial ? 2 : 1)] ?? "sm:grid-cols-4"}`}>
-          {robotStats.map((r) => (
-            <Stat key={r.team} label={`Team ${r.team}`} value={r.total} />
-          ))}
-          {hasOfficial && <Stat label="+ Penalties" value={session.penaltyPoints ?? officialAlliance.penaltyPoints} />}
-          <Stat label="= Your total" value={session.scoutedTotal ?? 0} emphasize />
-        </div>
+        <ComparisonRow robots={robotStats} penalties={hasOfficial ? (session.penaltyPoints ?? officialAlliance.penaltyPoints) : null} totalLabel="= Your total" total={session.scoutedTotal ?? 0} />
         <div className="my-1 h-px bg-[var(--glass-border)]" />
         <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
           <Stat label="Your total" value={session.scoutedTotal ?? 0} />
@@ -131,15 +127,3 @@ export function ResultsScreen({
   );
 }
 
-// Full literal class names so Tailwind picks them up: the robots' tiles plus the penalties and total tiles.
-const COMPARISON_COLUMNS: Record<number, string> = { 3: "sm:grid-cols-3", 4: "sm:grid-cols-4", 5: "sm:grid-cols-5" };
-
-function Stat({ label, value, emphasize, signed }: { label: string; value: number | string; emphasize?: boolean; signed?: boolean }) {
-  const display = signed && typeof value === "number" && value > 0 ? `+${value}` : String(value);
-  return (
-    <div className="glass-card flex flex-col gap-1 p-3">
-      <span className="text-[11px] text-[var(--muted-foreground)]">{label}</span>
-      <span className={emphasize ? "text-lg font-bold text-gradient" : "text-lg font-semibold"}>{display}</span>
-    </div>
-  );
-}
