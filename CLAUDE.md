@@ -78,6 +78,13 @@ The decision table in `docs/ROUTES.md` is the record (D1 to D19). Short form: ad
 - Practice sessions must never be hidden by event-name resolution or event validation.
 - Why: `docs/FIREBASE_FINDINGS.md`.
 
+## Alliance roles (BIOBUZZ)
+- Objectives the alliance scores (BIOBUZZ's Hive, Flower, Garden) are recorded by ONE scout per alliance, or they double count. `allianceRoles` in the game config (`config/games/ftc/biobuzz.ts`) names two roles and their fields: **Hive** records Tip Hive (auto and teleop), **Garden** records Garden and Flower. Only BIOBUZZ has the block; FRC and the other games are untouched.
+- The role is a seeded choice, never FRC's slot rule (`isHumanPlayerSlot`): `lib/forms/alliance-role.ts` hashes event, match type, match number and alliance (practice: library match plus session id) and one bit picks which of the alliance's two teams (sorted) is Hive. Both scouts compute it with no stored state. No role (roster unknown, not exactly two teams) means every field is shown.
+- Stored on the entry as `values.allianceRole` (`"hive"`/`"garden"`). The other role's fields are ABSENT, not 0; a present value counts as recorded, in old entries too. Fields carry `allianceRole` and a `notEquals` `visibleWhen`. `normalizeValues` leaves a missing role field absent; `applyAllianceRole` is the one place that strips/fills them.
+- Readers must treat absent as "not asked": team stats divide by recorded entries and are labelled alliance stats (`allianceStat`, "(alliance)" on cards); match breakdown shows alliance objectives once (`allianceObjectives`); Zero Main Scoring and Statistical Outlier flags account for it; CSV exports absent as an empty cell and imports it back as absent; the admin editor shows both roles and drops the role when an admin fills the other role's field.
+- The scout form shows "You are scouting: Hive/Garden" only (never a total; see Session C). Practice difficulty cut-offs (`thresholds.difficulty`) are unchanged.
+
 ## Rules for changes
 - Do not change CS's schema or scoring logic without approval. Additive fields are listed in `docs/REMAINING.md`; add to that list when you write a new one.
 - **Environment:** the FTC keys (`FTC_API_USERNAME`, `FTC_API_KEY`, optional `FTC_API_BASE_URL`) are group `ftc` (section D of `.env.example`); the migration script alone reads `CE_ADMIN_*` and `CS_ADMIN_*`. Server code reads environment variables only through `lib/server/env.ts` (add the getter and an `ENV_VARS` entry, and keep `.env.example` and `docs/ENVIRONMENT.md` in step; a test checks the first two). Browser-inlined `NEXT_PUBLIC_*` values need a literal `process.env.NAME` access and are the exception. Never reference `NEXT_PUBLIC_TBA_API_KEY` from client code: despite its name it is a server secret.

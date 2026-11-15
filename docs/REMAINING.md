@@ -82,6 +82,7 @@ Harmless to CS (it ignores them) but not part of CS's schema. Drop them if the s
 - `teams/{id}`: `selectedEventNames` (`{ [eventKey]: name }`, written by Event Select beside `selectedEvents` with a merge write so event names survive a data-API outage; read in `data/cs/teams.ts`, the "stored" step of the name chain in `lib/events/names.ts`).
 - `scoutingFlagStates`: `manualReasonText` and `manualNoteText` (the extra manual-flag reason and note).
 - Entries and form docs: `stickyNotes` (and `linkedEntryId`, `planDifferences` where a form has them); `alliance` on match-strategy plan and drive-reflection docs; `eventKey` on helper docs; `teleop.humanPlayerFuelByShift` on REBUILT entries (D8).
+- FTC entries: `values.allianceRole` (`hive` or `garden`) on BIOBUZZ match entries; the other role's fields are absent, not 0.
 - A new `subInRequests` collection (D7).
 - FTC only (`programs/ftc/`): `teams/{CODE}` (id is an 8-character random join code) carries an optional `location`; new `teams/{CODE}/joinRequests/{uid}` (`uid`, `name`, `status`, `createdAt`). Rules for both are written in `firestore.rules` and NOT deployed.
 
