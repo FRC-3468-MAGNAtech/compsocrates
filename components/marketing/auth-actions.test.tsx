@@ -3,11 +3,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const auth = vi.hoisted(() => ({ state: { user: null as unknown, loading: false } }));
 vi.mock("@/lib/auth", () => ({ useAuth: () => auth.state }));
-vi.mock("@/lib/program/context", () => ({ useProgram: () => "ftc" }));
+// The last-used program: the second one the platform lists (any id works; the test does not name a program).
+vi.mock("@/lib/program/context", async () => {
+  const { PROGRAM_IDS } = await import("@/config/programs");
+  return { useProgram: () => PROGRAM_IDS[1] };
+});
 vi.mock("@/components/program/link", () => ({
   default: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a>,
 }));
 
+import { PROGRAM_IDS } from "@/config/programs";
 import { HeaderAuthActions, HeroAuthActions, SignedOutOnly } from "@/components/marketing/auth-actions";
 
 const html = (node: React.ReactElement) => renderToString(node);
@@ -43,7 +48,7 @@ describe("marketing account buttons", () => {
     for (const node of [<HeaderAuthActions key="h" />, <HeroAuthActions key="r" />]) {
       const out = html(node);
       expect(out).toContain("Open dashboard");
-      expect(out).toContain('href="/ftc/dashboard"');
+      expect(out).toContain(`href="/${PROGRAM_IDS[1]}/dashboard"`);
       expect(out).not.toContain("Log in");
       expect(out).not.toContain("Sign up");
       expect(out).not.toContain("Get started");
