@@ -1,11 +1,11 @@
 // Who recomputes accuracy after a save, and how a failed recompute is handled. Pure (no Firebase), so it is unit tested.
 //
-// Accuracy and automatic flags are DERIVED fields written onto an entry. In a program whose entries live in its own namespace (FTC) only an admin may update an
+// Accuracy and automatic flags are DERIVED fields written onto an entry. In a program whose entries live in its own namespace (`ownEntryStore`) only an admin may update an
 // entry (the rules: `scoutEntries` update is admin-only), so a scout's recompute would be denied. The rules are not loosened: the scout pages skip the recompute
 // for everyone but an admin, and the next admin recompute (any admin's save, an import, or the "Recalculate Accuracy" button) covers it. The default program is
 // unchanged: every save recomputes.
 
-/** Does this person's save trigger a recompute? A program with its own entry store (FTC): admins only. The default program: everyone, as before. */
+/** Does this person's save trigger a recompute? A program with its own entry store: admins only. The default program: everyone, as before. */
 export function shouldRecomputeAfterSave(args: { ownEntryStore: boolean; isAdmin: boolean }): boolean {
   return !args.ownEntryStore || args.isAdmin;
 }
