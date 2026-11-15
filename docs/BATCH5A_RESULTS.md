@@ -11,7 +11,18 @@
 **Verify.** lint 0 errors, 1 warning (`match-list-screen.tsx`, not mine). `npm test` 3285 pass, 0 fail (238 files; the 5 brand-guard failures of Batch 4 are gone). `test:rules` 392/392 (14 new: team update valid and invalid shapes, member assignment, self-assign refused, legacy account, `activeForms`, audit create, changelog read, create, seed transaction, `lastSeenChangelogAt`). build pass.
 **Rule change: none.** Roll back: `git revert` the Batch 5a commits (the flag goes off, `/team-settings` and `/changelog` show "not available" again).
 **Rules facts:** the rules do not check team number digits or uniqueness (the editor does); they accept removing a team a member lists (the app refuses first); a member cannot change their own `fieldTeamIds`. Team lists are saved whole, so two admins editing at once is last write wins.
-**Manual check (9).** 1) As admin open /ftc/team-settings. 2) Add a team (try Look up with and without keys), then rename it. 3) Assign a second account to one team: that account's switcher shows only it, you (admin) see all. 4) Try removing a team with an assigned member: refused with names; untick, then remove it. 5) Active forms card: the select is disabled (one season). 6) As a plain member open Team Settings: read-only list. 7) /ftc/changelog as admin: five drafts, publish one; as a member the badge appears, clears on opening and stays cleared after a reload. 8) Check Admin Panel > Audit Log shows the changes. 9) Side by side: /frc/team-settings and /frc/changelog look and behave as before.
+**Manual check (9).**
+1) As admin open /ftc/team-settings.
+2) Add a team (try Look up with and without keys), then rename it.
+3) Assign a second account to one team: that account's switcher shows only it, you (admin) see all.
+4) Try removing a team with an assigned member: refused with names; untick, then remove it.
+5) Active forms card: the select is disabled (one season).
+6) As a plain member open Team Settings: read-only list.
+7) /ftc/changelog as admin: five drafts, publish one; as a member the badge appears, clears on opening and stays cleared after a reload.
+8) Check Admin Panel > Audit Log shows the changes.
+9) Side by side: /frc/team-settings and /frc/changelog look and behave as before.
+**Manual check done by the owner:** 1 to 9 confirmed. On 7 the owner saw the FTC changelog drafts in the FRC changelog too. **Open bug, cause not found yet:** by reading the code every path is keyed by one `program` value (`starterEntriesFor("frc")` returns the FRC list, tested; FRC writes only root `changelog`, `teams`, `auditLog`), so I cannot explain it without knowing where the documents landed: root `changelog/starter-<team>-v0-*` or `programs/ftc/changelog/...`, and under which team id. Do not publish those drafts in FRC until this is checked.
+
 **Left for later:** filtering entries and events by team, a client caller for `sync`, Admin: Forms, Sessions, Rescore, Backups, Templates (Batch 5b).
 
 **Next step:** Batch 5b (the remaining Admin Panel tabs), after you review the seed wording and the choice about entries by team.
