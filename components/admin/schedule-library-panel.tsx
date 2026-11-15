@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowLeft, Download, Eye, EyeOff, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Download, Eye, EyeOff, Pencil, Plus, Trash2, Trophy } from "lucide-react";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +19,11 @@ import { useProgramConfig } from "@/lib/program/context";
 import {
   emptyRawScheduleMatch,
   publishedLabel,
+  rawScoresOf,
+  scoreLabel,
+  validateRawScores,
+  type MatchScoreErrors,
+  type RawMatchScores,
   scheduleMatchLabel as matchLabel,
   summarizeEvents,
   validateRawScheduleMatch,
@@ -90,6 +95,7 @@ export function ScheduleLibraryPanel() {
         tone: "ok",
         text:
           `${result.eventName}: ${result.created} new, ${result.updated} updated.` +
+          (result.scored ? ` ${result.scored} with official scores.` : "") +
           (result.skippedNoTeams > 0 ? ` ${result.skippedNoTeams} not scheduled with teams yet (import again later).` : "") +
           (result.skippedManual.length > 0 ? ` Left ${result.skippedManual.length} hand-made match(es) untouched.` : ""),
       });
@@ -248,6 +254,7 @@ function NewEventDialog({ library, actor, seasonId, existing, onClose, onCreated
 function EventView({ event, actor, library, onBack }: { event: LibraryEvent; actor: Actor; library: LibraryPort; onBack: () => void }) {
   const { matches, loaded, error, retry, unreadable } = useLibraryMatches(event.eventCode, { includeUnpublished: true });
   const [editing, setEditing] = useState<LibraryMatch | "new" | null>(null);
+  const [scoring, setScoring] = useState<LibraryMatch | null>(null);
   const [confirm, setConfirm] = useState<{ kind: "match"; match: LibraryMatch } | { kind: "event" } | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
@@ -332,6 +339,7 @@ function EventView({ event, actor, library, onBack }: { event: LibraryEvent; act
               <TH>Red</TH>
               <TH>Blue</TH>
               <TH>Time</TH>
+              <TH>Official score</TH>
               <TH>State</TH>
               <TH>&nbsp;</TH>
             </TR>
@@ -343,6 +351,7 @@ function EventView({ event, actor, library, onBack }: { event: LibraryEvent; act
                 <TD className="text-red-300">{m.alliances.red.teams.length ? m.alliances.red.teams.join(", ") : "TBD"}</TD>
                 <TD className="text-blue-300">{m.alliances.blue.teams.length ? m.alliances.blue.teams.join(", ") : "TBD"}</TD>
                 <TD className="text-xs">{showTime(m.scheduledTime)}</TD>
+                <TD className="text-xs" data-testid={`lib-score-${m.id}`}>{scoreLabel(m)}</TD>
                 <TD>
                   <Badge variant={m.published === true ? "success" : "outline"}>{m.published === true ? "Published" : "Draft"}</Badge>
                 </TD>
@@ -350,6 +359,9 @@ function EventView({ event, actor, library, onBack }: { event: LibraryEvent; act
                   <div className="flex flex-wrap gap-1.5">
                     <Button size="sm" variant="glass" className="min-h-11 gap-1" disabled={busy} onClick={() => void publish([m.id], m.published !== true)}>
                       {m.published === true ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />} {m.published === true ? "Unpublish" : "Publish"}
+                    </Button>
+                    <Button size="sm" variant="glass" className="min-h-11 gap-1" disabled={busy} onClick={() => setScoring(m)} aria-label={`Official score for ${matchLabel(m)}`}>
+                      <Trophy className="h-3.5 w-3.5" /> Score
                     </Button>
                     {manual && (
                       <>
@@ -378,6 +390,19 @@ function EventView({ event, actor, library, onBack }: { event: LibraryEvent; act
           onClose={() => setEditing(null)}
           onSaved={(text) => {
             setEditing(null);
+            setMessage({ tone: "ok", text });
+          }}
+        />
+      )}
+
+      {scoring && (
+        <ScoresDialog
+          library={library}
+          actor={actor}
+          match={scoring}
+          onClose={() => setScoring(null)}
+          onSaved={(text) => {
+            setScoring(null);
             setMessage({ tone: "ok", text });
           }}
         />
@@ -498,6 +523,83 @@ function MatchDialog({ library, event, actor, match, onClose, onSaved }: { libra
             </Button>
             <Button className="min-h-11" onClick={() => void save()} disabled={saving}>
               {saving ? "Saving…" : match ? "Save changes" : "Add match"}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Enter, edit or clear the official score of one match: what a practice session's total is compared with. Blank scores are never stored as 0. */
+function ScoresDialog({ library, actor, match, onClose, onSaved }: { library: LibraryPort; actor: Actor; match: LibraryMatch; onClose: () => void; onSaved: (text: string) => void }) {
+  const [raw, setRaw] = useState<RawMatchScores>(() => rawScoresOf(match));
+  const [errors, setErrors] = useState<MatchScoreErrors>({});
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const hasScores = match.alliances.red.scoreKnown !== false || match.alliances.blue.scoreKnown !== false;
+
+  const commit = async (scores: Parameters<LibraryPort["setScores"]>[2], done: string) => {
+    setSaving(true);
+    setError(null);
+    try {
+      await library.setScores(actor, match.id, scores);
+      onSaved(done);
+    } catch (err) {
+      setError(err instanceof Error && err.message ? `Couldn't save: ${err.message}` : "Couldn't save. Check your connection and try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const save = () => {
+    const checked = validateRawScores(raw);
+    if (!checked.ok) {
+      setErrors(checked.errors);
+      return;
+    }
+    setErrors({});
+    void commit(checked.scores, `Official score saved for ${matchLabel(match)}.`);
+  };
+
+  const field = (color: "red" | "blue", kind: "Score" | "Penalty") => {
+    const key = `${color}${kind}` as keyof RawMatchScores;
+    return (
+      <div>
+        <Label htmlFor={`lib-sc-${key}`}>{kind === "Score" ? "Official score" : "Foul points awarded (optional)"}</Label>
+        <Input id={`lib-sc-${key}`} inputMode="numeric" value={raw[key]} onChange={(e) => setRaw({ ...raw, [key]: e.target.value })} aria-invalid={!!errors[key]} />
+        <FieldError>{errors[key]}</FieldError>
+      </div>
+    );
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && !saving && onClose()}>
+      <DialogContent className="w-[min(92vw,480px)]">
+        <DialogTitle>{`Official score for ${matchLabel(match)}`}</DialogTitle>
+        <DialogDescription>Practice scouts are compared with this. A match with no score still works: it shows the totals and &quot;No official score yet&quot;.</DialogDescription>
+        <div className="mt-4 flex flex-col gap-4">
+          {(["red", "blue"] as const).map((color) => (
+            <fieldset key={color} className="flex flex-col gap-2">
+              <legend className={color === "red" ? "text-sm font-medium text-red-300" : "text-sm font-medium text-blue-300"}>{color === "red" ? "Red alliance" : "Blue alliance"}</legend>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {field(color, "Score")}
+                {field(color, "Penalty")}
+              </div>
+            </fieldset>
+          ))}
+          {error && <p role="alert" className="text-sm text-red-300">{error}</p>}
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            {hasScores && (
+              <Button variant="glass" className="min-h-11 sm:mr-auto" disabled={saving} onClick={() => void commit(null, `Official score cleared for ${matchLabel(match)}.`)}>
+                Clear score
+              </Button>
+            )}
+            <Button variant="glass" className="min-h-11" onClick={onClose} disabled={saving}>
+              Cancel
+            </Button>
+            <Button className="min-h-11" onClick={save} disabled={saving}>
+              {saving ? "Saving…" : "Save score"}
             </Button>
           </div>
         </div>

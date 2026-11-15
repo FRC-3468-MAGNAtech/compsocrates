@@ -8,8 +8,9 @@ export type LobbyPairScoringPatch = {
   /** Null (shown as "n/a") when the form has no scoring: there is nothing to compare against the official score (P21). */
   accuracy: number | null;
   scoutedTotal: number | null;
-  officialScore: number;
-  penaltyPoints: number;
+  /** Null when the alliance has no official score yet (a scheduled match nobody has scored): never a 0. Always a number for a program whose library holds results. */
+  officialScore: number | null;
+  penaltyPoints: number | null;
   flags: SessionFlag[];
 };
 
@@ -37,13 +38,17 @@ export function resolveLobbyPairScoring(
 ): LobbyPairScoringPatch {
   const officialAlliance = match.alliances[alliance];
   const scored = entries.every((e) => e.scored !== false);
-  const { accuracy, scoutedTotal } = scored
-    ? computeAllianceAccuracy({
-        robotScores: entries.map((e) => e.score.total),
-        penaltyPoints: officialAlliance.penaltyPoints,
-        officialScore: officialAlliance.score,
-      })
-    : { accuracy: null, scoutedTotal: null };
+  // An alliance with no official score yet keeps the robots' total and has no accuracy (never a 0 compared against a placeholder).
+  const officialKnown = officialAlliance.scoreKnown !== false;
+  const { accuracy, scoutedTotal } = !scored
+    ? { accuracy: null, scoutedTotal: null }
+    : officialKnown
+      ? computeAllianceAccuracy({
+          robotScores: entries.map((e) => e.score.total),
+          penaltyPoints: officialAlliance.penaltyPoints,
+          officialScore: officialAlliance.score,
+        })
+      : { accuracy: null, scoutedTotal: entries.reduce((sum, e) => sum + e.score.total, 0) };
 
   const flags = evaluatePracticeSessionFlags({
     entries,
@@ -52,5 +57,5 @@ export function resolveLobbyPairScoring(
     priorCompletedAttempt,
   }).map((f) => ({ ...f, dismissed: false }));
 
-  return { accuracy, scoutedTotal, officialScore: officialAlliance.score, penaltyPoints: officialAlliance.penaltyPoints, flags };
+  return { accuracy, scoutedTotal, officialScore: officialKnown ? officialAlliance.score : null, penaltyPoints: officialKnown ? officialAlliance.penaltyPoints : null, flags };
 }

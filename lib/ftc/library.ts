@@ -3,6 +3,7 @@ import type { EventMatch, MatchType } from "@/lib/events/types";
 import { decideMatchWrite, libraryMatchId, originOf, type LibraryOrigin } from "@/lib/library/ids";
 import type { LibraryEventRef, LibraryWrite } from "@/lib/library/schedule";
 import type { LibraryEvent } from "@/lib/library/store";
+import { getDifficulty } from "@/lib/difficulty";
 import type { LibraryMatch } from "@/lib/match-library";
 
 // Pure rules for the FTC match library (docs/FTC_COMPLETION_PLAN.md, batch 2): the documents under `programs/ftc/libraryEvents` and
@@ -44,7 +45,11 @@ export type ImportPlan = {
   skippedManual: string[];
   /** Scheduled matches with no teams posted yet; a later import picks them up. */
   skippedNoTeams: number;
+  /** Matches written with the official score the API already has for them (a played match). */
+  scored: number;
 };
+
+const apiScore = (value: number | null | undefined): number | null => (typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 9999 ? value : null);
 
 /**
  * What an import writes. Matches already stored are updated in place (their `published` choice and creation time are kept), new ones are created
@@ -53,7 +58,7 @@ export type ImportPlan = {
  */
 export function planScheduleImport(args: { event: LibraryEventRef; matches: readonly EventMatch[]; existing: ReadonlyMap<string, Record<string, unknown>>; uid: string; now: string }): ImportPlan {
   const { event, matches, existing, uid, now } = args;
-  const plan: ImportPlan = { writes: [], created: 0, updated: 0, skippedManual: [], skippedNoTeams: 0 };
+  const plan: ImportPlan = { writes: [], created: 0, updated: 0, skippedManual: [], skippedNoTeams: 0, scored: 0 };
   const seen = new Set<string>();
   const size = ftcAllianceSize();
   for (const m of matches) {
@@ -74,13 +79,22 @@ export function planScheduleImport(args: { event: LibraryEventRef; matches: read
       plan.skippedManual.push(id);
       continue;
     }
+    // A played match brings its official score (and the foul points awarded to each alliance). An unplayed one writes none, so a re-import never erases a score an
+    // admin entered by hand: a merge write only touches the fields it carries.
+    const redScore = m.played ? apiScore(m.redScore) : null;
+    const blueScore = m.played ? apiScore(m.blueScore) : null;
+    const scored = redScore !== null && blueScore !== null;
+    if (scored) plan.scored++;
     const base = {
       seasonId: event.seasonId,
       eventCode: event.eventCode,
       eventName: event.eventName,
       matchType: m.type,
       matchNumber: m.matchNumber,
-      alliances: { red: { teams: red }, blue: { teams: blue } },
+      alliances: scored
+        ? { red: { teams: red, score: redScore, penaltyPoints: apiScore(m.redPenaltyPoints) ?? 0 }, blue: { teams: blue, score: blueScore, penaltyPoints: apiScore(m.bluePenaltyPoints) ?? 0 } }
+        : { red: { teams: red }, blue: { teams: blue } },
+      ...(scored ? { scoresUpdatedAt: now } : {}),
       scheduledTime: m.startTime ?? null,
       origin: "api" as const,
       updatedAt: now,
@@ -98,6 +112,18 @@ export function planScheduleImport(args: { event: LibraryEventRef; matches: read
 
 // --- reading stored docs ---------------------------------------------------------------------------
 
+/** A stored score or penalty: a whole number from 0 to 9999 (the rules' bounds). */
+const isScoreValue = (value: unknown): value is number => typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 9999;
+
+/** A stored match video (no screen writes one yet): a YouTube link with an optional clip window. Anything else reads as no video. */
+function readVideo(value: unknown): LibraryMatch["video"] {
+  if (typeof value !== "object" || value === null) return null;
+  const v = value as { youtubeUrl?: unknown; startSec?: unknown; endSec?: unknown };
+  if (typeof v.youtubeUrl !== "string" || v.youtubeUrl.trim() === "") return null;
+  const sec = (n: unknown) => (typeof n === "number" && Number.isFinite(n) && n >= 0 ? n : null);
+  return { youtubeUrl: v.youtubeUrl, startSec: sec(v.startSec), endSec: sec(v.endSec) };
+}
+
 const asTeams = (value: unknown): number[] => (Array.isArray(value) ? value.filter((t): t is number => typeof t === "number" && Number.isFinite(t)) : []);
 const asIso = (value: unknown): string => (typeof value === "string" ? value : "");
 
@@ -105,14 +131,25 @@ const MATCH_TYPES: readonly MatchType[] = ["Practice", "Qualification", "Playoff
 
 /**
  * A stored FTC library doc as the app's `LibraryMatch`. Tolerates partial data: a missing alliance or slot reads as fewer teams, never a throw.
- * Returns null only when the doc cannot be identified (no valid type or number). It has no score: `scheduleOnly` is true and the score fields are
- * placeholders (0, "easy") that no schedule-only reader may show or total.
+ * Returns null only when the doc cannot be identified (no valid type or number). The official score is optional per alliance (an admin enters it, or the
+ * import brings it once the match is played): an alliance with none has `scoreKnown: false` and placeholder score fields (0, "easy") that no reader may
+ * show, total or compare against; `scheduleOnly` is true when neither alliance has one. A known score gets its difficulty from the game's own cut-offs.
  */
 export function ftcDocToLibraryMatch(id: string, data: Record<string, unknown>): LibraryMatch | null {
   const matchType = MATCH_TYPES.find((t) => t === data.matchType);
   if (!matchType || typeof data.matchNumber !== "number" || !Number.isInteger(data.matchNumber)) return null;
   const alliances = (typeof data.alliances === "object" && data.alliances !== null ? data.alliances : {}) as Record<string, unknown>;
-  const side = (key: "red" | "blue") => ({ teams: asTeams((alliances[key] as { teams?: unknown } | undefined)?.teams), score: 0, penaltyPoints: 0, difficulty: "easy" as const });
+  const seasonId = typeof data.seasonId === "string" ? data.seasonId : "";
+  const side = (key: "red" | "blue"): LibraryMatch["alliances"]["red"] => {
+    const raw = (alliances[key] ?? {}) as { teams?: unknown; score?: unknown; penaltyPoints?: unknown };
+    const teams = asTeams(raw.teams);
+    // The official score is optional (a scheduled match has none yet). A stored score that is not a whole, non-negative number is treated as missing, never as 0.
+    if (!isScoreValue(raw.score)) return { teams, score: 0, penaltyPoints: 0, difficulty: "easy", scoreKnown: false };
+    const penaltyPoints = isScoreValue(raw.penaltyPoints) ? raw.penaltyPoints : 0;
+    return { teams, score: raw.score, penaltyPoints, difficulty: getDifficulty(raw.score, seasonId, "ftc"), scoreKnown: true };
+  };
+  const red = side("red");
+  const blue = side("blue");
   return {
     id,
     seasonId: typeof data.seasonId === "string" ? data.seasonId : "",
@@ -120,15 +157,15 @@ export function ftcDocToLibraryMatch(id: string, data: Record<string, unknown>):
     eventName: typeof data.eventName === "string" ? data.eventName : "",
     matchType,
     matchNumber: data.matchNumber,
-    alliances: { red: side("red"), blue: side("blue") },
-    video: null,
+    alliances: { red, blue },
+    video: readVideo(data.video),
     importedAt: asIso(data.createdAt ?? data.importedAt),
-    scoresUpdatedAt: "",
+    scoresUpdatedAt: asIso(data.scoresUpdatedAt),
     origin: originOf(data) as LibraryOrigin,
     published: typeof data.published === "boolean" ? data.published : undefined,
     createdBy: typeof data.createdBy === "string" ? data.createdBy : undefined,
     updatedAt: typeof data.updatedAt === "string" ? data.updatedAt : undefined,
-    scheduleOnly: true,
+    scheduleOnly: !red.scoreKnown && !blue.scoreKnown,
     scheduledTime: typeof data.scheduledTime === "string" ? data.scheduledTime : null,
     teamId: typeof data.teamId === "string" ? data.teamId : undefined,
   };

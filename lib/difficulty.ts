@@ -1,4 +1,6 @@
 import { DEFAULT_DIFFICULTY_THRESHOLDS, GAME_DEFINITIONS } from "@/config/games";
+import { PROGRAMS } from "@/config/programs";
+import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
 
 export type Difficulty = "easy" | "medium" | "hard";
 
@@ -11,8 +13,14 @@ export type DifficultyThresholds = { readonly easyMax: number; readonly mediumMa
  * (`charged_up`), any case. A game the app has no definition for (or no game at all) gets the default 200 / 400, which is what CS
  * itself uses for every game except CHARGED UP.
  */
-export function difficultyThresholdsFor(game: string | null | undefined): DifficultyThresholds {
+export function difficultyThresholdsFor(game: string | null | undefined, program: ProgramId = DEFAULT_PROGRAM): DifficultyThresholds {
   const id = typeof game === "string" ? game.trim().toUpperCase() : "";
+  // A program with games of its own keeps their cut-offs in its config (`gameDifficulty`); the default program's table below is untouched.
+  if (program !== DEFAULT_PROGRAM) {
+    const own = PROGRAMS[program].gameDifficulty;
+    if (own && Object.prototype.hasOwnProperty.call(own, id)) return own[id];
+    return DEFAULT_DIFFICULTY_THRESHOLDS;
+  }
   const definition = Object.prototype.hasOwnProperty.call(GAME_DEFINITIONS, id) ? GAME_DEFINITIONS[id as keyof typeof GAME_DEFINITIONS] : null;
   return definition ? definition.thresholds.difficulty : DEFAULT_DIFFICULTY_THRESHOLDS;
 }
@@ -36,8 +44,8 @@ export const DIFFICULTY_CLASSNAMES: Record<Difficulty, string> = {
  * Difficulty is computed per alliance, from that alliance's own official score and the game it was played in (a score means
  * something different in each season). A score that is not a finite number counts as "easy", as in CS.
  */
-export function getDifficulty(officialAllianceScore: number, game: string | null | undefined): Difficulty {
-  const { easyMax, mediumMax } = difficultyThresholdsFor(game);
+export function getDifficulty(officialAllianceScore: number, game: string | null | undefined, program: ProgramId = DEFAULT_PROGRAM): Difficulty {
+  const { easyMax, mediumMax } = difficultyThresholdsFor(game, program);
   if (!Number.isFinite(officialAllianceScore) || officialAllianceScore <= easyMax) return "easy";
   if (officialAllianceScore <= mediumMax) return "medium";
   return "hard";

@@ -7,14 +7,14 @@
  * API-imported docs (`origin == 'api'`, public competition data) and a team's own hand-made docs (`teamId == <mine>`), and the rules can prove a list query
  * only from its constraints: `origin == 'api'` for the first, `teamId == <mine>` for the second (see the `programs/ftc` block of firestore.rules).
  */
-import { getDoc, getDocs, onSnapshot, query, where, writeBatch, type Query, type Unsubscribe, type WriteBatch } from "firebase/firestore";
+import { deleteField, getDoc, getDocs, onSnapshot, query, where, writeBatch, type Query, type Unsubscribe, type WriteBatch } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { programCollection, programDoc } from "@/lib/firebase/paths";
 import { buildAuditEntry, newAuditLogRef } from "@/lib/audit-log";
 import { reportFirestoreError, type FirestoreFailure } from "@/lib/firestore-errors";
 import { clearReadFailure, recordReadFailure } from "@/lib/read-failures";
 import { createMergedFeed, ftcDocToLibraryEvent, ftcDocsToLibraryMatches, ftcMatchId, generateFtcManualEventCode, planScheduleImport } from "@/lib/ftc/library";
-import { LIBRARY_BATCH_SIZE, buildManualMatchDoc, chunk, type CreateEventResult, type ImportSummary, type LibraryActor, type LibraryEventRef, type LibraryWrite, type ScheduleMatchInput, type UpsertResult } from "@/lib/library/schedule";
+import { LIBRARY_BATCH_SIZE, buildManualMatchDoc, chunk, type CreateEventResult, type ImportSummary, type MatchScores, type LibraryActor, type LibraryEventRef, type LibraryWrite, type ScheduleMatchInput, type UpsertResult } from "@/lib/library/schedule";
 import { validateEventForm, type EventFormInput } from "@/lib/library/event-form";
 import { validateEventCode } from "@/lib/library/ids";
 import type { EventMatch } from "@/lib/events/types";
@@ -214,6 +214,33 @@ export function setMatchesPublished(actor: Actor, ids: readonly string[], publis
   return commitMatchOps(actor, ids.map((id) => ({ kind: "update" as const, id, data: { published, updatedAt: now } })), { op: published ? "publish-matches" : "unpublish-matches", count: ids.length, matchIds: ids.slice(0, 50) }, { published });
 }
 
+/**
+ * Sets or clears the OFFICIAL score of one match (hand-made or imported: any admin of the team for its own, any FTC admin for a shared one, by the rules).
+ * Writes only the score fields (dotted paths) and the two timestamps, so teams, `published` and everything else stay as they were. `null` clears both
+ * alliances' scores: a match with no score is "No official score yet", never a score of 0.
+ */
+export function setMatchScores(actor: Actor, id: string, scores: MatchScores | null): Promise<number> {
+  const now = new Date().toISOString();
+  const data: Record<string, unknown> = scores
+    ? {
+        "alliances.red.score": scores.red.score,
+        "alliances.red.penaltyPoints": scores.red.penaltyPoints,
+        "alliances.blue.score": scores.blue.score,
+        "alliances.blue.penaltyPoints": scores.blue.penaltyPoints,
+        scoresUpdatedAt: now,
+        updatedAt: now,
+      }
+    : {
+        "alliances.red.score": deleteField(),
+        "alliances.red.penaltyPoints": deleteField(),
+        "alliances.blue.score": deleteField(),
+        "alliances.blue.penaltyPoints": deleteField(),
+        scoresUpdatedAt: deleteField(),
+        updatedAt: now,
+      };
+  return commitMatchOps(actor, [{ kind: "update", id, data }], { op: scores ? "set-match-scores" : "clear-match-scores", matchId: id }, scores);
+}
+
 /** Deletes hand-made matches (the rules refuse to delete an imported one). */
 export function deleteManualMatches(actor: Actor, ids: readonly string[]): Promise<number> {
   return commitMatchOps(actor, ids.map((id) => ({ kind: "delete" as const, id })), { op: "delete-matches", count: ids.length, matchIds: ids.slice(0, 50) });
@@ -241,9 +268,9 @@ export async function importSchedule(actor: Actor, args: { event: LibraryEventRe
   const now = new Date().toISOString();
   const plan = planScheduleImport({ event, matches: args.matches, existing, uid: actor.uid, now });
   const ops: Op[] = plan.writes.map((w: LibraryWrite) => ({ kind: "set", id: w.id, data: w.data, merge: w.merge }));
-  const batches = await commitMatchOps(actor, ops, { op: "import-event", eventCode: event.eventCode, seasonId: event.seasonId }, { created: plan.created, updated: plan.updated, skippedManual: plan.skippedManual.length, skippedNoTeams: plan.skippedNoTeams }, (batch) => {
+  const batches = await commitMatchOps(actor, ops, { op: "import-event", eventCode: event.eventCode, seasonId: event.seasonId }, { created: plan.created, updated: plan.updated, scored: plan.scored, skippedManual: plan.skippedManual.length, skippedNoTeams: plan.skippedNoTeams }, (batch) => {
     if (eventExists) batch.update(eventRef, { eventName: event.eventName, updatedAt: now });
     else batch.set(eventRef, { eventCode: event.eventCode, eventName: event.eventName, seasonId: event.seasonId, origin: "api", date: null, sourceUrl: null, defaultVideoUrl: null, createdBy: actor.uid, createdAt: now, updatedAt: now });
   });
-  return { eventCode: event.eventCode, eventName: event.eventName, created: plan.created, updated: plan.updated, skippedManual: plan.skippedManual, skippedNoTeams: plan.skippedNoTeams, batches };
+  return { eventCode: event.eventCode, eventName: event.eventName, created: plan.created, updated: plan.updated, skippedManual: plan.skippedManual, skippedNoTeams: plan.skippedNoTeams, batches, scored: plan.scored };
 }

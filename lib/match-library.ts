@@ -33,6 +33,11 @@ export type LibraryAlliance = {
   score: number;
   penaltyPoints: number;
   difficulty: Difficulty;
+  /**
+   * Schedule-only programs (additive): does this alliance have an official score yet? False means `score`, `penaltyPoints` and `difficulty` are placeholders
+   * (0, 0, "easy") that nothing may show, total or compare against. Absent (every FRC alliance) means the score is known.
+   */
+  scoreKnown?: boolean;
 };
 
 /**

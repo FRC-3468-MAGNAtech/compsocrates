@@ -4,6 +4,7 @@ import { calculateScore, storableScore } from "@/lib/forms/scoring";
 import { entryValues } from "@/lib/forms/entry-values";
 import { builtinFormResolver, type FormResolver } from "@/lib/forms/resolver";
 import { updateEntry, type ScoutEntry } from "@/lib/scout-entries";
+import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
 import { updatePracticeSession, type PracticeSession } from "@/lib/practice-sessions";
 import type { LibraryMatch } from "@/lib/match-library";
 import type { EventMatch } from "@/lib/events/types";
@@ -238,12 +239,12 @@ function chunk<T>(items: T[], size: number): T[][] {
  * current data (re-applying an already-applied plan just writes the same
  * values again).
  */
-export async function applySessionRescorePlan(patches: SessionRescorePatch[], onProgress?: (done: number, total: number) => void): Promise<void> {
+export async function applySessionRescorePlan(patches: SessionRescorePatch[], onProgress?: (done: number, total: number) => void, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
   const sessionWrites = patches.flatMap((p) => p.sessionWrites);
   const entryWrites = patches.flatMap((p) => p.entryWrites);
   const allWrites = [
-    ...sessionWrites.map((w) => () => updatePracticeSession(w.sessionId, w.patch)),
-    ...entryWrites.map((w) => () => updateEntry(w.entryId, w.patch)),
+    ...sessionWrites.map((w) => () => updatePracticeSession(w.sessionId, w.patch, undefined, program)),
+    ...entryWrites.map((w) => () => updateEntry(w.entryId, w.patch, {}, program)),
   ];
   const chunks = chunk(allWrites, BATCH_CHUNK_SIZE);
   let done = 0;

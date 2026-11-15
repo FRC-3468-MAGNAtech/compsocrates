@@ -1,5 +1,6 @@
 "use client";
 
+import { useProgram } from "@/lib/program/context";
 import { useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { GlassPanel } from "@/components/ui/glass-panel";
@@ -161,6 +162,7 @@ function EventRescore({ teamId, actorUid, actorName }: { teamId: string; actorUi
 }
 
 function SessionRescore({ teamId, actorUid, actorName }: { teamId: string; actorUid: string; actorName: string }) {
+  const program = useProgram();
   const forms = useForms();
   const { sessions } = useAllTeamPracticeSessions(teamId);
   const { entries } = useTeamScoutEntries(teamId);
@@ -244,7 +246,7 @@ function SessionRescore({ teamId, actorUid, actorName }: { teamId: string; actor
     setApplying(true);
     setProgress(null);
     try {
-      await applySessionRescorePlan(plan, (done, total) => setProgress({ done, total }));
+      await applySessionRescorePlan(plan, (done, total) => setProgress({ done, total }), program);
       await logAuditEvent(teamId, actorUid, actorName, "rescore-sessions", { seasonId, eventCode, dateFrom, dateTo }, null, {
         groupCount: plan.length,
         changedCount: changed.length,
