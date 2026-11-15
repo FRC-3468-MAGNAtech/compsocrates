@@ -94,6 +94,7 @@ export function ftcUserToProfile(uid: string, doc: FtcUserDoc): UserDoc {
 export function ftcUserToMember(uid: string, doc: FtcUserDoc): TeamMember {
   const profile = ftcUserToProfile(uid, doc);
   const joinedAtMs = toEpochMs(doc.createdAt);
+  const assignedTeamIds = readMemberFieldTeamIds(doc);
   return {
     uid,
     name: profile.name,
@@ -104,6 +105,7 @@ export function ftcUserToMember(uid: string, doc: FtcUserDoc): TeamMember {
     isOwner: profile.isOwner,
     ...(doc.avatar ? { avatar: parseAvatar(doc.avatar) } : {}),
     ...(joinedAtMs ? { joinedAtMs } : {}),
+    ...(assignedTeamIds && assignedTeamIds.length > 0 ? { assignedTeamIds } : {}),
   };
 }
 

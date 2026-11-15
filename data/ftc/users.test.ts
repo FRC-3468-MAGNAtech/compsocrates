@@ -96,6 +96,12 @@ describe("ftcUserToMember", () => {
     expect(ftcUserToMember("u", stored({ createdAt: { toMillis: () => 5000 } })).joinedAtMs).toBe(5000);
     expect(ftcUserToMember("u", stored())).not.toHaveProperty("joinedAtMs");
   });
+
+  it("carries the member's assigned account teams (fieldTeamIds), and leaves the field out when there are none (= all teams)", () => {
+    expect(ftcUserToMember("u", stored({ fieldTeamIds: ["ft-1"] })).assignedTeamIds).toEqual(["ft-1"]);
+    expect(ftcUserToMember("u", stored({ fieldTeamIds: [] }))).not.toHaveProperty("assignedTeamIds");
+    expect(ftcUserToMember("u", stored())).not.toHaveProperty("assignedTeamIds");
+  });
 });
 
 describe("readMemberFieldTeamIds", () => {

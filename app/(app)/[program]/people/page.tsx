@@ -12,6 +12,8 @@ import { useAuth } from "@/lib/auth";
 import { useActiveEvents } from "@/lib/active-event";
 import { useTeamEventAttendance } from "@/lib/event-attendance";
 import { useTeamMembers } from "@/lib/team-members";
+import { useAccountTeamChoice } from "@/lib/our-team";
+import { membersOfSelectedTeam } from "@/lib/member-scope";
 import { getRole, ROLES } from "@/lib/roles";
 
 export default function PeoplePage() {
@@ -25,7 +27,10 @@ export default function PeoplePage() {
     [attendance, isActive]
   );
   const [query, setQuery] = useState("");
-  const filtered = useMemo(() => members.filter((p) => p.name.toLowerCase().includes(query.toLowerCase())), [members, query]);
+  // Several teams per account: only the members of the team being viewed as (all of them when the program has one team per account).
+  const { selectedId } = useAccountTeamChoice();
+  const teamMembers = useMemo(() => membersOfSelectedTeam(members, selectedId), [members, selectedId]);
+  const filtered = useMemo(() => teamMembers.filter((p) => p.name.toLowerCase().includes(query.toLowerCase())), [teamMembers, query]);
 
   return (
     <div className="flex flex-col gap-6">

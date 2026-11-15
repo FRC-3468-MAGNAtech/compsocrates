@@ -27,6 +27,8 @@ export type TeamMember = {
   joinedAtMs?: number;
   /** D1: the raw CS `role` string (may be a legacy value such as "coach"), so a role edit keeps CS's own admin rule consistent. */
   legacyRole?: string;
+  /** Multi-team programs: the account teams the member is assigned to; absent or empty = all of them. */
+  assignedTeamIds?: string[];
 };
 
 /** Realtime roster for a team — backs both Team Management (editable, admin-only) and People (read-only). */
