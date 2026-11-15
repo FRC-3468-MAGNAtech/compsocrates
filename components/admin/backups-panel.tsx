@@ -5,6 +5,8 @@ import { Download, FileJson, FileSpreadsheet } from "lucide-react";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
+import { useProgram } from "@/lib/program/context";
+import { useProgramData } from "@/lib/program/data";
 import { useAuditLog } from "@/lib/audit-log";
 import { exportAllDataJson, exportEntriesCsv, type BackupSummary } from "@/lib/admin/backup";
 import { useForms } from "@/lib/forms/forms-context";
@@ -20,6 +22,9 @@ function toMillis(value: unknown): number {
 export function BackupsPanel() {
   const { user, profile } = useAuth();
   const forms = useForms();
+  const program = useProgram();
+  // A program with its own data port exports its own collections, and falls back to its own form for the CSV columns when the team has no entries yet.
+  const ownStore = useProgramData() != null;
   const teamId = profile?.teamId ?? null;
   const { entries: auditEntries } = useAuditLog(teamId);
 
@@ -39,7 +44,7 @@ export function BackupsPanel() {
     setExportingJson(true);
     setError(null);
     try {
-      setSummary(await exportAllDataJson(teamId, user.uid, profile.name));
+      setSummary(await exportAllDataJson(teamId, user.uid, profile.name, program));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't export data.");
     } finally {
@@ -52,7 +57,7 @@ export function BackupsPanel() {
     setExportingCsv(true);
     setError(null);
     try {
-      await exportEntriesCsv(teamId, user.uid, profile.name, forms.currentResolver);
+      await exportEntriesCsv(teamId, user.uid, profile.name, forms.currentResolver, program, ownStore ? forms.activeFormFor() : undefined);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't export entries.");
     } finally {

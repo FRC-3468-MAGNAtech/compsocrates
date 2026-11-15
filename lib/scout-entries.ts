@@ -385,7 +385,29 @@ export async function saveEntry(teamId: string, uid: string, input: SaveEntryInp
 // ---------------------------------------------------------------------------------------------------------------------
 
 /** Every entry of the team (all sources), plus legacy rows without a `teamId`. */
-export async function getEntries(teamId: string): Promise<ScoutEntry[]> {
+/** Every entry of the team once (a program with its own entry store reads it through its port; a failed read rejects, it is never an empty list). */
+function readTeamEntriesOnce(port: NonNullable<ReturnType<typeof programData>>, teamId: string): Promise<ScoutEntry[]> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let stop: (() => void) | null = null;
+    const finish = (done: () => void) => {
+      if (settled) return;
+      settled = true;
+      stop?.();
+      done();
+    };
+    stop = port.scoutEntries.subscribeTeam(
+      teamId,
+      (entries) => finish(() => resolve(entries)),
+      (failure) => finish(() => reject(new Error(failure.message)))
+    );
+    if (settled) stop();
+  });
+}
+
+export async function getEntries(teamId: string, program: ProgramId = DEFAULT_PROGRAM): Promise<ScoutEntry[]> {
+  const port = programData(program);
+  if (port) return readTeamEntriesOnce(port, teamId);
   const [snap, legacy, flags] = await Promise.all([getDocs(teamQuery(teamId)), loadLegacyRows(teamId), loadFlagStates(teamId)]);
   return toEntries(mergeRows(snap.docs.map(toRaw), legacy), teamId, flags);
 }
