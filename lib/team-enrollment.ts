@@ -58,6 +58,25 @@ export async function setTeamCreationEnabled(enabled: boolean): Promise<void> {
   await authedPost("/api/admin/team-creation", { enabled });
 }
 
+/**
+ * Whether team admins see every profile of their own team (owner switch, default on). Public read of the same config route; a failed
+ * read answers null ("unknown"), which callers treat as on, because the profile rules are the real gate.
+ */
+export async function fetchAdminsSeeAllProfiles(): Promise<boolean | null> {
+  try {
+    const res = await fetch("/api/public/config");
+    const json = await res.json();
+    return typeof json.adminsSeeAllProfiles === "boolean" ? json.adminsSeeAllProfiles : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Owner-only — see app/api/admin/admins-see-profiles/route.ts. Throws on failure so the caller can show it. */
+export async function setAdminsSeeAllProfiles(enabled: boolean): Promise<void> {
+  await authedPost("/api/admin/admins-see-profiles", { enabled });
+}
+
 /** Called right after every sign-in — see app/api/auth/sync-roles/route.ts and lib/auth.tsx. */
 export async function syncRoles(): Promise<{ changed: boolean; ownerPendingVerification: boolean }> {
   if (!auth.currentUser) return { changed: false, ownerPendingVerification: false };

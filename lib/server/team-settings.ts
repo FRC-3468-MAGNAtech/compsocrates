@@ -4,6 +4,15 @@ import { generateTeamCode } from "@/data/cs/join-requests";
 
 export const APP_SETTINGS_PATH = "appSettings/global";
 
+/**
+ * appSettings/global.adminsSeeAllProfiles (additive, Session G): when not `false`, team admins can read every profile of their own
+ * team whatever its owner chose. Missing means ON; only an explicit `false` turns it off. The profile rules read the same field.
+ */
+export async function getAdminsSeeAllProfiles(db: Firestore): Promise<boolean> {
+  const snap = await db.doc(APP_SETTINGS_PATH).get();
+  return snap.data()?.adminsSeeAllProfiles !== false;
+}
+
 /** A random uppercase join code (the `teams/{CODE}` doc id). Collisions are checked by the caller (`pickFreeTeamCode`). */
 export function randomJoinCode(length = 6): string {
   return generateTeamCode(Math.random, length);

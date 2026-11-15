@@ -215,7 +215,7 @@ function ProfileFixture() {
 
 function EditorFixture() {
   const q = useSearchParams();
-  const isAdmin = q.get("admin") === "1";
+  const adminsSeeAll = q.get("seeall") === "0" ? false : null;
   const savedKey = q.get("saved") ?? "none";
   const google = q.get("google") === "1";
   const failSave = q.get("fail") === "1";
@@ -233,7 +233,7 @@ function EditorFixture() {
     <ProfileEditorForm
       key={JSON.stringify([saved?.displayName ?? "", saved?.bio ?? "", saved?.pronouns ?? "", saved?.avatar ?? { type: "initials", value: "" }])}
       saved={saved}
-      isAdmin={isAdmin}
+      adminsSeeAll={adminsSeeAll}
       accountName="Ada Lovelace"
       accountAvatar={null}
       googleUrl={google ? "https://lh3.googleusercontent.com/a/example=s96-c" : null}

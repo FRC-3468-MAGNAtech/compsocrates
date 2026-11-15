@@ -122,11 +122,6 @@ service cloud.firestore {
         && (myUserDoc().data.get('isTeamAdmin', false) == true || myUserDoc().data.get('role', null) == 'coach'));
     }
 
-    // The same test for another user's doc data (profiles, who is an admin).
-    function isAdminData(d) {
-      return d.get('isTeamAdmin', false) == true || d.get('role', null) == 'coach';
-    }
-
     function userDocOf(uid) {
       return get(/databases/$(database)/documents/users/$(uid)).data;
     }
@@ -514,24 +509,31 @@ service cloud.firestore {
         && d.updatedAt == request.time;
     }
 
+    // Session G: readable by the member; by the platform owner (any team); by a teammate when the profile is public; and by an
+    // ADMIN OF THE SAME TEAM whatever the member chose, while the owner's switch appSettings/global.adminsSeeAllProfiles is on
+    // (missing means on; only `false` turns it off, then admins are treated like members). Admins may set their own profile private.
+    function adminsSeeAllProfiles() {
+      return !exists(/databases/$(database)/documents/appSettings/global)
+        || get(/databases/$(database)/documents/appSettings/global).data.get('adminsSeeAllProfiles', true) != false;
+    }
+
     match /profiles/{uid} {
       allow get: if signedIn() && (
         request.auth.uid == uid
+        || isPlatformOwner()
         || (resource == null
           ? sameTeam(userDocOf(uid).get('teamId', ''))
           : (sameTeam(resource.data.teamId)
-            && (isAdmin() || resource.data.visibility == 'public' || isAdminData(userDocOf(uid))))));
+            && (resource.data.visibility == 'public' || (isAdmin() && adminsSeeAllProfiles())))));
 
       allow create: if signedIn() && request.auth.uid == uid
         && sameTeam(request.resource.data.teamId)
-        && validProfile(request.resource.data)
-        && (!isAdmin() || request.resource.data.visibility == 'public');
+        && validProfile(request.resource.data);
 
       allow update: if signedIn() && (
         (request.auth.uid == uid
           && request.resource.data.teamId == resource.data.teamId
-          && validProfile(request.resource.data)
-          && (!isAdmin() || request.resource.data.visibility == resource.data.visibility))
+          && validProfile(request.resource.data))
         || (request.auth.uid != uid
           && isAdmin() && sameTeam(resource.data.teamId)
           && !isTeamOwnerUid(uid, resource.data.teamId)
@@ -864,8 +866,10 @@ service cloud.firestore {
     // `status == "published"`); admins of the team read and write everything. A published entry keeps its `publishedAt`
     // through edits. Keep the shape in sync with lib/changelog/index.ts and store.ts.
     function validChangelog(d) {
-      return d.keys().hasOnly(['teamId', 'version', 'title', 'date', 'summary', 'changes', 'status', 'pinned', 'createdBy', 'createdAt', 'updatedAt', 'publishedAt'])
+      // `legacy` (Session G, optional): an entry imported from the old app's changelog; it stays below the current entries and never lights the unread dot.
+      return d.keys().hasOnly(['teamId', 'version', 'title', 'date', 'summary', 'changes', 'status', 'pinned', 'createdBy', 'createdAt', 'updatedAt', 'publishedAt', 'legacy'])
         && d.keys().hasAll(['teamId', 'version', 'title', 'date', 'summary', 'changes', 'status', 'pinned', 'createdBy', 'createdAt', 'updatedAt', 'publishedAt'])
+        && (!('legacy' in d) || d.legacy is bool)
         && d.version is string && d.version.size() > 0 && d.version.size() <= 40
         && d.title is string && d.title.size() > 0 && d.title.size() <= 120
         && d.date is string && d.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
@@ -1428,17 +1432,13 @@ service cloud.firestore {
       }
 
       // P25: profiles/{uid} — a member's public/private profile (display name, bio, pronouns, avatar, visibility).
-      // Readable by:
-      //  - the member themself (always), and a teammate who is an admin (always);
-      //  - any other teammate when the profile is public — or when the member is an admin or the owner, who are always
-      //    treated as public whatever their saved preference says (so promotion applies at once and demotion brings
-      //    their preference back without a write).
+      // Readable by (Session G): the member themself; a teammate when the profile is public; a same-team admin while
+      // appSettings/global.adminsSeeAllProfiles is on; the platform owner. Admins may set their own profile private.
       // A teammate who may not read it gets "permission denied" (the page shows the limited "This profile is private"
       // card from the account's own user doc: name, role, avatar). `resource == null` is allowed for a teammate so
       // "has no profile yet" isn't an error. Only the member writes their own profile; an admin can only CLEAR a
       // teammate's bio and pronouns (never write them, never touch the owner's), and the client logs each clear to
-      // auditLog in the same batch. An admin's visibility can't be changed while they are an admin (the toggle is
-      // disabled; the saved preference is kept for after a demotion). Never deleted.
+      // auditLog in the same batch. Never deleted.
       function ftc_validProfile(d) {
         return d.keys().hasOnly(['teamId', 'displayName', 'bio', 'pronouns', 'avatar', 'visibility', 'updatedAt'])
           && d.keys().hasAll(['teamId', 'displayName', 'bio', 'pronouns', 'avatar', 'visibility', 'updatedAt'])
@@ -1451,23 +1451,24 @@ service cloud.firestore {
       }
 
       match /profiles/{uid} {
+        // Session G: same rule as the root block: a same-team admin reads any profile of their team while the owner's
+        // appSettings/global.adminsSeeAllProfiles switch is on (missing means on); the platform owner reads any; an admin may set their own private.
         allow get: if ftc_isSignedIn() && (
           request.auth.uid == uid
+          || ftc_isPlatformOwner()
           || (resource == null
             ? ftc_sameTeam(ftc_userDocOf(uid).teamId)
             : (ftc_sameTeam(resource.data.teamId)
-              && (ftc_isAdmin() || resource.data.visibility == 'public' || ftc_userDocOf(uid).get('isAdmin', false) == true))));
+              && (resource.data.visibility == 'public' || (ftc_isAdmin() && adminsSeeAllProfiles())))));
 
         allow create: if ftc_isSignedIn() && request.auth.uid == uid
           && request.resource.data.teamId == ftc_myProfile().teamId
-          && ftc_validProfile(request.resource.data)
-          && (!ftc_isAdmin() || request.resource.data.visibility == 'public');
+          && ftc_validProfile(request.resource.data);
 
         allow update: if ftc_isSignedIn() && (
           (request.auth.uid == uid
             && request.resource.data.teamId == resource.data.teamId
-            && ftc_validProfile(request.resource.data)
-            && (!ftc_isAdmin() || request.resource.data.visibility == resource.data.visibility))
+            && ftc_validProfile(request.resource.data))
           || (request.auth.uid != uid
             && ftc_isAdmin() && ftc_sameTeam(resource.data.teamId)
             && !ftc_isOwnerUid(uid, resource.data.teamId)

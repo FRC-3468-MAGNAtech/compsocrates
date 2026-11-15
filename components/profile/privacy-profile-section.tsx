@@ -12,6 +12,7 @@ import { useAuth } from "@/lib/auth";
 import { AVATAR_PRESETS, BIO_MAX, DEFAULT_AVATAR, DISPLAY_NAME_MAX, PRONOUNS_MAX, type AvatarChoice, type ProfileVisibility } from "@/lib/profile/config";
 import { isGoogleAvatarUrl, sanitizeBio, sanitizeDisplayName, sanitizePronouns, visibilityToSave, type ProfileDoc } from "@/lib/profile/model";
 import { useProgram } from "@/lib/program/context";
+import { useAdminsSeeAllProfiles } from "@/lib/profile/admins-see-all";
 import { saveOwnProfile, useProfile, type ProfileEdit } from "@/lib/profile/service";
 import { DEFAULT_PROFILE_VISIBILITY } from "@/lib/profile/config";
 import { cn } from "@/lib/utils";
@@ -22,6 +23,7 @@ const sameAvatar = (a: AvatarChoice, b: AvatarChoice) => a.type === b.type && a.
 export function PrivacyProfileSection() {
   const { user, profile: me } = useAuth();
   const program = useProgram();
+  const adminsSeeAll = useAdminsSeeAllProfiles();
   const state = useProfile(user?.uid ?? null, me?.teamId ?? null);
   // Held here, not in the form: a save changes the stored profile, which restarts the form (see the key below).
   const [justSaved, setJustSaved] = useState(false);
@@ -39,7 +41,7 @@ export function PrivacyProfileSection() {
     <ProfileEditorForm
       key={JSON.stringify([saved?.displayName ?? "", saved?.bio ?? "", saved?.pronouns ?? "", saved?.avatar ?? me.avatar ?? DEFAULT_AVATAR])}
       saved={saved}
-      isAdmin={me.isAdmin}
+      adminsSeeAll={adminsSeeAll}
       accountName={me.name}
       accountAvatar={me.avatar ?? null}
       googleUrl={user.photoURL && isGoogleAvatarUrl(user.photoURL) ? user.photoURL : null}
@@ -72,7 +74,7 @@ export function PrivacyProfileSection() {
  */
 export function ProfileEditorForm({
   saved,
-  isAdmin,
+  adminsSeeAll,
   accountName,
   accountAvatar,
   googleUrl,
@@ -81,7 +83,8 @@ export function ProfileEditorForm({
   onSetVisibility,
 }: {
   saved: ProfileDoc | null;
-  isAdmin: boolean;
+  /** The owner's "admins see every profile on their team" switch; false hides the transparency line. null/undefined means on. */
+  adminsSeeAll?: boolean | null;
   accountName: string;
   accountAvatar: AvatarChoice | null;
   /** The member's Google picture, when they signed in with Google. */
@@ -111,8 +114,7 @@ export function ProfileEditorForm({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // A admin's toggle shows what applies (public) while their saved preference waits for a demotion.
-  const shownVisibility: ProfileVisibility = isAdmin ? "public" : visibility;
+  const shownVisibility: ProfileVisibility = visibility;
 
   const dirty =
     sanitizeDisplayName(displayName) !== (saved?.displayName ?? "") ||
@@ -121,7 +123,7 @@ export function ProfileEditorForm({
     !sameAvatar(avatar, saved?.avatar ?? accountAvatar ?? DEFAULT_AVATAR);
 
   const chooseVisibility = async (next: ProfileVisibility) => {
-    if (isAdmin || visibilityBusy || next === visibility) return;
+    if (visibilityBusy || next === visibility) return;
     const previous = visibility;
     setVisibility(next);
     setVisibilityBusy(true);
@@ -146,7 +148,7 @@ export function ProfileEditorForm({
         pronouns: sanitizePronouns(pronouns),
         bio: sanitizeBio(bio),
         avatar,
-        visibility: visibilityToSave({ isAdmin, chosen: visibility, existing: saved?.visibility ?? null }),
+        visibility: visibilityToSave({ chosen: visibility }),
       });
     } catch {
       setError("Couldn't save your profile. Check your connection and try again.");
@@ -212,7 +214,7 @@ export function ProfileEditorForm({
       </div>
 
       {/* Visibility */}
-      <fieldset className="flex flex-col gap-3" data-testid="visibility-group" disabled={isAdmin} aria-busy={visibilityBusy}>
+      <fieldset className="flex flex-col gap-3" data-testid="visibility-group" aria-busy={visibilityBusy}>
         <legend className="mb-1 text-sm font-semibold">Who can see your profile</legend>
         <div role="radiogroup" aria-label="Who can see your profile" className="grid gap-3 sm:grid-cols-2">
           <VisibilityOption
@@ -220,7 +222,7 @@ export function ProfileEditorForm({
             title="Public to my team"
             body="Teammates can open your profile: bio, pronouns, accuracy, practice, events and achievements."
             selected={shownVisibility === "public"}
-            disabled={isAdmin || visibilityBusy}
+            disabled={visibilityBusy}
             onSelect={() => void chooseVisibility("public")}
             testId="visibility-public"
           />
@@ -229,20 +231,17 @@ export function ProfileEditorForm({
             title="Private"
             body="Teammates who aren't admins see only your picture, name and role, and “This profile is private”."
             selected={shownVisibility === "private"}
-            disabled={isAdmin || visibilityBusy}
+            disabled={visibilityBusy}
             onSelect={() => void chooseVisibility("private")}
             testId="visibility-private"
           />
         </div>
-        {isAdmin && (
+        {adminsSeeAll !== false && (
           <p data-testid="admin-visibility-note" className="glass-card px-4 py-3 text-sm text-[var(--muted-foreground)]">
-            Admins and the owner are always visible to their team, so this can&apos;t be turned off while you&apos;re an admin.
-            {saved?.visibility === "private" ? " Your saved choice, Private, applies again if your role changes." : " If your role changes later, your choice here will apply."}
+            Team admins can always see profiles on their team, whichever you choose.
           </p>
         )}
-        {!isAdmin && (
-          <p className="text-xs text-[var(--muted-foreground)]">This saves as soon as you pick it. You can always see your own profile, whichever you choose.</p>
-        )}
+        <p className="text-xs text-[var(--muted-foreground)]">This saves as soon as you pick it. You can always see your own profile, whichever you choose.</p>
         {visibilityStatus === "saved" && (
           <span role="status" data-testid="visibility-saved" className="flex items-center gap-1.5 text-sm text-emerald-400">
             <Check className="h-4 w-4" /> {visibility === "private" ? "Your profile is now private." : "Your profile is now public to your team."}
@@ -257,8 +256,8 @@ export function ProfileEditorForm({
           <p className="font-medium text-[var(--foreground)]">What private does and doesn&apos;t do</p>
           <p>
             Private hides your profile page and the text on it (display name, bio, pronouns) from teammates who aren&apos;t admins. It doesn&apos;t hide the scouting your team already shares: your
-            entries, practice sessions, accuracy and rank still appear in Analytics, Scout Accuracy, Scout Status and the leaderboards, and the People page still lists you. Admins can always see
-            your profile and can clear a bio or pronouns that break your team&apos;s rules (they can&apos;t write for you).
+            entries, practice sessions, accuracy and rank still appear in Analytics, Scout Accuracy, Scout Status and the leaderboards, and the People page still lists you.
+            {adminsSeeAll !== false ? " Admins can always see your profile and" : " Admins"} can clear a bio or pronouns that break your team&apos;s rules (they can&apos;t write for you).
           </p>
         </div>
       </fieldset>

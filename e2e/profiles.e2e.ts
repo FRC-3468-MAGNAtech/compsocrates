@@ -241,7 +241,6 @@ test.describe("Settings > Privacy and profile", () => {
     await open(page, "?view=editor&saved=public");
     await expect(page.getByTestId("visibility-public")).toBeEnabled();
     await expect(page.getByTestId("visibility-private")).toBeEnabled();
-    await expect(page.getByTestId("admin-visibility-note")).toHaveCount(0);
     await page.getByTestId("visibility-private").click();
     await expect(page.getByTestId("visibility-saved")).toContainText("now private");
     await expect(page.getByTestId("visibility-private")).toHaveAttribute("aria-checked", "true");
@@ -271,20 +270,20 @@ test.describe("Settings > Privacy and profile", () => {
     await expect(page.getByTestId("avatar-picker").getByRole("radio", { name: "Initials" })).toBeVisible();
   });
 
-  test("an admin's visibility toggle is disabled with an explanation, and saving keeps what they had", async ({ page }) => {
-    await open(page, "?view=editor&admin=1&saved=private");
-    await expect(page.getByTestId("visibility-public")).toBeDisabled();
-    await expect(page.getByTestId("visibility-private")).toBeDisabled();
-    await expect(page.getByTestId("visibility-public")).toHaveAttribute("aria-checked", "true"); // what applies
-    await expect(page.getByTestId("admin-visibility-note")).toContainText("always visible to their team");
-    await expect(page.getByTestId("admin-visibility-note")).toContainText("Your saved choice, Private, applies again if your role changes.");
+  test("Session G: the visibility setting says team admins can always see profiles, and the line goes when the owner switch is off", async ({ page }) => {
+    await open(page, "?view=editor&saved=private");
+    await expect(page.getByTestId("visibility-private")).toBeEnabled();
+    await expect(page.getByTestId("visibility-private")).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByTestId("admin-visibility-note")).toContainText("Team admins can always see profiles on their team");
 
-    await page.getByTestId("privacy-profile").getByLabel("Bio").fill("Edited as an admin");
+    await page.getByTestId("privacy-profile").getByLabel("Bio").fill("Edited");
     await page.getByTestId("save-profile").click();
     await expect(page.getByTestId("profile-saved")).toContainText("Saved");
     const [saved] = await saves(page);
-    expect(saved.bio).toBe("Edited as an admin");
-    expect(saved.visibility).toBe("private"); // unchanged: it comes back if they are demoted
+    expect(saved.visibility).toBe("private");
+
+    await open(page, "?view=editor&saved=private&seeall=0");
+    await expect(page.getByTestId("admin-visibility-note")).toHaveCount(0);
   });
 
   test("states what private does and doesn't do", async ({ page }) => {

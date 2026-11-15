@@ -707,25 +707,56 @@ describe("profiles/{uid}", () => {
     });
   });
 
-  it("is created by the member for themselves in their team (admins must stay public)", async () => {
+  it("is created by the member for themselves in their team (an admin may choose private)", async () => {
     await assertSucceeds(setDoc(doc(as(LEAD), "profiles", LEAD), profile({ displayName: "Lead" })));
     await assertFails(setDoc(doc(as(LEAD), "profiles", SCOUT), profile()));
     await assertFails(setDoc(doc(as(LEAD), "profiles", LEAD), profile({ teamId: TEAM2 })));
     await assertFails(setDoc(doc(as(LEAD), "profiles", LEAD), profile({ visibility: "everyone" })));
-    await assertFails(setDoc(doc(as(COACH), "profiles", COACH), profile({ visibility: "private" })));
-    await assertSucceeds(setDoc(doc(as(COACH), "profiles", COACH), profile()));
+    await assertSucceeds(setDoc(doc(as(COACH), "profiles", COACH), profile({ visibility: "private" })));
   });
 
-  it("is readable per visibility: public to the team, private only to the member and admins, an admin's always", async () => {
+  it("Session G: an admin can switch their own profile between public and private", async () => {
+    await assertSucceeds(updateDoc(doc(as(ADMIN), "profiles", ADMIN), { visibility: "public", updatedAt: serverTimestamp() }));
+    await assertSucceeds(updateDoc(doc(as(ADMIN), "profiles", ADMIN), { visibility: "private", updatedAt: serverTimestamp() }));
+  });
+
+  it("is readable per visibility: public to the team, private only to the member and same-team admins", async () => {
     await assertSucceeds(getDoc(doc(as(SCOUT2), "profiles", SCOUT)));
     await assertFails(getDoc(doc(as(SCOUT), "profiles", SCOUT2))); // private
     await assertSucceeds(getDoc(doc(as(SCOUT2), "profiles", SCOUT2))); // own
     await assertSucceeds(getDoc(doc(as(COACH), "profiles", SCOUT2))); // a viewing admin
-    await assertSucceeds(getDoc(doc(as(SCOUT), "profiles", ADMIN))); // the target is an admin: treated as public
+    await assertFails(getDoc(doc(as(SCOUT), "profiles", ADMIN))); // an admin's own private profile applies to members too
+    await assertSucceeds(getDoc(doc(as(ADMIN2), "profiles", ADMIN))); // ...but not to a fellow admin
     await assertFails(getDoc(doc(as(OTHER_SCOUT), "profiles", SCOUT))); // another team
     await assertSucceeds(getDoc(doc(as(SCOUT), "profiles", LEAD))); // no profile yet: not an error for a teammate
     await assertFails(getDoc(doc(as(OTHER_SCOUT), "profiles", LEAD)));
     await assertFails(getDoc(doc(anon(), "profiles", SCOUT)));
+  });
+
+  it("Session G: a same-team admin reads a private profile, a member and an admin of another team cannot, the platform owner can", async () => {
+    await assertSucceeds(getDoc(doc(as(ADMIN2), "profiles", SCOUT2)));
+    await assertFails(getDoc(doc(as(SCOUT), "profiles", SCOUT2)));
+    await assertFails(getDoc(doc(as(OTHER_ADMIN), "profiles", SCOUT2)));
+    await assertSucceeds(getDoc(doc(as(NO_DOC, { platformOwner: true }), "profiles", SCOUT2)));
+    await assertFails(getDoc(doc(as(NO_DOC), "profiles", SCOUT2)));
+  });
+
+  it("Session G: the owner's switch is enforced here: off means admins read like members, on or missing means they read all", async () => {
+    await seed(async (db) => {
+      await setDoc(doc(db, "appSettings", "global"), { teamCreationEnabled: false }); // field missing: on
+    });
+    await assertSucceeds(getDoc(doc(as(ADMIN2), "profiles", SCOUT2)));
+    await seed(async (db) => {
+      await setDoc(doc(db, "appSettings", "global"), { adminsSeeAllProfiles: false });
+    });
+    await assertFails(getDoc(doc(as(ADMIN2), "profiles", SCOUT2))); // treated like a member
+    await assertSucceeds(getDoc(doc(as(ADMIN2), "profiles", SCOUT))); // a public profile still reads
+    await assertSucceeds(getDoc(doc(as(SCOUT2), "profiles", SCOUT2))); // own
+    await assertSucceeds(getDoc(doc(as(NO_DOC, { platformOwner: true }), "profiles", SCOUT2))); // the platform owner is not affected
+    await seed(async (db) => {
+      await setDoc(doc(db, "appSettings", "global"), { adminsSeeAllProfiles: true });
+    });
+    await assertSucceeds(getDoc(doc(as(ADMIN2), "profiles", SCOUT2)));
   });
 
   it("is updated by the member; an admin may only clear a teammate's bio and pronouns, never the team owner's", async () => {

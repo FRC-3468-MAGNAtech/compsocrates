@@ -28,6 +28,7 @@ export function ProfileScreen({
   profile,
   denied,
   viewer,
+  adminsSeeAll,
   renderFull,
 }: {
   member: TeamMember;
@@ -35,7 +36,9 @@ export function ProfileScreen({
   profile: ProfileDoc | null;
   /** The rules refused the read (a private profile seen by a non-admin teammate). */
   denied: boolean;
-  viewer: { uid: string; isAdmin: boolean };
+  viewer: { uid: string; isAdmin: boolean; isPlatformOwner?: boolean };
+  /** The owner's "admins see every profile on their team" switch; null/undefined (not loaded, or never set) means on. */
+  adminsSeeAll?: boolean | null;
   renderFull: (ctx: { canModerate: boolean; isSelf: boolean }) => React.ReactNode;
 }) {
   const [preview, setPreview] = useState(false);
@@ -50,7 +53,16 @@ export function ProfileScreen({
     ? "full"
     : denied
     ? "limited"
-    : profileAccess({ viewerUid: previewing ? "preview" : viewer.uid, viewerIsAdmin, targetUid: member.uid, targetIsAdmin: member.isAdmin, visibility: profile?.visibility });
+    : // The People page only lists the viewer's own team, so the member is always a teammate here.
+      profileAccess({
+        viewerUid: previewing ? "preview" : viewer.uid,
+        viewerIsAdmin,
+        viewerIsPlatformOwner: !!viewer.isPlatformOwner && !previewing,
+        sameTeam: true,
+        targetUid: member.uid,
+        visibility: profile?.visibility,
+        adminsSeeAll,
+      });
   const canModerate = !previewing && canModerateProfile({ viewerUid: viewer.uid, viewerIsAdmin: viewer.isAdmin, targetUid: member.uid, targetIsOwner: member.isOwner });
 
   return (
@@ -77,7 +89,7 @@ export function ProfileScreen({
       {previewing && (
         <p data-testid="preview-banner" className="glass-card px-4 py-3 text-sm text-[var(--muted-foreground)]">
           This is what a teammate who isn&apos;t an admin sees.{" "}
-          {access === "limited" ? "Your profile is private, so they only see your picture, name and role." : viewer.isAdmin ? "Admins are always visible to teammates, whatever the privacy setting says." : "Your profile is public to your team."}
+          {access === "limited" ? "Your profile is private, so they only see your picture, name and role." : "Your profile is public to your team."}
         </p>
       )}
 

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdminFirestore } from "@/lib/firebase/admin";
-import { getTeamCreationEnabled } from "@/lib/server/team-settings";
+import { getAdminsSeeAllProfiles, getTeamCreationEnabled } from "@/lib/server/team-settings";
 
 /**
  * The one piece of server state the logged-out Signup page needs (whether
@@ -14,8 +14,9 @@ export async function GET() {
   if (!db) {
     // Firebase Admin isn't configured — fail closed (no Create option)
     // rather than guessing, same convention as lib/server/require-user.ts.
-    return NextResponse.json({ teamCreationEnabled: false });
+    return NextResponse.json({ teamCreationEnabled: false, adminsSeeAllProfiles: true });
   }
   const teamCreationEnabled = await getTeamCreationEnabled(db);
-  return NextResponse.json({ teamCreationEnabled });
+  const adminsSeeAllProfiles = await getAdminsSeeAllProfiles(db);
+  return NextResponse.json({ teamCreationEnabled, adminsSeeAllProfiles });
 }

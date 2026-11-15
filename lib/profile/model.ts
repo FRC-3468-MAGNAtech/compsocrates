@@ -20,7 +20,7 @@ export type ProfileDoc = {
   bio: string;
   pronouns: string;
   avatar: AvatarChoice;
-  /** The member's PREFERENCE. What applies is effectiveVisibility(): admins are always visible. */
+  /** The member's PREFERENCE. What non-admin viewers get is effectiveVisibility(); admins of the same team see all (profileAccess). */
   visibility: ProfileVisibility;
   updatedAt?: unknown;
 };
@@ -68,26 +68,37 @@ export const sanitizeBio = (s: string) => sanitizeProfileText(s, BIO_MAX, { mult
 export const sanitizePronouns = (s: string) => sanitizeProfileText(s, PRONOUNS_MAX);
 export const sanitizeDisplayName = (s: string) => sanitizeProfileText(s, DISPLAY_NAME_MAX);
 
-/** Admins and the owner (an owner's admin flag stays on) are always visible to teammates; everyone else follows their preference. */
-export function effectiveVisibility(input: { visibility: ProfileVisibility | null | undefined; isAdmin: boolean }): ProfileVisibility {
-  if (input.isAdmin) return "public";
+/** What applies to non-admin viewers: the member's own preference, whoever they are (an admin may set theirs private). */
+export function effectiveVisibility(input: { visibility: ProfileVisibility | null | undefined }): ProfileVisibility {
   return input.visibility ?? DEFAULT_PROFILE_VISIBILITY;
 }
 
 export type ProfileAccess = "full" | "limited";
 
-/** What a viewer sees: everything, or only avatar, name and primary role ("This profile is private"). */
-export function profileAccess(input: { viewerUid: string; viewerIsAdmin: boolean; targetUid: string; targetIsAdmin: boolean; visibility: ProfileVisibility | null | undefined }): ProfileAccess {
-  if (input.viewerUid === input.targetUid || input.viewerIsAdmin) return "full";
-  return effectiveVisibility({ visibility: input.visibility, isAdmin: input.targetIsAdmin }) === "public" ? "full" : "limited";
+/**
+ * What a viewer sees: everything, or only avatar, name and primary role ("This profile is private").
+ * Yourself: everything. The platform owner: everything. A team admin: everything for members of THEIR OWN team while the owner's
+ * `adminsSeeAllProfiles` switch is on (missing means on); with it off, admins are treated like members. Anyone else follows the
+ * member's preference. Mirrors the `profiles/{uid}` rules, which are the real gate.
+ */
+export function profileAccess(input: {
+  viewerUid: string;
+  viewerIsAdmin: boolean;
+  viewerIsPlatformOwner?: boolean;
+  /** The viewer and the member are on the same team. A team admin's extra access never crosses teams. */
+  sameTeam: boolean;
+  targetUid: string;
+  visibility: ProfileVisibility | null | undefined;
+  /** appSettings/global.adminsSeeAllProfiles; null/undefined (not loaded, or never set) means on. */
+  adminsSeeAll?: boolean | null;
+}): ProfileAccess {
+  if (input.viewerUid === input.targetUid || input.viewerIsPlatformOwner) return "full";
+  if (input.viewerIsAdmin && input.sameTeam && input.adminsSeeAll !== false) return "full";
+  return effectiveVisibility({ visibility: input.visibility }) === "public" ? "full" : "limited";
 }
 
-/**
- * The visibility to write when saving. An admin's toggle is disabled (the rules refuse a change), so they keep what
- * they had — their saved preference comes back if they are ever demoted — and a first save as an admin is public.
- */
-export function visibilityToSave(input: { isAdmin: boolean; chosen: ProfileVisibility; existing: ProfileVisibility | null }): ProfileVisibility {
-  if (input.isAdmin) return input.existing ?? "public";
+/** The visibility to write when saving: what the member chose (admins included). */
+export function visibilityToSave(input: { chosen: ProfileVisibility }): ProfileVisibility {
   return input.chosen;
 }
 

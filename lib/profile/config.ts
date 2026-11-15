@@ -5,7 +5,7 @@ export type ProfileVisibility = "public" | "private";
 /**
  * What a member's profile is until they choose: visible to teammates ("public" is public WITHIN the account,
  * never to the internet). Change this one constant to flip the default for everyone who hasn't saved a profile.
- * (Admins and the owner are always visible whatever this says — see effectiveVisibility().)
+ * (Team admins see every profile of their own team whatever this says — see profileAccess().)
  */
 export const DEFAULT_PROFILE_VISIBILITY: ProfileVisibility = "public";
 

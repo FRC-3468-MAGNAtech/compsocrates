@@ -26,6 +26,7 @@ import { SubmissionControlsPanel } from "@/components/admin/submission-controls-
 import { ReviewPanelHost } from "@/components/templates/review-panel";
 import { usePendingApplicationCount } from "@/lib/applications-client";
 import { SidebarPanel } from "@/components/admin/sidebar-panel";
+import { AdminsSeeProfilesSetting } from "@/components/admin/admins-see-profiles-setting";
 
 type AdminTab = "match-library" | "forms" | "page-access" | "sidebar" | "submissions" | "entries" | "sessions" | "match-scout-ids" | "practice-session-ids" | "rescore" | "audit-log" | "backups" | "applications" | "templates" | "recovery" | "setup-check";
 
@@ -127,6 +128,7 @@ export default function AdminPanelPage() {
             />
           </div>
           {teamCreationError && <p className="text-sm text-red-400">{teamCreationError}</p>}
+          <AdminsSeeProfilesSetting />
         </GlassPanel>
       )}
 

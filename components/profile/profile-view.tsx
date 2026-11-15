@@ -9,6 +9,8 @@ import { useActiveEvents } from "@/lib/active-event";
 import { useAuth } from "@/lib/auth";
 import { eventLabel } from "@/lib/events/names";
 import { useEventNames } from "@/lib/events/use-event-names";
+import { usePermissions } from "@/lib/permissions";
+import { useAdminsSeeAllProfiles } from "@/lib/profile/admins-see-all";
 import type { ProfileDoc } from "@/lib/profile/model";
 import { clearProfileText, useProfile } from "@/lib/profile/service";
 import { useProgram } from "@/lib/program/context";
@@ -31,6 +33,8 @@ export function ProfileView({ uid }: { uid: string }) {
   const { members, loaded: membersLoaded } = useTeamMembers(teamId);
   const state = useProfile(uid, teamId);
   const member = members.find((m) => m.uid === uid) ?? null;
+  const { isPlatformOwner } = usePermissions();
+  const adminsSeeAll = useAdminsSeeAllProfiles();
   if (!membersLoaded || state.status === "loading") {
     return (
       <div className="flex flex-col gap-6" data-testid="profile-loading">
@@ -71,7 +75,8 @@ export function ProfileView({ uid }: { uid: string }) {
       member={member}
       profile={profile}
       denied={state.status === "denied"}
-      viewer={{ uid: user?.uid ?? "", isAdmin: !!me?.isAdmin }}
+      viewer={{ uid: user?.uid ?? "", isAdmin: !!me?.isAdmin, isPlatformOwner: isPlatformOwner }}
+      adminsSeeAll={adminsSeeAll}
       renderFull={({ canModerate, isSelf }) => <ProfileFull key={uid} member={member} profile={profile} teamId={teamId} isSelf={isSelf} canModerate={canModerate} />}
     />
   );

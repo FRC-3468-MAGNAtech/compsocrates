@@ -98,21 +98,47 @@ const earnedIds = (f: BadgeFacts) => computeBadges(f).filter((b) => b.earned).ma
 describe("visibility", () => {
   it("defaults come from the one constant", () => {
     expect(parseProfile(undefined, "t").visibility).toBe(DEFAULT_PROFILE_VISIBILITY);
-    expect(effectiveVisibility({ visibility: undefined, isAdmin: false })).toBe(DEFAULT_PROFILE_VISIBILITY);
+    expect(effectiveVisibility({ visibility: undefined })).toBe(DEFAULT_PROFILE_VISIBILITY);
   });
 
-  it("an admin is always public; a demoted admin gets their saved preference back", () => {
-    expect(effectiveVisibility({ visibility: "private", isAdmin: true })).toBe("public");
-    expect(effectiveVisibility({ visibility: "private", isAdmin: false })).toBe("private");
+  it("everyone's own preference applies to non-admin viewers, an admin's included", () => {
+    expect(effectiveVisibility({ visibility: "private" })).toBe("private");
+    expect(effectiveVisibility({ visibility: "public" })).toBe("public");
   });
 
-  it("a private profile is limited for non-admin teammates, and full for the owner of it, admins, and public profiles", () => {
-    const base = { viewerUid: "v", viewerIsAdmin: false, targetUid: "t", targetIsAdmin: false };
-    expect(profileAccess({ ...base, visibility: "private" })).toBe("limited");
-    expect(profileAccess({ ...base, visibility: "public" })).toBe("full");
-    expect(profileAccess({ ...base, visibility: "private", viewerUid: "t" })).toBe("full");
-    expect(profileAccess({ ...base, visibility: "private", viewerIsAdmin: true })).toBe("full");
-    expect(profileAccess({ ...base, visibility: "private", targetIsAdmin: true })).toBe("full");
+  describe("profileAccess", () => {
+    const base = { viewerUid: "v", viewerIsAdmin: false, viewerIsPlatformOwner: false, sameTeam: true, targetUid: "t", visibility: "private" as "private" | "public" | undefined };
+    it("a member sees a private profile limited, a public one in full, their own always", () => {
+      expect(profileAccess(base)).toBe("limited");
+      expect(profileAccess({ ...base, visibility: "public" })).toBe("full");
+      expect(profileAccess({ ...base, viewerUid: "t" })).toBe("full");
+      expect(profileAccess({ ...base, visibility: undefined })).toBe("full"); // the default is public
+    });
+    it("a team admin sees every profile of their own team, whatever its setting", () => {
+      expect(profileAccess({ ...base, viewerIsAdmin: true })).toBe("full");
+      expect(profileAccess({ ...base, viewerIsAdmin: true, adminsSeeAll: true })).toBe("full");
+    });
+    it("an admin of another team gets nothing extra", () => {
+      expect(profileAccess({ ...base, viewerIsAdmin: true, sameTeam: false })).toBe("limited");
+      expect(profileAccess({ ...base, viewerIsAdmin: true, sameTeam: false, visibility: "public" })).toBe("full");
+    });
+    it("the platform owner sees all, in any team, with the switch on or off", () => {
+      expect(profileAccess({ ...base, viewerIsPlatformOwner: true, sameTeam: false })).toBe("full");
+      expect(profileAccess({ ...base, viewerIsPlatformOwner: true, viewerIsAdmin: true, adminsSeeAll: false })).toBe("full");
+    });
+    it("with the owner's switch off, admins are treated like members (missing or not loaded means on)", () => {
+      expect(profileAccess({ ...base, viewerIsAdmin: true, adminsSeeAll: false })).toBe("limited");
+      expect(profileAccess({ ...base, viewerIsAdmin: true, adminsSeeAll: false, visibility: "public" })).toBe("full");
+      expect(profileAccess({ ...base, viewerIsAdmin: true, adminsSeeAll: null })).toBe("full");
+      expect(profileAccess({ ...base, viewerIsAdmin: true, adminsSeeAll: undefined })).toBe("full");
+    });
+    it("an admin who sets their own profile private is limited for members and other teams, but not for admins of their team", () => {
+      const adminTarget = { ...base, targetUid: "admin-1" };
+      expect(profileAccess(adminTarget)).toBe("limited"); // a member
+      expect(profileAccess({ ...adminTarget, viewerIsAdmin: true, sameTeam: false })).toBe("limited");
+      expect(profileAccess({ ...adminTarget, viewerIsAdmin: true })).toBe("full"); // a fellow admin
+      expect(profileAccess({ ...adminTarget, viewerIsAdmin: true, adminsSeeAll: false })).toBe("limited");
+    });
   });
 
   it("only an admin can moderate, never themself and never the owner", () => {
@@ -124,14 +150,9 @@ describe("visibility", () => {
 });
 
 describe("saving visibility", () => {
-  it("a member saves what they chose", () => {
-    expect(visibilityToSave({ isAdmin: false, chosen: "private", existing: "public" })).toBe("private");
-    expect(visibilityToSave({ isAdmin: false, chosen: "public", existing: null })).toBe("public");
-  });
-
-  it("an admin keeps the preference they had (it returns if they are demoted); a first save is public", () => {
-    expect(visibilityToSave({ isAdmin: true, chosen: "public", existing: "private" })).toBe("private");
-    expect(visibilityToSave({ isAdmin: true, chosen: "private", existing: null })).toBe("public");
+  it("a member or an admin saves what they chose", () => {
+    expect(visibilityToSave({ chosen: "private" })).toBe("private");
+    expect(visibilityToSave({ chosen: "public" })).toBe("public");
   });
 });
 
