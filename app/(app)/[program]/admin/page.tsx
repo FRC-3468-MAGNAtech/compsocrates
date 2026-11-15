@@ -24,11 +24,14 @@ import { FormsPanel } from "@/components/forms/forms-panel";
 import { PageAccessPanel } from "@/components/page-access/page-access-panel";
 import { SubmissionControlsPanel } from "@/components/admin/submission-controls-panel";
 import { ReviewPanelHost } from "@/components/templates/review-panel";
+import { useProgramConfig } from "@/lib/program/context";
+import { activeAdminTab, resolveAdminTabs } from "@/lib/admin/tabs";
+import type { AdminTabId } from "@/config/programs/types";
 import { usePendingApplicationCount } from "@/lib/applications-client";
 import { SidebarPanel } from "@/components/admin/sidebar-panel";
 import { AdminsSeeProfilesSetting } from "@/components/admin/admins-see-profiles-setting";
 
-type AdminTab = "match-library" | "forms" | "page-access" | "sidebar" | "submissions" | "entries" | "sessions" | "match-scout-ids" | "practice-session-ids" | "rescore" | "audit-log" | "backups" | "applications" | "templates" | "recovery" | "setup-check";
+type AdminTab = AdminTabId;
 
 const TAB_LABELS: Record<AdminTab, string> = {
   "match-library": "Match Library",
@@ -57,25 +60,28 @@ const TAB_LABELS: Record<AdminTab, string> = {
   "setup-check": "Setup Check",
 };
 
-const PLATFORM_TABS: AdminTab[] = ["applications", "templates", "recovery"];
-
 export default function AdminPanelPage() {
   const router = useRouter();
   const { isAdmin, isPlatformOwner, can } = usePermissions();
-  const pendingApplications = usePendingApplicationCount(isPlatformOwner);
+  const { admin } = useProgramConfig();
+  // The program's own tab list (config), then who is looking: a tab the program does not list is not rendered, not just hidden.
+  const tabs = resolveAdminTabs(admin, { isPlatformOwner, canManageForms: can("manageForms") });
+  const showPlatformSettings = isPlatformOwner && admin.platformSettings;
+  const pendingApplications = usePendingApplicationCount(isPlatformOwner && admin.tabs.includes("applications"));
   const [teamCreationEnabled, setTeamCreationEnabledState] = useState<boolean | null>(null);
   const [togglingTeamCreation, setTogglingTeamCreation] = useState(false);
   const [teamCreationError, setTeamCreationError] = useState<string | null>(null);
-  const [tab, setTab] = useState<AdminTab>("match-library");
+  const [wantedTab, setTab] = useState<AdminTab | null>(null);
+  const tab = activeAdminTab(tabs, wantedTab);
 
   useEffect(() => {
     if (!isAdmin) router.replace("/dashboard");
   }, [isAdmin, router]);
 
   useEffect(() => {
-    if (!isPlatformOwner) return;
+    if (!showPlatformSettings) return;
     fetchTeamCreationEnabled().then(setTeamCreationEnabledState);
-  }, [isPlatformOwner]);
+  }, [showPlatformSettings]);
 
   const handleToggleTeamCreation = async (checked: boolean) => {
     setTeamCreationError(null);
@@ -111,7 +117,7 @@ export default function AdminPanelPage() {
         <Badge variant="danger" className="ml-auto">Privileged area</Badge>
       </GlassPanel>
 
-      {isPlatformOwner && (
+      {showPlatformSettings && (
         <GlassPanel className="flex flex-col gap-4 border-amber-400/20">
           <h2 className="text-base font-semibold">Platform owner settings</h2>
           <div className="flex items-center justify-between gap-4">
@@ -132,13 +138,10 @@ export default function AdminPanelPage() {
         </GlassPanel>
       )}
 
-      <Tabs value={tab} onValueChange={(v) => setTab(v as AdminTab)}>
+      <Tabs value={tab ?? ""} onValueChange={(v) => setTab(v as AdminTab)}>
         {/* the tabs wrap onto more rows instead of running off the screen */}
         <TabsList className="flex max-w-full flex-wrap justify-start rounded-3xl">
-          {(Object.keys(TAB_LABELS) as AdminTab[])
-            .filter((t) => isPlatformOwner || !PLATFORM_TABS.includes(t))
-            .filter((t) => t !== "forms" || can("manageForms"))
-            .map((t) => (
+          {tabs.map((t) => (
               <TabsTrigger key={t} value={t}>
                 {TAB_LABELS[t]}
                 {t === "applications" && pendingApplications > 0 && (
@@ -147,7 +150,7 @@ export default function AdminPanelPage() {
                   </span>
                 )}
               </TabsTrigger>
-            ))}
+          ))}
         </TabsList>
       </Tabs>
 

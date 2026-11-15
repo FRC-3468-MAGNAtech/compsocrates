@@ -12,6 +12,8 @@ import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ManualLibraryPanel, OriginBadge } from "@/components/admin/library/manual-library-panel";
 import { useAuth } from "@/lib/auth";
+import { ScheduleLibraryPanel } from "@/components/admin/schedule-library-panel";
+import { useProgramData } from "@/lib/program/data";
 import { backfillLibraryMetadata } from "@/lib/library/store";
 import { formatTime, parseTimeInput } from "@/lib/library/time";
 import { canonicalYouTubeUrl, parseYouTubeUrl } from "@/lib/library/youtube-url";
@@ -32,7 +34,13 @@ const SEASONS = getEnabledSeasons();
 
 type LibraryView = "api" | "manual";
 
+/** A program with a library port (scheduled matches, no scores or videos) has its own panel; the root program's panel below is unchanged. */
 export function MatchLibraryPanel({ onOpenRescore }: { onOpenRescore: () => void }) {
+  const port = useProgramData()?.library ?? null;
+  return port ? <ScheduleLibraryPanel /> : <RootMatchLibraryPanel onOpenRescore={onOpenRescore} />;
+}
+
+function RootMatchLibraryPanel({ onOpenRescore }: { onOpenRescore: () => void }) {
   const [view, setView] = useState<LibraryView>("api");
   const { user, profile } = useAuth();
   const teamId = profile?.teamId ?? null;

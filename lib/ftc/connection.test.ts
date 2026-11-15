@@ -16,7 +16,7 @@ describe("program connection config", () => {
       "/lead-scout-form", "/pit-scout-form", "/team-strategy-form", "/match-strategy-form", "/drive-reflection-form", "/helper-form",
       "/dashboard", "/my-scouting", "/people", "/team-management", "/account", "/profile", "/credits", "/analytics",
       "/analytics/match-scout", "/analytics/lead-scout", "/analytics/pit-scout", "/analytics/team-strategy", "/analytics/match-strategy", "/analytics/drive-reflection", "/analytics/helper",
-      "/analytics/pick-list", "/analytics/scout-status", "/analytics/match-breakdown", "/analytics/teams", "/analytics/team-averages", "/analytics/team-breakdown", "/analytics/rankings",
+      "/analytics/pick-list", "/analytics/scout-status", "/analytics/match-breakdown", "/analytics/teams", "/analytics/team-averages", "/analytics/team-breakdown", "/analytics/rankings", "/admin",
     ];
     expect(PROGRAMS.ftc.multiTeam).toBe(true);
     expect([...(PROGRAMS.ftc.connection.paths as readonly string[])].sort()).toEqual([...connected].sort());
@@ -29,7 +29,9 @@ describe("program connection config", () => {
 
   it("only the data features FTC has a program-aware layer for are on", () => {
     const on = Object.entries(PROGRAMS.ftc.connection.features).filter(([, enabled]) => enabled).map(([name]) => name);
-    expect(on).toEqual(["assignments", "pickList", "joinRequests", "eventLookup"]);
+    expect(on).toEqual(["assignments", "library", "pickList", "joinRequests", "eventLookup"]);
+    // csvImport, practice, live and accuracy stay off until their data layers are ported
+    for (const off of ["csvImport", "practice", "live", "accuracy"] as const) expect(PROGRAMS.ftc.connection.features[off], off).toBe(false);
   });
 
   it("every path a program lists as unavailable is also unconnected for it", () => {

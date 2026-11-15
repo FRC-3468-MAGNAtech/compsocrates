@@ -1,5 +1,5 @@
 import { BRAND } from "@/config/brand";
-import type { ProgramConfig } from "./types";
+import { ADMIN_TAB_IDS, type ProgramConfig } from "./types";
 
 export const FRC_PROGRAM: ProgramConfig = {
   id: "frc",
@@ -18,5 +18,7 @@ export const FRC_PROGRAM: ProgramConfig = {
     paths: "all",
     features: { assignments: true, subIns: true, practice: true, live: true, library: true, pickList: true, accuracy: true, csvImport: true, changelog: true, applications: true, joinRequests: true, announcements: true, eventLookup: true },
   },
+  // Today's Admin Panel, unchanged: every tab, in this order (the platform-owner tabs and Forms are still gated by who is looking).
+  admin: { tabs: ADMIN_TAB_IDS, platformSettings: true },
   multiTeam: false,
 };

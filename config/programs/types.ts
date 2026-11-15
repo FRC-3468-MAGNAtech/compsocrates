@@ -71,6 +71,34 @@ export type ProgramConnection = {
   features: ProgramFeatures;
 };
 
+/** The Admin Panel's tabs, by stable id (the page maps each id to its panel and label). */
+export const ADMIN_TAB_IDS = [
+  "match-library",
+  "forms",
+  "page-access",
+  "sidebar",
+  "submissions",
+  "entries",
+  "sessions",
+  "match-scout-ids",
+  "practice-session-ids",
+  "rescore",
+  "audit-log",
+  "backups",
+  "applications",
+  "templates",
+  "recovery",
+  "setup-check",
+] as const;
+export type AdminTabId = (typeof ADMIN_TAB_IDS)[number];
+
+/** The Admin Panel of a program: the ONE list of tabs it shows, in order (a tab not listed does not exist there), and whether it has the platform-owner settings card. */
+export type ProgramAdmin = {
+  tabs: readonly AdminTabId[];
+  /** The platform owner's "Allow team creation" card (it reads root collections). */
+  platformSettings: boolean;
+};
+
 export type ProgramConfig = {
   id: ProgramId;
   brand: ProgramBrand;
@@ -89,6 +117,8 @@ export type ProgramConfig = {
   pagesConnected: boolean;
   /** Which paths and data features of the shared app are connected (read when `pagesConnected`). */
   connection: ProgramConnection;
+  /** The Admin Panel's tab list (see `lib/admin/tabs.ts`, the one resolver). */
+  admin: ProgramAdmin;
   /** May one account hold several teams and switch between them (lib/our-team.ts)? Off: one team per account, and no switcher is shown. */
   multiTeam: boolean;
 };
