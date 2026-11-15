@@ -3,9 +3,9 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { assertFails, assertSucceeds, initializeTestEnvironment, type RulesTestEnvironment } from "@firebase/rules-unit-testing";
 import { deleteDoc, doc, getDoc, serverTimestamp, setDoc, type Firestore } from "firebase/firestore";
 import { programPath } from "@/lib/firebase/paths";
-import { defaultEntries, parseSidebarConfig } from "@/lib/sidebar/layout";
-import { moveDown } from "@/lib/sidebar/edit";
-import { SidebarConflictError, saveSidebarConfig } from "@/lib/sidebar/store";
+import { childrenOf, defaultEntries, parseSidebarConfig } from "@/lib/sidebar/layout";
+import { moveEntry, sameLayout } from "@/lib/sidebar/edit";
+import { SidebarConflictError, SidebarSyncError, pullSidebarLayout, pushSidebarLayout, saveSidebarConfig } from "@/lib/sidebar/store";
 
 // The sidebar config doc against the real firestore.rules (root FRC block and the `programs/ftc` block) and the save transaction (`saveSidebarConfig`):
 // a team admin writes, a member does not, another team neither writes nor reads, each save is revision rev + 1, and two admins saving from the same
@@ -131,7 +131,7 @@ for (const p of programs) {
     const save = (uid: string, expectedRev: number, entries = defaultEntries(), team = p.team) => saveSidebarConfig(actor(uid, team), entries, expectedRev, p.program, as(uid) as unknown as Firestore);
 
     it("saves the first layout as rev 1 and the next as rev 2, readable as the same layout", async () => {
-      const first = await save(ADMIN, 0, moveDown(defaultEntries(), "dashboard"));
+      const first = await save(ADMIN, 0, moveEntry(defaultEntries(), "dashboard", null, 0));
       expect(first.rev).toBe(1);
       const second = await save(ADMIN, 1);
       expect(second.rev).toBe(2);
@@ -142,11 +142,11 @@ for (const p of programs) {
 
     it("tells the second of two admins who started from the same version that it changed (no silent overwrite)", async () => {
       await save(ADMIN, 0); // both admins loaded "no doc" (rev 0); ADMIN saves first
-      await expect(save(ADMIN2, 0, moveDown(defaultEntries(), "analytics"))).rejects.toBeInstanceOf(SidebarConflictError);
+      await expect(save(ADMIN2, 0, moveEntry(defaultEntries(), "analytics", null, 0))).rejects.toBeInstanceOf(SidebarConflictError);
       const stored = parseSidebarConfig((await getDoc(p.ref(as(ADMIN) as Db))).data());
       expect(stored?.rev).toBe(1); // the first save stands
       // after reloading (rev 1) the same edit lands
-      await expect(save(ADMIN, 1, moveDown(defaultEntries(), "analytics"))).resolves.toMatchObject({ rev: 2 });
+      await expect(save(ADMIN, 1, moveEntry(defaultEntries(), "analytics", null, 0))).resolves.toMatchObject({ rev: 2 });
     });
 
     it("a member's save is refused by the rules, and so is another team's admin", async () => {
@@ -160,3 +160,59 @@ for (const p of programs) {
     });
   });
 }
+
+// Syncing: the Sidebar tab copies a layout to, or reads one from, the person's own team in the other program (a separate account, found through their profile there).
+describe("sidebar sync between the two programs", () => {
+  const person = (uid: string) => ({ uid, name: uid });
+  const frcDoc = (db: Db, team = T1) => doc(db, "teams", team, "settings", "sidebar");
+  const ftcDoc = (db: Db, team = FT1) => doc(db, programPath("ftc", "teams"), team, "settings", "sidebar");
+  const arranged = () => moveEntry(defaultEntries(), "dashboard", null, 0);
+  const firstOf = (data: unknown) => childrenOf(parseSidebarConfig(data)?.entries ?? [], null)[0]?.id;
+
+  it("an admin sends the layout to their team in the other program, in both directions, and that team's members read it", async () => {
+    const toFtc = await pushSidebarLayout(person(ADMIN), arranged(), "frc", "ftc", as(ADMIN) as unknown as Firestore);
+    expect(toFtc.rev).toBe(1);
+    expect(firstOf((await getDoc(ftcDoc(as(MEMBER) as Db))).data())).toBe("dashboard");
+    const toFrc = await pushSidebarLayout(person(ADMIN), moveEntry(defaultEntries(), "people", null, 0), "ftc", "frc", as(ADMIN) as unknown as Firestore);
+    expect(toFrc.rev).toBe(1);
+    expect(firstOf((await getDoc(frcDoc(as(MEMBER) as Db))).data())).toBe("people");
+  });
+
+  it("replaces what the other program has (the next revision, no conflict) and writes an audit entry there", async () => {
+    await seedDoc((db) => ftcDoc(db), 4);
+    const out = await pushSidebarLayout(person(ADMIN), arranged(), "frc", "ftc", as(ADMIN) as unknown as Firestore);
+    expect(out.rev).toBe(5);
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const { getDocs, collection } = await import("firebase/firestore");
+      const logs = await getDocs(collection(ctx.firestore() as Db, programPath("ftc", "auditLog")));
+      const entry = logs.docs.map((d) => d.data()).find((d) => d.action === "edit-sidebar");
+      expect(entry?.teamId).toBe(FT1);
+      expect(entry?.target).toMatchObject({ rev: 5, syncedFrom: "frc" });
+    });
+  });
+
+  it("pulls the other program's layout as an entry list (the default when it has none), without writing", async () => {
+    expect(sameLayout(await pullSidebarLayout({ uid: ADMIN }, "ftc", as(ADMIN) as unknown as Firestore), defaultEntries())).toBe(true);
+    await pushSidebarLayout(person(ADMIN), arranged(), "frc", "ftc", as(ADMIN) as unknown as Firestore);
+    expect(sameLayout(await pullSidebarLayout({ uid: ADMIN }, "ftc", as(ADMIN) as unknown as Firestore), arranged())).toBe(true);
+  });
+
+  it("is refused for a member (the rules), and says there is no account for a person without a profile in the other program", async () => {
+    await expect(pushSidebarLayout(person(MEMBER), arranged(), "frc", "ftc", as(MEMBER) as unknown as Firestore)).rejects.toThrow();
+    await expect(pushSidebarLayout(person("sb-stranger"), arranged(), "frc", "ftc", as("sb-stranger") as unknown as Firestore)).rejects.toBeInstanceOf(SidebarSyncError);
+    await expect(pullSidebarLayout({ uid: "sb-stranger" }, "ftc", as("sb-stranger") as unknown as Firestore)).rejects.toBeInstanceOf(SidebarSyncError);
+    let exists = true;
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      exists = (await getDoc(ftcDoc(ctx.firestore() as Db))).exists();
+    });
+    expect(exists).toBe(false);
+  });
+
+  it("never writes another team's layout: an admin of a different team in the other program only reaches their own", async () => {
+    await pushSidebarLayout(person(OTHER_ADMIN), arranged(), "frc", "ftc", as(OTHER_ADMIN) as unknown as Firestore);
+    expect(firstOf((await getDoc(ftcDoc(as(OTHER_MEMBER) as Db, FT2))).data())).toBe("dashboard");
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      expect((await getDoc(ftcDoc(ctx.firestore() as Db, FT1))).exists()).toBe(false);
+    });
+  });
+});

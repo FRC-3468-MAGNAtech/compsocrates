@@ -18,7 +18,7 @@ import {
 } from "@/lib/sidebar/types";
 
 // Pure edit operations for the customizer. Each takes the COMPLETE entry list (`normalizeEntries`) and returns a new one; none mutates its input.
-// Where a move is not allowed (an indent with no group above, a group inside a group) the list comes back unchanged.
+// Where a move is not allowed (a group inside a group, a page into something that is not a group) the list comes back unchanged.
 
 type Entries = readonly SidebarEntry[];
 
@@ -31,61 +31,20 @@ const without = (e: SidebarEntry, ...keys: (keyof SidebarEntry)[]): SidebarEntry
   return copy;
 };
 
-/** The siblings that `id` shares a parent with, in order. */
-export const siblingsOf = (entries: Entries, id: string): SidebarEntry[] => {
+/**
+ * Drag and drop: puts `id` into `parent` (a zone or a group) at position `index` among that parent's other children (clamped; `Infinity` = the end). A group
+ * can only go to a zone (one level), and a page only to a zone or an existing group; anything else comes back unchanged. A group keeps its pages.
+ */
+export function moveEntry(entries: Entries, id: string, parent: string | null, index: number): SidebarEntry[] {
   const e = find(entries, id);
-  return e ? childrenOf(entries, e.parent) : [];
-};
-
-export function canMoveUp(entries: Entries, id: string): boolean {
-  const sibs = siblingsOf(entries, id);
-  return sibs.length > 0 && sibs[0].id !== id;
-}
-export function canMoveDown(entries: Entries, id: string): boolean {
-  const sibs = siblingsOf(entries, id);
-  return sibs.length > 0 && sibs[sibs.length - 1].id !== id;
-}
-
-function swapWith(entries: Entries, id: string, delta: -1 | 1): SidebarEntry[] {
-  const sibs = siblingsOf(entries, id);
-  const at = sibs.findIndex((s) => s.id === id);
-  const other = sibs[at + delta];
-  if (at < 0 || !other) return entries.map((e) => ({ ...e }));
-  const a = sibs[at];
-  return renumber(entries.map((e) => (e.id === a.id ? { ...e, order: other.order } : e.id === other.id ? { ...e, order: a.order } : { ...e })));
-}
-export const moveUp = (entries: Entries, id: string) => swapWith(entries, id, -1);
-export const moveDown = (entries: Entries, id: string) => swapWith(entries, id, 1);
-
-/** Indent: a page goes inside the group directly above it (same zone). Not for groups (one level) and not when the item above is not a group. */
-export function canIndent(entries: Entries, id: string): boolean {
-  const e = find(entries, id);
-  if (!e || e.kind !== "page" || !isZone(e.parent)) return false;
-  const sibs = siblingsOf(entries, id);
-  const above = sibs[sibs.findIndex((s) => s.id === id) - 1];
-  return above?.kind === "group";
-}
-export function indent(entries: Entries, id: string): SidebarEntry[] {
-  if (!canIndent(entries, id)) return entries.map((e) => ({ ...e }));
-  const sibs = siblingsOf(entries, id);
-  const above = sibs[sibs.findIndex((s) => s.id === id) - 1];
-  return moveTo(entries, id, above.id);
-}
-
-/** Outdent: a page leaves its group and lands right after it. */
-export function canOutdent(entries: Entries, id: string): boolean {
-  const e = find(entries, id);
-  return !!e && e.kind === "page" && !isZone(e.parent);
-}
-export function outdent(entries: Entries, id: string): SidebarEntry[] {
-  const e = find(entries, id);
-  if (!e || !canOutdent(entries, id)) return entries.map((x) => ({ ...x }));
-  const group = find(entries, e.parent as string);
-  const zone = group?.parent ?? MAIN_ZONE;
-  const after = group?.order ?? Number.MAX_SAFE_INTEGER;
-  // Make room right after the group, then drop the page there.
-  const shifted = entries.map((x) => (x.parent === zone && x.order > after ? { ...x, order: x.order + 1 } : { ...x }));
-  return renumber(shifted.map((x) => (x.id === id ? { ...x, parent: zone, order: after + 0.5 } : x)));
+  if (!e) return entries.map((x) => ({ ...x }));
+  if (e.kind === "group" && !isZone(parent)) return entries.map((x) => ({ ...x }));
+  if (!isZone(parent) && find(entries, parent as string)?.kind !== "group") return entries.map((x) => ({ ...x }));
+  const others = childrenOf(entries, parent).filter((x) => x.id !== id);
+  const at = Math.min(Math.max(Number.isNaN(index) ? others.length : index, 0), others.length);
+  const sequence = [...others.slice(0, at).map((x) => x.id), id, ...others.slice(at).map((x) => x.id)];
+  const position = new Map(sequence.map((x, i) => [x, i]));
+  return entries.map((x) => (x.id === id ? { ...x, parent, order: position.get(id) as number } : x.parent === parent ? { ...x, order: position.get(x.id) as number } : { ...x }));
 }
 
 /** The places an entry may be moved to: the two zones and every group (a group can only go to a zone). */
@@ -102,13 +61,7 @@ export function moveTargets(entries: Entries, id: string): { value: string; labe
 
 /** Move to the end of a zone (`"@main"`, `"@footer"`) or of a group. */
 export function moveTo(entries: Entries, id: string, target: string): SidebarEntry[] {
-  const e = find(entries, id);
-  const parent = target === "@main" ? MAIN_ZONE : target;
-  if (!e) return entries.map((x) => ({ ...x }));
-  if (e.kind === "group" && !isZone(parent)) return entries.map((x) => ({ ...x }));
-  if (!isZone(parent) && find(entries, parent as string)?.kind !== "group") return entries.map((x) => ({ ...x }));
-  const last = entries.filter((x) => x.parent === parent && x.id !== id).reduce((m, x) => Math.max(m, x.order), -1);
-  return renumber(update(entries, id, { parent, order: last + 1 }));
+  return moveEntry(entries, id, target === "@main" ? MAIN_ZONE : target, Infinity);
 }
 
 const cleanLabel = (text: string) => text.replace(/\s+/g, " ").trim().slice(0, MAX_LABEL_LENGTH);

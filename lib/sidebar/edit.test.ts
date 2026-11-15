@@ -1,19 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   canHide,
-  canIndent,
-  canMoveDown,
-  canMoveUp,
-  canOutdent,
   createGroup,
   deleteGroup,
-  indent,
   isItemCustomized,
-  moveDown,
+  moveEntry,
   moveTargets,
   moveTo,
-  moveUp,
-  outdent,
   rename,
   resetAll,
   resetItem,
@@ -21,7 +14,6 @@ import {
   saveBlocker,
   setHidden,
   setIcon,
-  siblingsOf,
   toConfig,
 } from "@/lib/sidebar/edit";
 import { childrenOf, defaultEntries, normalizeEntries, parseSidebarConfig } from "@/lib/sidebar/layout";
@@ -31,33 +23,32 @@ const start = () => defaultEntries();
 const order = (entries: ReturnType<typeof start>, parent: string | null) => childrenOf(entries, parent).map((e) => e.id);
 
 describe("moving", () => {
-  it("moves up and down among siblings, and says when it cannot", () => {
+  it("moveEntry puts an entry at a position of a zone or a group, and renumbers", () => {
     const e = start();
-    expect(canMoveUp(e, "event-selection")).toBe(false);
-    expect(canMoveDown(e, "event-selection")).toBe(true);
-    const down = moveDown(e, "event-selection");
-    expect(order(down, null).slice(0, 2)).toEqual(["assignments", "event-selection"]);
-    expect(order(moveUp(down, "event-selection"), null)).toEqual(order(e, null));
-    // an end item does not move
-    expect(order(moveUp(e, "event-selection"), null)).toEqual(order(e, null));
+    const first = moveEntry(e, "dashboard", null, 0);
+    expect(order(first, null).slice(0, 3)).toEqual(["dashboard", "event-selection", "assignments"]);
+    const orders = first.filter((x) => x.parent === null).map((x) => x.order).sort((x, y) => x - y);
+    expect(orders).toEqual(orders.map((_, i) => i));
+    // into the middle of a group, out of a group, and to a position past the end (clamped)
+    const inside = moveEntry(e, "analytics", FORMS_GROUP_ID, 2);
+    expect(order(inside, FORMS_GROUP_ID).indexOf("analytics")).toBe(2);
+    expect(order(moveEntry(inside, "analytics", null, 1), null)[1]).toBe("analytics");
+    expect(order(moveEntry(e, "people", FOOTER_ZONE, 99), FOOTER_ZONE).at(-1)).toBe("people");
+    // moving within the same parent keeps the others in their order
+    const same = moveEntry(e, "event-selection", null, 2);
+    expect(order(same, null).slice(0, 3)).toEqual(["assignments", "dashboard", "event-selection"]);
   });
 
-  it("indents a page into the group right above it, and outdents it back right after the group", () => {
+  it("moveEntry never nests a group, never moves into a page or a missing parent, and a moved group keeps its pages", () => {
     const e = start();
-    expect(canIndent(e, "analytics")).toBe(true); // Forms group is the item above
-    const inside = indent(e, "analytics");
-    expect(order(inside, FORMS_GROUP_ID).at(-1)).toBe("analytics");
-    expect(canOutdent(inside, "analytics")).toBe(true);
-    const out = outdent(inside, "analytics");
-    expect(order(out, null).slice(order(out, null).indexOf(FORMS_GROUP_ID), order(out, null).indexOf(FORMS_GROUP_ID) + 2)).toEqual([FORMS_GROUP_ID, "analytics"]);
-  });
-
-  it("does not indent a page with a page above, a group (one level), or outdent a top-level page", () => {
-    const e = start();
-    expect(canIndent(e, "assignments")).toBe(false);
-    expect(canIndent(e, FORMS_GROUP_ID)).toBe(false);
-    expect(canOutdent(e, "dashboard")).toBe(false);
-    expect(indent(e, FORMS_GROUP_ID)).toEqual(e);
+    const g = createGroup(e, "Test");
+    expect(moveEntry(g.entries, FORMS_GROUP_ID, g.id as string, 0)).toEqual(g.entries);
+    expect(moveEntry(e, "people", "dashboard", 0)).toEqual(e);
+    expect(moveEntry(e, "people", "no-such-group", 0)).toEqual(e);
+    expect(moveEntry(e, "no-such-entry", null, 0)).toEqual(e);
+    const moved = moveEntry(e, FORMS_GROUP_ID, FOOTER_ZONE, 0);
+    expect(order(moved, FOOTER_ZONE)[0]).toBe(FORMS_GROUP_ID);
+    expect(order(moved, FORMS_GROUP_ID)).toEqual(order(e, FORMS_GROUP_ID));
   });
 
   it("moves to a zone or a group, never a group into a group", () => {
@@ -74,8 +65,8 @@ describe("moving", () => {
   it("never mutates what it was given", () => {
     const e = start();
     const copy = JSON.stringify(e);
-    moveDown(e, "dashboard");
-    indent(e, "analytics");
+    moveEntry(e, "dashboard", null, 0);
+    moveEntry(e, "analytics", FORMS_GROUP_ID, 0);
     setHidden(e, "people", true);
     rename(e, "people", "Folks");
     deleteGroup(e, FORMS_GROUP_ID);
@@ -160,12 +151,12 @@ describe("saving and reading", () => {
   it("sameLayout notices real changes only", () => {
     const e = start();
     expect(sameLayout(e, [...e].reverse())).toBe(true);
-    expect(sameLayout(e, moveDown(e, "dashboard"))).toBe(false);
+    expect(sameLayout(e, moveEntry(e, "dashboard", null, 0))).toBe(false);
     expect(sameLayout(e, setHidden(e, "people", true))).toBe(false);
   });
 
   it("toConfig bumps nothing by itself: the caller passes the next rev, and orders are 0..n", () => {
-    const c = toConfig(moveDown(start(), "dashboard"), 4);
+    const c = toConfig(moveEntry(start(), "dashboard", null, 0), 4);
     expect(c.rev).toBe(4);
     expect(c.version).toBe(1);
     const top = c.entries.filter((x) => x.parent === null).map((x) => x.order).sort((a, b) => a - b);
@@ -184,10 +175,5 @@ describe("saving and reading", () => {
     expect(messy?.entries).toHaveLength(1);
     expect(messy?.entries[0].icon).toBeUndefined();
     expect(messy?.entries[0].label).toHaveLength(40);
-  });
-
-  it("sibling helpers agree with the list", () => {
-    expect(siblingsOf(start(), "dashboard").map((x) => x.id)[0]).toBe("event-selection");
-    expect(siblingsOf(start(), "nope")).toEqual([]);
   });
 });
