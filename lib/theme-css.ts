@@ -10,6 +10,8 @@ import { hasModes, pageBackground, type ThemeDefinition, type ThemeTokens } from
 import { GLASS_LAYER_STORAGE_KEY } from "@/lib/glass-layer-level";
 import { COLOR_MODE_STORAGE_KEY, GRADIENT_INTENSITY_STORAGE_KEY, THEME_STORAGE_KEY } from "@/lib/theme-prefs";
 import { INTENSITY_STRENGTH } from "@/lib/theme-gradient";
+import { ACCOUNT_APPEARANCE_OWNER_KEY } from "@/lib/account-appearance";
+import { DEVICE_THEME_KEY_BASE } from "@/lib/theme-scope";
 
 /** One theme's variables, as the body of a CSS rule. */
 export function tokensToCss(t: ThemeTokens): string {
@@ -76,7 +78,8 @@ export function themeCss(): string {
 /**
  * Runs in <head> before first paint: sets data-theme and data-mode from this browser's saved choice (and the system
  * preference), so there is never a flash of the wrong theme. Mirrors lib/theme-prefs.ts. The signed-in account's
- * saved values are applied by ThemeProvider as soon as the profile loads.
+ * saved values are applied by ThemeProvider as soon as the profile loads. A "this device only" theme (lib/theme-scope.ts) of the account named by
+ * the owner marker overrides the mirrors; with nobody signed in there is no marker, so it never applies.
  */
 export function themeInitScript(): string {
   const ids = JSON.stringify(themes.map((t) => t.id));
@@ -88,12 +91,17 @@ var t=g(${JSON.stringify(THEME_STORAGE_KEY)});
 if(ids.indexOf(t)<0)t=${JSON.stringify(defaultThemeId)};
 var p=g(${JSON.stringify(COLOR_MODE_STORAGE_KEY)});
 if(p!=="light"&&p!=="dark"&&p!=="system")p="system";
+var gk=g(${JSON.stringify(GRADIENT_INTENSITY_STORAGE_KEY)});
+var ow=g(${JSON.stringify(ACCOUNT_APPEARANCE_OWNER_KEY)});
+if(ow){var dr=g(${JSON.stringify(DEVICE_THEME_KEY_BASE + ":")}+ow);if(dr){try{dr=JSON.parse(dr)}catch(e){dr=null}
+if(dr&&dr.scope==="device"&&dr.theme&&ids.indexOf(dr.theme.themeId)>=0){t=dr.theme.themeId;
+p=dr.theme.colorMode;if(p!=="light"&&p!=="dark"&&p!=="system")p="system";gk=dr.theme.gradientIntensity}}}
 var m=p==="system"?(window.matchMedia&&matchMedia("(prefers-color-scheme: light)").matches?"light":"dark"):p;
 if(flags.indexOf(t)>=0)m="dark";
 de.setAttribute("data-theme",t);de.setAttribute("data-mode",m);
 var s=parseFloat(g(${JSON.stringify(GLASS_LAYER_STORAGE_KEY)}));
 if(s>=0.3&&s<=2)de.style.setProperty("--glass-shade",String(s));
-var gm=${JSON.stringify(INTENSITY_STRENGTH)},gk=g(${JSON.stringify(GRADIENT_INTENSITY_STORAGE_KEY)});
+var gm=${JSON.stringify(INTENSITY_STRENGTH)};
 if(gk&&Object.prototype.hasOwnProperty.call(gm,gk))de.style.setProperty("--gradient-strength",String(gm[gk]));
 }catch(e){}})();`;
 }

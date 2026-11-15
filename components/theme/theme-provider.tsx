@@ -25,6 +25,18 @@ import {
   resolveThemeId,
 } from "@/lib/theme-prefs";
 import { DEFAULT_GRADIENT_INTENSITY, type GradientIntensity } from "@/lib/theme-gradient";
+import {
+  EMPTY_DEVICE_RECORD,
+  accountLook,
+  applyDeviceChange,
+  readDeviceThemeRecord,
+  scopeSwitchNeedsChoice,
+  switchScope,
+  writeDeviceThemeRecord,
+  type DeviceThemeRecord,
+  type ThemeLook,
+  type ThemeScope,
+} from "@/lib/theme-scope";
 
 // Theme + light/dark mode (P18). Two independent settings, both kept per user (users/{uid}.themeId / .colorMode),
 // mirrored in this browser's localStorage so they apply before sign-in and before first paint (the inline script in
@@ -54,6 +66,14 @@ type ThemeContextValue = {
   /** P32: Subtle / Normal / Vivid (default Vivid): how strongly a gradient or pride theme's painted page shows. Saved per user. */
   gradientIntensity: GradientIntensity;
   setGradientIntensity: (intensity: GradientIntensity) => void;
+  /** Session G: does the theme apply on all the account's devices ("account", the default) or only on this device ("device")? Per device and per account. */
+  scope: ThemeScope;
+  /** False when nobody is signed in: there is no account, so there is no scope to choose. */
+  scopeAvailable: boolean;
+  /** True when leaving "device" would drop a different device theme: the UI asks "upload it to the account, or keep the account's?" first. */
+  scopeNeedsChoice: boolean;
+  /** `choice` only matters when leaving "device" with a different device theme: "upload" saves it to the account, "keep" leaves the account's. Neither deletes the device theme. */
+  setScope: (next: ThemeScope, choice?: "upload" | "keep") => void;
 };
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -86,6 +106,17 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const accountThemeId = profile?.themeId;
   const accountMode = profile?.colorMode;
   const accountIntensity = profile?.gradientIntensity;
+  const uid = user?.uid ?? null;
+
+  // Session G (lib/theme-scope.ts): this device's record for the signed-in account. Read in render, the moment the account is known, so the right
+  // theme is chosen on the same pass (never from another account's record). Nobody signed in: the empty record, so nothing device-only applies.
+  const [store, setStore] = useState<{ uid: string | null; record: DeviceThemeRecord }>({ uid: null, record: EMPTY_DEVICE_RECORD });
+  if (store.uid !== uid) setStore({ uid, record: uid ? readDeviceThemeRecord(uid) : EMPTY_DEVICE_RECORD });
+  const record = store.record;
+  const deviceActive = record.scope === "device" && record.theme !== null;
+  const deviceThemeId = record.theme?.themeId;
+  const deviceColorMode = record.theme?.colorMode;
+  const deviceIntensity = record.theme?.gradientIntensity;
 
   // SSR (and the first client render) assume the defaults, matching the markup; the real values sync in right after mount.
   const [themeId, setThemeIdState] = useState("team");
@@ -144,21 +175,38 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("storage", onStorage);
   }, [user]);
 
-  // Once the account's profile is known, its saved choices win (they follow the user between devices).
+  // This device only: the device theme wins over the account's while the scope says so. It is kept in this browser per account, so it persists.
   useEffect(() => {
+    if (!deviceActive || deviceThemeId === undefined || deviceColorMode === undefined || deviceIntensity === undefined) return;
+    /* eslint-disable react-hooks/set-state-in-effect */
+    setThemeIdState(deviceThemeId);
+    setColorModeState(deviceColorMode);
+    setGradientIntensityState(deviceIntensity);
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [deviceActive, deviceThemeId, deviceColorMode, deviceIntensity]);
+
+  useEffect(() => {
+    if (!uid) return;
+    writeDeviceThemeRecord(uid, record);
+  }, [uid, record]);
+
+  // Once the account's profile is known, its saved choices win (they follow the user between devices), unless this device overrides them.
+  useEffect(() => {
+    if (deviceActive) return;
     if (accountThemeId === undefined && accountMode === undefined) return;
     /* eslint-disable react-hooks/set-state-in-effect */
     setThemeIdState((cur) => resolveThemeId(accountThemeId, cur));
     const parsed = parseColorModePreference(accountMode);
     if (parsed) setColorModeState(parsed);
     /* eslint-enable react-hooks/set-state-in-effect */
-  }, [accountThemeId, accountMode]);
+  }, [deviceActive, accountThemeId, accountMode]);
 
   useEffect(() => {
+    if (deviceActive) return;
     const parsed = parseGradientIntensity(accountIntensity);
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (parsed) setGradientIntensityState(parsed);
-  }, [accountIntensity]);
+  }, [deviceActive, accountIntensity]);
 
   // Gradient intensity: this browser's copy, and the CSS variable the page-gradient layer reads (lib/theme-css.ts sets it pre-paint too).
   useEffect(() => {
@@ -200,11 +248,33 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   );
 
   const save = useCallback(
-    (patch: { themeId?: string; colorMode?: ColorModePreference; gradientIntensity?: GradientIntensity }) => {
+    (patch: Partial<ThemeLook>) => {
       if (!user) return; // signed out (the marketing pages): this browser's copy is all there is
+      // This device only: the change goes to this browser's record, never to the account.
+      if (record.scope === "device") {
+        setStore((prev) => ({ uid: prev.uid, record: applyDeviceChange(prev.record, { themeId, colorMode, gradientIntensity }, patch) }));
+        return;
+      }
       updateUserProfile(patch).catch((err) => console.error("couldn't save the appearance settings:", err));
     },
-    [user, updateUserProfile]
+    [user, record.scope, updateUserProfile, themeId, colorMode, gradientIntensity]
+  );
+
+  const scopeNeedsChoice = scopeSwitchNeedsChoice(record, { themeId: accountThemeId, colorMode: accountMode, gradientIntensity: accountIntensity });
+  const setScope = useCallback(
+    (next: ThemeScope, choice?: "upload" | "keep") => {
+      if (!uid || next === record.scope) return;
+      const account = accountLook({ themeId: accountThemeId, colorMode: accountMode, gradientIntensity: accountIntensity });
+      setStore({ uid, record: switchScope(record, next, { themeId, colorMode, gradientIntensity }) });
+      if (next === "device") return; // the device effect applies the device theme
+      // Back to all devices: either this device's theme goes to the account (and stays on screen), or the account's comes back. The device theme is kept either way.
+      const look = choice === "upload" && record.theme ? record.theme : account;
+      setThemeIdState(look.themeId);
+      setColorModeState(look.colorMode);
+      setGradientIntensityState(look.gradientIntensity);
+      if (look === record.theme) updateUserProfile(look).catch((err) => console.error("couldn't upload this device's theme to the account:", err));
+    },
+    [uid, record, accountThemeId, accountMode, accountIntensity, themeId, colorMode, gradientIntensity, updateUserProfile]
   );
 
   const setThemeId = useCallback(
@@ -238,9 +308,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     setColorMode(oppositeMode(resolvedMode));
   }, [modeLocked, resolvedMode, setColorMode]);
 
+  const scope = record.scope;
+  const scopeAvailable = uid !== null;
   const value = useMemo(
-    () => ({ theme, themeId, setThemeId, colorMode, setColorMode, resolvedMode, modeLocked, toggleColorMode, gradientIntensity, setGradientIntensity }),
-    [theme, themeId, setThemeId, colorMode, setColorMode, resolvedMode, modeLocked, toggleColorMode, gradientIntensity, setGradientIntensity]
+    () => ({ theme, themeId, setThemeId, colorMode, setColorMode, resolvedMode, modeLocked, toggleColorMode, gradientIntensity, setGradientIntensity, scope, scopeAvailable, scopeNeedsChoice, setScope }),
+    [theme, themeId, setThemeId, colorMode, setColorMode, resolvedMode, modeLocked, toggleColorMode, gradientIntensity, setGradientIntensity, scope, scopeAvailable, scopeNeedsChoice, setScope]
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;

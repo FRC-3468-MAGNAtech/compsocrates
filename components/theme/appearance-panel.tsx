@@ -4,7 +4,9 @@ import { useId, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Check, Monitor, Moon, Search, Sun, type LucideIcon } from "lucide-react";
 import { useAppTheme } from "@/components/theme/theme-provider";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import type { ThemeScope } from "@/lib/theme-scope";
 import { pageBackground, themeGroups, tokensFor, type ColorMode, type ColorModePreference, type ThemeDefinition } from "@/lib/themes";
 import { GRADIENT_INTENSITIES, type GradientIntensity } from "@/lib/theme-gradient";
 import { rgbTriple, parseHex } from "@/lib/theme-color";
@@ -40,6 +42,7 @@ export function AppearancePanel() {
 
   return (
     <div className="flex flex-col gap-6" data-testid="appearance-panel">
+      <ThemeScopeSection />
       <section aria-labelledby={`${searchId}-mode`} className="flex flex-col gap-2">
         <h3 id={`${searchId}-mode`} className="text-sm font-semibold">
           Mode
@@ -130,6 +133,81 @@ export function AppearancePanel() {
         ))}
       </section>
     </div>
+  );
+}
+
+const SCOPES: { id: ThemeScope; label: string }[] = [
+  { id: "account", label: "All my devices" },
+  { id: "device", label: "This device only" },
+];
+
+/** Session G: "Theme applies to: All my devices / This device only". Signed-in only (there is no account to share with otherwise). */
+function ThemeScopeSection() {
+  const { scope, scopeAvailable, scopeNeedsChoice, setScope } = useAppTheme();
+  const [asking, setAsking] = useState(false);
+  const labelId = useId();
+  if (!scopeAvailable) return null;
+
+  const choose = (next: ThemeScope) => {
+    if (next === scope) return;
+    if (next === "account" && scopeNeedsChoice) {
+      setAsking(true); // a different theme lives on this device: upload it, or keep the account's?
+      return;
+    }
+    setScope(next);
+  };
+  const decide = (choice: "upload" | "keep") => {
+    setAsking(false);
+    setScope("account", choice);
+  };
+
+  return (
+    <section aria-labelledby={labelId} className="flex flex-col gap-2" data-testid="theme-scope">
+      <h3 id={labelId} className="text-sm font-semibold">
+        Theme applies to
+      </h3>
+      <div role="group" aria-labelledby={labelId} className="glass-pill grid w-full max-w-md grid-cols-2 gap-1 p-1">
+        {SCOPES.map(({ id, label }) => {
+          const active = scope === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              data-testid={`theme-scope-${id}`}
+              aria-pressed={active}
+              onClick={() => choose(id)}
+              className={cn(
+                "flex h-10 items-center justify-center rounded-full px-3 text-sm font-medium transition-colors",
+                active ? "bg-[var(--color-primary)] text-[var(--color-primary-foreground)]" : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+              )}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+      <p className="text-xs text-[var(--muted-foreground)]">
+        {scope === "device"
+          ? "This device uses its own theme. Your other devices keep using your account theme, which isn't changed."
+          : "Your theme is saved to your account and used on every device you sign in on."}
+      </p>
+      {asking && (
+        <div role="alertdialog" aria-label="Use this device's theme on all your devices?" data-testid="theme-scope-choice" className="glass-card flex flex-col gap-3 p-4">
+          <p className="text-sm">This device has its own theme. Upload it to your account, or keep the theme your account already has? Your device theme is kept either way.</p>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" onClick={() => decide("upload")} data-testid="theme-scope-upload">
+              Upload this device&apos;s theme
+            </Button>
+            <Button size="sm" variant="glass" onClick={() => decide("keep")} data-testid="theme-scope-keep">
+              Keep my account&apos;s theme
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setAsking(false)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 
