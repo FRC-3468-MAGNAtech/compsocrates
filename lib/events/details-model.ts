@@ -1,3 +1,4 @@
+import { parseEventKey } from "@/lib/events/event-key";
 import { getEventStatus } from "@/lib/events/event-status";
 import type { EventInfo, EventMatch, EventRanking, EventTeam } from "@/lib/events/types";
 
@@ -20,8 +21,7 @@ export function parseEventTab(value: string | null | undefined): EventDetailsTab
 
 /** The season from a TBA-style event key (`2026arli` is 2026), or null when the key doesn't start with a four-digit year and a code (`app-testing`, ``). */
 export function eventKeyYear(eventKey: string): number | null {
-  const match = /^(\d{4})[a-z0-9]+$/i.exec(String(eventKey ?? "").trim());
-  return match ? Number(match[1]) : null;
+  return parseEventKey("tba", eventKey)?.season ?? null;
 }
 
 /** `?team=` highlights one row; only a positive whole number counts. */

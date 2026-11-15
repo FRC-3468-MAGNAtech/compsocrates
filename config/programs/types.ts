@@ -4,6 +4,7 @@
  */
 
 import type { StarterEntry } from "@/lib/changelog/seed";
+import type { EventKeyShape } from "@/lib/events/event-key";
 
 export const PROGRAM_IDS = ["frc", "ftc"] as const;
 export type ProgramId = (typeof PROGRAM_IDS)[number];
@@ -32,6 +33,19 @@ export type ProgramEventRules = {
   unspecifiedGameId?: string;
   /** Does this program have EPA (Statbotics) data? */
   hasEpa: boolean;
+  /** The shape of the event key in `/events/[eventKey]` (`lib/events/event-key.ts`): "tba" is `2026lake`, "season-code" is `2025-USCALAB`. */
+  keyShape: EventKeyShape;
+  /** What the event's key is called on screen. */
+  codeLabel: string;
+  /** Wording on the event page that names the program's data source. */
+  eventCopy: {
+    /** "... is a competition in the {seasonName} season". */
+    seasonName: string;
+    /** "Team lists are loaded from {teamListSource}." */
+    teamListSource: string;
+    /** The data-source credit: "Event and match data may include information from {before}{name} and ...". */
+    credits: readonly { before: string; name: string; href: string }[];
+  };
 };
 
 /**
