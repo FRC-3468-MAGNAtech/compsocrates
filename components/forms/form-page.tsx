@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { CalendarX2, CheckCircle2, Check, Pencil, Send } from "lucide-react";
 import { FormRenderer, type FormEntryState } from "@/components/forms/form-renderer";
@@ -17,6 +17,8 @@ import { allianceTeamsFor, allianceTitle, buildSubmission, resetSlotValues, vali
 import { maxRepeatSlots, slotCountFor } from "@/lib/forms/repeat";
 import type { FormEntry, NewFormEntry } from "@/lib/form-entries-model";
 import { defaultValues, normalizeValues } from "@/lib/forms/values";
+import { hasProgress } from "@/lib/forms/draft";
+import { SubmissionClosedError } from "@/lib/forms/submission-settings";
 import { notesForSave } from "@/lib/sticky-notes";
 import type { Form, FormField, FormValues, StickyNote } from "@/lib/forms/types";
 import type { EventInfo, EventMatch, MatchType } from "@/lib/events/types";
@@ -65,13 +67,17 @@ export type FormPageViewProps = {
   photoKind?: string;
   /** CS submission lockout (`submissionControls.globalLockout`): blocks NEW submissions with the reason. Editing an earlier entry bypasses it, as CS edit mode does. */
   lockout?: SubmissionLockout;
+  /** Session E: controls beside the title (the season select). */
+  headerExtra?: ReactNode;
+  /** Session E: told whenever the person has typed or picked something that has not been submitted (so a season change can ask first). */
+  onDirtyChange?: (dirty: boolean) => void;
 };
 
 /** The Lead Scout's alliance box says "RED / 1111, 2222"; the section whose id is `alliance` is the one. */
 const ALLIANCE_SECTION = "alliance";
 
 export function FormPageView(props: FormPageViewProps) {
-  const { form, title, subtitle, events, eventsLoaded, defaultEventCode, scoutName, matches, teams, planEntries, renderMatchPicker, onSave, onEventChange, myUid, existingEntries = [], onUpdate, assignedTeams, suggestFor, hideEventPickerIfSingle, photoKind = "form", lockout } = props;
+  const { form, title, subtitle, events, eventsLoaded, defaultEventCode, scoutName, matches, teams, planEntries, renderMatchPicker, onSave, onEventChange, myUid, existingEntries = [], onUpdate, assignedTeams, suggestFor, hideEventPickerIfSingle, photoKind = "form", lockout, headerExtra, onDirtyChange } = props;
   const uploads = usePhotoUploads();
   // where a saved entry lives, for attaching a photo that finishes uploading after the save
   const program = useProgram();
@@ -91,6 +97,11 @@ export function FormPageView(props: FormPageViewProps) {
   const [anotherFor, setAnotherFor] = useState<number | null>(null);
   const [hints, setHints] = useState<Record<string, string>>({});
   const pending = useRef<Record<string, string[]>>({});
+
+  // Session E: unsubmitted answers (typed values, a picked match or team, notes), reported so the season select can confirm before it swaps the form
+  useEffect(() => {
+    onDirtyChange?.(hasProgress(form, values) || notes.length > 0 || entry.matchKey !== null || entry.teamNumber !== null || entry.alliance !== null);
+  }, [onDirtyChange, form, values, notes, entry.matchKey, entry.teamNumber, entry.alliance]);
 
   // an event the account no longer has active falls back to the first one
   const eventCode = events.some((e) => e.code === entry.eventCode) ? entry.eventCode : (events[0]?.code ?? "");
@@ -211,8 +222,9 @@ export function FormPageView(props: FormPageViewProps) {
       setDone(true);
       setTimeout(() => setDone(false), 2200);
       reset();
-    } catch {
-      setSaveError("Couldn't save that. Check your connection and try again: nothing was lost.");
+    } catch (error) {
+      // a closed form (the team's submission switch) keeps what was typed and says why; anything else is a save problem
+      setSaveError(error instanceof SubmissionClosedError ? error.message : "Couldn't save that. Check your connection and try again: nothing was lost.");
     } finally {
       setSaving(false);
     }
@@ -221,7 +233,7 @@ export function FormPageView(props: FormPageViewProps) {
   if (eventsLoaded && events.length === 0) {
     return (
       <div className="flex flex-col gap-4">
-        <Header title={title} subtitle={subtitle} />
+        <Header title={title} subtitle={subtitle} actions={headerExtra} />
         <p className="glass-card flex items-center gap-2 p-4 text-sm text-[var(--muted-foreground)]" data-testid="no-active-event">
           <CalendarX2 className="h-4 w-4 shrink-0" aria-hidden /> No active event. Ask an admin to pick the active events.
         </p>
@@ -232,7 +244,7 @@ export function FormPageView(props: FormPageViewProps) {
   const notesCfg = form.stickyNotes;
   return (
     <div className="flex flex-col gap-4 pb-24" data-testid="form-page">
-      <Header title={title} subtitle={subtitle} />
+      <Header title={title} subtitle={subtitle} actions={headerExtra} />
       {lockout && <SubmissionLockoutBanner lockout={lockout} />}
       {assignedTeams && assignedTeams.length > 0 && (
         <section aria-label="My assigned teams" className="glass-card flex flex-col gap-2 p-3" data-testid="assigned-teams">
@@ -317,6 +329,11 @@ export function FormPageView(props: FormPageViewProps) {
         <Button type="button" onClick={() => void submit()} disabled={saving || (!!lockout?.locked && !editing)} className="h-12 gap-2 px-6" data-testid="submit-form">
           <Send className="h-4 w-4" aria-hidden /> {saving ? "Saving…" : editing ? "Save changes" : "Submit"}
         </Button>
+        {lockout?.locked && !editing && !saveError && (
+          <span className="text-sm font-medium text-amber-200" data-testid="submit-locked-note">
+            {lockout.reason}
+          </span>
+        )}
         {saveError && (
           <span role="alert" className="text-sm font-medium text-red-300" data-testid="save-error">
             {saveError}
@@ -348,11 +365,14 @@ export function FormPageView(props: FormPageViewProps) {
   );
 }
 
-function Header({ title, subtitle }: { title: string; subtitle: string }) {
+function Header({ title, subtitle, actions }: { title: string; subtitle: string; actions?: ReactNode }) {
   return (
-    <div>
-      <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-      <p className="text-sm text-[var(--muted-foreground)]">{subtitle}</p>
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+        <p className="text-sm text-[var(--muted-foreground)]">{subtitle}</p>
+      </div>
+      {actions && <div className="flex flex-wrap items-end gap-3">{actions}</div>}
     </div>
   );
 }

@@ -497,6 +497,9 @@ export const ScoutForm = forwardRef<ScoutFormHandle, ScoutFormProps>(function Sc
     return () => {
       document.removeEventListener("visibilitychange", onHide);
       window.removeEventListener("pagehide", flushDraft);
+      // Session E: switching the season (or leaving the page) unmounts the form inside the debounce window: save what is typed first, under THIS form's id
+      // (a REBUILT draft is stored under REBUILT's form and only ever offered back on REBUILT's form)
+      flushDraft();
     };
   }, [draftUserId, flushDraft]);
 

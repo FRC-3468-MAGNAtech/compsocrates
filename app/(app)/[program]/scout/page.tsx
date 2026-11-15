@@ -28,6 +28,10 @@ import { useAssignments } from "@/lib/assignments";
 import { useTeamScoutEntries, saveEntry, entryPayloadFor } from "@/lib/scout-entries";
 import type { ScoreResult } from "@/lib/forms/scoring";
 import { useActiveForm, useForms } from "@/lib/forms/forms-context";
+import { eventsForSeason } from "@/lib/forms/form-season";
+import { useFormSeason } from "@/lib/forms/use-form-season";
+import { useFormDisplayNames } from "@/lib/forms/use-form-display-name";
+import { useDocumentTitle } from "@/lib/use-document-title";
 import { fieldWithRole } from "@/lib/forms/meta";
 import { recomputeForEvent } from "@/lib/analytics/recompute";
 import { nextAssignment as findNextAssignment } from "@/lib/dashboard/insights";
@@ -65,7 +69,7 @@ export default function MatchScoutFormPage() {
 }
 
 function MatchScoutFormContent() {
-  const { events, primaryCode } = useActiveEvents();
+  const { events: allActiveEvents, primaryCode } = useActiveEvents();
   const { user, profile } = useAuth();
   // The Dashboard's "Scout now" opens this page as /scout?event=CODE&load=next — pre-picking that
   // event and loading the scout's next assignment (P13).
@@ -74,24 +78,29 @@ function MatchScoutFormContent() {
   const [now] = useState(() => Date.now());
   const [pickedEventCode, setPickedEventCode] = useState<string | null>(() => searchParams.get("event"));
   const [autoLoadNext, setAutoLoadNext] = useState(() => searchParams.get("load") === "next");
+  const name = profile?.name ?? "";
+  const teamId = profile?.teamId ?? null;
+  const program = useProgram();
+  const { features } = useProgramConfig().connection;
+  const forms = useForms();
+  // Session E: the scout's game is kept in the URL (`?game=`): the active event's season by default, else the program's current one. P21: they fill in that game's
+  // active form (the built-in unless an admin chose another or edited it), and the event picker offers that season's events.
+  const { seasonId: gameId, setSeasonId: setGameId } = useFormSeason(pickDefaultActiveEvent({ events: allActiveEvents, primaryCode }, now));
+  const events = eventsForSeason(allActiveEvents, forms.seasons, gameId, forms.defaultSeasonId);
   const eventChoices = orderPrimaryFirst({ events, primaryCode });
   // The scout's own pick wins while that event is still active; otherwise an
   // In Progress active event, otherwise the primary. With one active event all
   // of this collapses to that event, exactly as before.
   const activeEvent = events.find((e) => e.code === pickedEventCode) ?? pickDefaultActiveEvent({ events, primaryCode }, now);
-  const name = profile?.name ?? "";
-  const teamId = profile?.teamId ?? null;
-  // The scout picks the game (REBUILT by default); P21: they fill in that game's active form (the built-in unless an admin chose another or edited it).
-  const program = useProgram();
-  const { features } = useProgramConfig().connection;
-  const forms = useForms();
-  const [gameId, setGameId] = useState(forms.defaultSeasonId);
   const { form, loaded: formsLoaded } = useActiveForm(gameId);
+  const names = useFormDisplayNames(gameId);
+  const pageTitle = names.forType("match-scout");
+  useDocumentTitle(pageTitle);
 
   const { assignments } = useAssignments(teamId, activeEvent?.code ?? null);
   const { entries } = useTeamScoutEntries(teamId);
   const eventCode = activeEvent?.code ?? null;
-  const lockout = useSubmissionLockout(teamId);
+  const lockout = useSubmissionLockout(teamId, gameId);
   const { requests: subIns } = useSubInRequests(teamId);
   // sub-in windows are hours long; a minute's resolution is plenty for the picker marks
   const [tick, setTick] = useState(() => Date.now());
@@ -156,6 +165,18 @@ function MatchScoutFormContent() {
     });
   };
 
+  // Another game is another form: the notes written for this robot are not carried into it (the form's own answers are kept as a draft per game)
+  const changeGame = (next: string) => {
+    if (next === gameId) return;
+    const hasNotes = notes.length > 0 || comments.trim() !== "";
+    if (hasNotes && !window.confirm(`Switch to ${forms.seasonFor(next).name}? The notes you wrote for this robot are not saved yet and will be cleared. Your other answers stay as a draft on this device.`)) return;
+    setNotes([]);
+    setComments("");
+    setLoadedAssignment(null);
+    setAutoLoadNext(false);
+    setGameId(next);
+  };
+
   const handleSubmit = async (values: ScoutFormValues, score: ScoreResult) => {
     if (!profile || !user || !activeEvent || !values.match || values.teamNumber === null) return;
     // CS assertSubmissionsOpen: a locked team takes no new entry (the form already disables Submit; this is the backstop).
@@ -173,6 +194,8 @@ function MatchScoutFormContent() {
         matchNumber: values.match.match.matchNumber,
         teamNumber: values.teamNumber,
         ...entryPayloadFor(form, values.values, score, { stickyNotes: notesForSave(submittedNotes) }),
+        // the entry belongs to the game the page is open on; the shared write path refuses it when the team closed that season
+        gate: { seasonId: gameId },
       }, program);
     } catch (error) {
       setNotes((current) => [...submittedNotes, ...current]);
@@ -194,11 +217,11 @@ function MatchScoutFormContent() {
     <div className="flex flex-col gap-4 pb-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Match Scout Form</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{pageTitle}</h1>
           <p className="text-sm text-[var(--muted-foreground)]">Log what you see, live, match by match.</p>
         </div>
         <div className="flex flex-wrap items-end gap-3">
-          <GameSelect value={gameId} onChange={setGameId} />
+          <GameSelect value={gameId} onChange={changeGame} />
         </div>
       </div>
 
