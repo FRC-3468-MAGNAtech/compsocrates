@@ -21,11 +21,11 @@ import { diffForms } from "@/lib/forms/diff";
 import { duplicateAsNewForm } from "@/lib/forms/create";
 import { canBeActive, type FormSummary } from "@/lib/forms/resolve";
 import { exportFormJson } from "@/lib/forms/portable";
+import { hasAllianceRoles } from "@/lib/forms/alliance-role";
 import { getBuiltinForm } from "@/lib/forms/builtin";
 import { useForms } from "@/lib/forms/forms-context";
 import { useFormDisplayNames } from "@/lib/forms/use-form-display-name";
 import { usePermissions } from "@/lib/permissions";
-import { SEASONS } from "@/lib/seasons";
 import { downloadTextFile } from "@/lib/download";
 import type { Form } from "@/lib/forms/types";
 import { cn } from "@/lib/utils";
@@ -69,7 +69,7 @@ export function FormsPanelView({ onOpenRescore, services: svc }: { onOpenRescore
 
   const tpl = useTemplates();
   const [view, setView] = useState<"forms" | "templates">("forms");
-  const [templateTab, setTemplateTab] = useState<"public" | "mine">("public");
+  const [templateTab, setTemplateTab] = useState<"public" | "mine">(tpl.sharing ? "public" : "mine");
   const [saveFor, setSaveFor] = useState<string | null>(null);
   const [updateFor, setUpdateFor] = useState<string | null>(null);
   /** The newest version of each template one of our forms came from (null: it's gone or we can't read it). */
@@ -119,7 +119,7 @@ export function FormsPanelView({ onOpenRescore, services: svc }: { onOpenRescore
   const visible = summaries.filter((s) => showArchived || !s.archived);
   const archivedCount = summaries.filter((s) => s.archived).length;
   const nameOfForm = (id: string) => summaries.find((s) => s.id === id)?.name ?? id;
-  const seasonsActiveFor = (id: string) => SEASONS.filter((se) => se.enabled && forms.activeFormIdFor(se.id) === id);
+  const seasonsActiveFor = (id: string) => forms.seasons.filter((se) => forms.activeFormIdFor(se.id) === id);
 
   /** What scouts see for a form now, or its draft when it was never published. */
   const effective = effectiveForm;
@@ -293,7 +293,7 @@ export function FormsPanelView({ onOpenRescore, services: svc }: { onOpenRescore
         open={!!saveFor}
         onClose={() => setSaveFor(null)}
         title="Save as template"
-        intro="Saves a copy of this form as a private template that only your account can see. You can ask to publish it publicly from the Templates tab."
+        intro={tpl.sharing ? "Saves a copy of this form as a private template that only your account can see. You can ask to publish it publicly from the Templates tab." : "Saves a copy of this form as a private template that only your account can see."}
         confirmLabel="Save template"
         initial={{ name: saveFor ? nameOfForm(saveFor) : "", description: (saveFor && effective(saveFor)?.description) || "", tags: (saveFor && effective(saveFor)?.tags) || [] }}
         onSave={async (v) => {
@@ -352,6 +352,11 @@ export function FormsPanelView({ onOpenRescore, services: svc }: { onOpenRescore
         name={activeFor ? nameOfForm(activeFor) : ""}
         onClose={() => setActiveFor(null)}
         activeIdFor={forms.activeFormIdFor}
+        blockedFor={(seasonId) => {
+          const form = activeFor ? effective(activeFor) : null;
+          const builtin = forms.builtinFormFor(seasonId);
+          return form && builtin && hasAllianceRoles(builtin) && !hasAllianceRoles(form) ? "This game's form splits alliance roles (one scout records each alliance objective) and this form has no role fields, so it can't be used for scouting." : null;
+        }}
         nameOfForm={nameOfForm}
         busy={busy}
         onSet={(seasonId, prev) =>
@@ -389,16 +394,19 @@ function SetActiveDialog({
   nameOfForm,
   busy,
   onSet,
+  blockedFor,
 }: {
   formId: string | null;
   name: string;
   onClose: () => void;
   activeIdFor: (seasonId?: string) => string;
+  /** Why this form cannot be made active for a season (null: it can). */
+  blockedFor?: (seasonId: string) => string | null;
   nameOfForm: (id: string) => string;
   busy: boolean;
   onSet: (seasonId: string, previousFormId: string) => void;
 }) {
-  const seasons = SEASONS.filter((s) => s.enabled);
+  const seasons = useForms().seasons;
   return (
     <Dialog open={!!formId} onOpenChange={(o) => !o && !busy && onClose()}>
       <DialogContent>
@@ -408,13 +416,15 @@ function SetActiveDialog({
           {seasons.map((s) => {
             const current = activeIdFor(s.id);
             const already = current === formId;
+            const blocked = blockedFor?.(s.id) ?? null;
             return (
               <li key={s.id} className="flex items-center justify-between gap-3 rounded-2xl border border-[var(--glass-border)] px-3 py-2">
                 <div className="min-w-0">
                   <div className="text-sm font-semibold">{s.name}</div>
                   <div className="truncate text-xs text-[var(--muted-foreground)]">Now: {nameOfForm(current)}</div>
+                  {blocked && <div className="mt-1 text-xs text-amber-300">{blocked}</div>}
                 </div>
-                <Button size="sm" disabled={already || busy} onClick={() => onSet(s.id, current)} aria-label={`Use for ${s.name}`}>
+                <Button size="sm" disabled={already || busy || blocked !== null} onClick={() => onSet(s.id, current)} aria-label={`Use for ${s.name}`}>
                   {already ? "Active" : "Use for this season"}
                 </Button>
               </li>

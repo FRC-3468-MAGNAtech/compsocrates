@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { useAuth } from "@/lib/auth";
 import { isFirebaseConfigured } from "@/lib/firebase/client";
 import { useTeamDoc } from "@/lib/team";
-import { DEFAULT_SEASON_ID, getEnabledSeasons, getSeason } from "@/lib/seasons";
+import { DEFAULT_SEASON_ID, getEnabledSeasons, getSeason, SEASONS } from "@/lib/seasons";
 import { getDefaultSeason, getSelectableSeasons } from "@/lib/events/config";
 import { useProgramData, type ProgramData, type ProgramSeason } from "@/lib/program/data";
 import { useProgram } from "@/lib/program/context";
@@ -14,6 +14,7 @@ import { unionForms } from "@/lib/analytics/game-schema";
 import type { Form } from "@/lib/forms/types";
 import { activeFormIdFor, canBeActive, emptyCatalog, listFormSummaries, resolveForm, resolveFormForEntry, versionKey, type FormCatalog, type FormDoc, type FormSummary } from "@/lib/forms/resolve";
 import type { FormResolver } from "@/lib/forms/resolver";
+import { formWithRoles } from "@/lib/forms/alliance-role";
 import { loadFormVersion, subscribeFormDocs } from "@/lib/forms/firestore-store";
 
 // P21: the account's forms for every screen, with synchronous lookups. The form docs are one realtime subscription; published versions are loaded
@@ -39,10 +40,14 @@ export type FormsValue = {
   activeForms: Readonly<Record<string, string>>;
   /** The form scouts fill in for a season (default: the active season). */
   activeFormFor: (seasonId?: string) => Form;
+  /** The season's built-in match form as shipped in code (null when the season has none). */
+  builtinFormFor: (seasonId?: string) => Form | null;
   /** The form id that is active for a season. */
   activeFormIdFor: (seasonId?: string) => string;
   /** The seasons (games) this program scouts that can take new entries, for the game picker. */
   seasons: readonly ProgramSeason[];
+  /** Every season the program has, including ones that no longer take new entries (an admin tool that works on old data lists these). */
+  allSeasons: readonly ProgramSeason[];
   /** The season new entries default to. */
   defaultSeasonId: string;
   /** The id of a season's built-in match form (default: the default season's). */
@@ -71,9 +76,11 @@ export function buildFormsValue(
   const forEntry: FormsValue["forEntry"] = (entry) => resolveFormForEntry(catalog, entry.formId, entry.formVersion);
   const seasonOf = (seasonId?: string): ProgramSeason => (games ? (games.seasons.find((s) => s.id === (seasonId ?? games.defaultSeasonId)) ?? games.seasons.find((s) => s.id === games.defaultSeasonId) ?? games.seasons[0]) : getSeason(seasonId));
   const idFor = (seasonId?: string) => activeFormIdFor(seasonOf(seasonId), activeForms);
+  const builtinOf = (seasonId?: string): Form | null => (games ? games.builtinForms[seasonOf(seasonId).formId] : getBuiltinForm(seasonOf(seasonId).formId)) ?? null;
   const lastResort = (): Form => (games ? (games.builtinForms[seasonOf().formId] as Form) : (getBuiltinForm(DEFAULT_FORM_ID) as Form));
   return {
     seasons: games ? games.seasons.filter((s) => s.enabled) : getEnabledSeasons(),
+    allSeasons: games ? games.seasons : SEASONS,
     defaultSeasonId: games ? games.defaultSeasonId : DEFAULT_SEASON_ID,
     formIdForSeason: (seasonId) => seasonOf(seasonId).formId,
     seasonFor: seasonOf,
@@ -90,10 +97,14 @@ export function buildFormsValue(
     require: requireFn,
     activeForms,
     activeFormIdFor: idFor,
+    builtinFormFor: builtinOf,
     // An active form that can't be resolved (archived, unpublished) falls back to the season's built-in default: scouting never breaks.
     activeFormFor: (seasonId) => {
       const id = idFor(seasonId);
-      return (canBeActive(catalog, id) ? latest(id) : null) ?? latest(seasonOf(seasonId).formId) ?? lastResort();
+      const chosen = (canBeActive(catalog, id) ? latest(id) : null) ?? latest(seasonOf(seasonId).formId) ?? lastResort();
+      // A game whose built-in form splits alliance roles (each alliance objective recorded by ONE scout) is never scouted with a form that has no role fields: both
+      // scouts would record every objective and the alliance would count twice. Same guard the practice screen has.
+      return formWithRoles(chosen, builtinOf(seasonId));
     },
   };
 }

@@ -6,6 +6,8 @@ import type { ProgramData, ProgramSeason } from "@/lib/program/data";
 import { createManualEvent, deleteManualEvent, deleteManualMatches, importSchedule, setMatchesPublished, setMatchScores, subscribeLibraryEvents, subscribeLibraryMatches, upsertManualMatches } from "@/data/ftc/library";
 import { getEvent, getMatchesForEvent } from "@/lib/events/actions";
 import { claimSession, deleteSession, getSession, hasCompletedAttempt, subscribeOwnPausedSession, subscribeSession, subscribeTeamSessions, updateSession } from "@/data/ftc/practice";
+import { ftcDocToFormDoc, ftcDocToFormVersion } from "@/data/ftc/forms";
+import { readFtcBackup } from "@/data/ftc/backup";
 import { fetchFtcSchedule } from "@/lib/ftc/library-import";
 import { lookupTeamName } from "@/lib/ftc/team-lookup-client";
 import { approveJoinRequest, denyJoinRequest, subscribePendingJoinRequests } from "@/data/ftc/join-requests";
@@ -66,7 +68,8 @@ export const ftcProgramData: ProgramData = {
   enrollment: { createTeam, requestToJoin: (joinCode, input) => requestToJoinTeam(joinCode, input) },
   joinRequests: { subscribePending: subscribePendingJoinRequests, approve: approveJoinRequest, deny: denyJoinRequest },
   attendance: { subscribeTeam: subscribeTeamAttendance, set: setEventAttendance },
-  forms: { subscribeDocs: subscribeFormDocs, loadVersion: getFormVersion },
+  backup: { read: readFtcBackup },
+  forms: { subscribeDocs: subscribeFormDocs, loadVersion: getFormVersion, normalizeDoc: ftcDocToFormDoc, normalizeVersion: ftcDocToFormVersion },
   library: {
     subscribeEvents: subscribeLibraryEvents,
     subscribeMatches: subscribeLibraryMatches,

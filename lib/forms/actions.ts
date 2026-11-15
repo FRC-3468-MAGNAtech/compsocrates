@@ -2,6 +2,7 @@
 
 import { logAuditEvent } from "@/lib/audit-log";
 import { setActiveForm } from "@/lib/forms/firestore-store";
+import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
 import type { FormDiff } from "@/lib/forms/diff";
 import type { FormStore } from "@/lib/forms/store";
 import type { Form } from "@/lib/forms/types";
@@ -11,10 +12,10 @@ import type { Form } from "@/lib/forms/types";
 // function here is one user action, so the UI has one place to call and the audit trail can't be forgotten.
 
 /** Who is acting, for the audit log. `audit` and `setActive` are injectable so the Playwright fixture page can run the builder without Firestore. */
-export type FormActor = { teamId: string; uid: string; name: string; audit?: typeof logAuditEvent; setActive?: typeof setActiveForm };
+export type FormActor = { teamId: string; uid: string; name: string; /** The program whose forms and audit log these writes go to (absent: the default program, exactly as before). */ program?: ProgramId; audit?: typeof logAuditEvent; setActive?: typeof setActiveForm };
 
 const audit = (a: FormActor, action: Parameters<typeof logAuditEvent>[3], target: Record<string, unknown>, before: unknown, after: unknown) =>
-  (a.audit ?? logAuditEvent)(a.teamId, a.uid, a.name, action, target, before, after);
+  (a.audit ?? logAuditEvent)(a.teamId, a.uid, a.name, action, target, before, after, a.program ?? DEFAULT_PROGRAM);
 
 /** Saves a brand-new form (from scratch, a duplicate, an import or a template) as an unpublished draft. */
 export async function createFormAction(a: FormActor, store: FormStore, form: Form, how: "scratch" | "duplicate" | "import" | "template" | "built-in-edit", extra: Record<string, unknown> = {}): Promise<void> {
@@ -65,6 +66,6 @@ export async function resetFormAction(a: FormActor, store: FormStore, formId: st
 }
 
 export async function setActiveFormAction(a: FormActor, seasonId: string, formId: string, name: string, previousFormId: string): Promise<void> {
-  await (a.setActive ?? setActiveForm)(a.teamId, seasonId, formId);
+  await (a.setActive ?? setActiveForm)(a.teamId, seasonId, formId, a.program ?? DEFAULT_PROGRAM);
   await audit(a, "set-active-form", { seasonId, formId, name }, { formId: previousFormId }, { formId });
 }

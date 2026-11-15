@@ -14,6 +14,8 @@ export type TemplateReport = { teamId: string; reason: string; at?: number };
 
 export type TemplateService = {
   loaded: boolean;
+  /** Public templates and publishing exist (a program with no cross-team sharing shows only the account's own templates). */
+  sharing: boolean;
   /** Everything public. */
   publicTemplates: FormTemplate[];
   /** This account's templates, in any state. */

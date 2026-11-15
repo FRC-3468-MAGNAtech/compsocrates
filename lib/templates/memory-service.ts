@@ -61,6 +61,7 @@ export function createMemoryTemplates(opts: MemoryTemplateOptions): MemoryTempla
     const visible = store.list;
     return {
       loaded: true,
+      sharing: true,
       publicTemplates: visible.filter((t) => t.visibility === "public"),
       mine: visible.filter((t) => t.ownerTeamId === teamId),
       isPlatformOwner,

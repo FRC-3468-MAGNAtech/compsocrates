@@ -3,6 +3,9 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { addDoc, collection, deleteDoc, deleteField, doc, getDoc, getDocs, onSnapshot, query, updateDoc, where, type DocumentData, type Query } from "firebase/firestore";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
+import { DEFAULT_PROGRAM } from "@/config/programs/types";
+import { programPath } from "@/lib/firebase/paths";
+import { useProgram, useProgramConfig } from "@/lib/program/context";
 import { authedApi } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth";
 import { useTeamDoc } from "@/lib/team";
@@ -40,11 +43,15 @@ export function TemplatesProvider({ children }: { children: ReactNode }) {
   const name = profile?.name ?? "";
   const isPlatformOwner = profile?.isPlatformOwner ?? false;
   const { team } = useTeamDoc(teamId);
+  // Batch 5b: the collection is the program's own; a program with no cross-team sharing reads only its account's templates and applies one through its own route.
+  const program = useProgram();
+  const sharing = useProgramConfig().admin.templateSharing;
+  const col = programPath(program, COL);
 
   const ready = isFirebaseConfigured() && !!teamId;
-  const publicQ = useMemo(() => (ready ? query(collection(db, COL), where("visibility", "==", "public")) : null), [ready]);
-  const mineQ = useMemo(() => (ready ? query(collection(db, COL), where("ownerTeamId", "==", teamId)) : null), [ready, teamId]);
-  const queueQ = useMemo(() => (ready && isPlatformOwner ? query(collection(db, COL), where("visibility", "==", "public-pending")) : null), [ready, isPlatformOwner]);
+  const publicQ = useMemo(() => (ready && sharing ? query(collection(db, col), where("visibility", "==", "public")) : null), [ready, sharing, col]);
+  const mineQ = useMemo(() => (ready ? query(collection(db, col), where("ownerTeamId", "==", teamId)) : null), [ready, teamId, col]);
+  const queueQ = useMemo(() => (ready && sharing && isPlatformOwner ? query(collection(db, col), where("visibility", "==", "public-pending")) : null), [ready, sharing, isPlatformOwner, col]);
   const pub = useLive(publicQ);
   const mine = useLive(mineQ);
   const queue = useLive(queueQ);
@@ -58,8 +65,13 @@ export function TemplatesProvider({ children }: { children: ReactNode }) {
 
   const service = useMemo<TemplateService>(() => {
     const audit = (action: Parameters<typeof logAuditEvent>[3], target: Record<string, unknown>, before: unknown = null, after: unknown = null) =>
-      teamId && uid ? logAuditEvent(teamId, uid, name, action, target, before, after) : Promise.resolve();
-    const api = (body: Record<string, unknown>) => authedApi<Record<string, any>>("/api/templates", { body }); // eslint-disable-line @typescript-eslint/no-explicit-any
+      teamId && uid ? logAuditEvent(teamId, uid, name, action, target, before, after, program) : Promise.resolve();
+    // The default program's route is the original; another program has its own (`program` and `teamId` in the body, both checked on the server).
+    const apiPath = program === DEFAULT_PROGRAM ? "/api/templates" : `/api/${program}/templates`;
+    const api = (body: Record<string, unknown>) => {
+      if (!sharing && body.action !== "import") return Promise.reject(new Error("That isn't available here."));
+      return authedApi<Record<string, any>>(apiPath, { body: program === DEFAULT_PROGRAM ? body : { ...body, program, teamId } }); // eslint-disable-line @typescript-eslint/no-explicit-any
+    };
     const build = (input: TemplateInput) => {
       const r = buildTemplateContent(input);
       if (!r.ok) throw new Error(r.errors[0]);
@@ -67,20 +79,21 @@ export function TemplatesProvider({ children }: { children: ReactNode }) {
     };
     return {
       loaded: pub.loaded && mine.loaded,
+      sharing,
       publicTemplates: pub.list,
       mine: mine.list,
       isPlatformOwner,
       queue: queue.list,
       teamId,
       async getTemplate(id) {
-        const snap = await getDoc(doc(db, COL, id));
+        const snap = await getDoc(doc(db, col, id));
         return snap.exists() ? toTemplate(snap.id, snap.data()) : null;
       },
       async create(input) {
         if (!teamId) throw new Error("You're not on a team account.");
         const content = build(input);
         const now = Date.now();
-        const ref = await addDoc(collection(db, COL), { ...content, ownerTeamId: teamId, authorName, visibility: "private", official: false, version: 1, importCount: 0, reportCount: 0, createdAt: now, updatedAt: now });
+        const ref = await addDoc(collection(db, col), { ...content, ownerTeamId: teamId, authorName, visibility: "private", official: false, version: 1, importCount: 0, reportCount: 0, createdAt: now, updatedAt: now });
         await audit("save-form-template", { templateId: ref.id, name: content.name });
         return ref.id;
       },
@@ -89,12 +102,12 @@ export function TemplatesProvider({ children }: { children: ReactNode }) {
         if (!current) throw new Error("That template isn't yours.");
         const content = build(input);
         const changedForm = content.checksum !== current.checksum;
-        await updateDoc(doc(db, COL, id), { ...content, version: current.version + (changedForm ? 1 : 0), visibility: "private", rejectionReason: deleteField(), updatedAt: Date.now() });
+        await updateDoc(doc(db, col, id), { ...content, version: current.version + (changedForm ? 1 : 0), visibility: "private", rejectionReason: deleteField(), updatedAt: Date.now() });
         await audit("update-form-template", { templateId: id, name: content.name }, { version: current.version }, { version: current.version + (changedForm ? 1 : 0) });
       },
       async remove(id) {
         const current = mine.list.find((t) => t.id === id);
-        await deleteDoc(doc(db, COL, id));
+        await deleteDoc(doc(db, col, id));
         await audit("delete-form-template", { templateId: id, name: current?.name ?? id });
       },
       async requestPublish(id) {
@@ -117,11 +130,11 @@ export function TemplatesProvider({ children }: { children: ReactNode }) {
         return t;
       },
       async getPendingUpdate(id) {
-        const snap = await getDoc(doc(db, COL, id, "updates", "pending"));
+        const snap = await getDoc(doc(db, col, id, "updates", "pending"));
         return snap.exists() ? (snap.data() as never) : null;
       },
       async getReports(id) {
-        const snap = await getDocs(collection(db, COL, id, "reports"));
+        const snap = await getDocs(collection(db, col, id, "reports"));
         return snap.docs.map((d) => d.data() as never);
       },
       async approve(id) {
@@ -144,7 +157,7 @@ export function TemplatesProvider({ children }: { children: ReactNode }) {
         return r.results as { id: string; result: string }[];
       },
     };
-  }, [pub.list, pub.loaded, mine.list, mine.loaded, queue.list, isPlatformOwner, teamId, uid, name, authorName]);
+  }, [pub.list, pub.loaded, mine.list, mine.loaded, queue.list, isPlatformOwner, teamId, uid, name, authorName, program, sharing, col]);
 
   return <TemplatesContext.Provider value={service}>{children}</TemplatesContext.Provider>;
 }

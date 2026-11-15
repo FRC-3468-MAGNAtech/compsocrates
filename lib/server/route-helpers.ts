@@ -13,10 +13,10 @@ export async function withCaller(request: Request, handler: (db: Firestore, call
   const decoded = await verifyBearerToken(request);
   if (!decoded) {
     const problem = serverSignInProblem();
-    return problem ? NextResponse.json({ ok: false, error: problem }, { status: 503 }) : NextResponse.json({ ok: false, error: "Not signed in." }, { status: 401 });
+    return problem ? NextResponse.json({ ok: false, code: "server_not_configured", error: problem }, { status: 503 }) : NextResponse.json({ ok: false, error: "Not signed in." }, { status: 401 });
   }
   const db = getAdminFirestore();
-  if (!db) return NextResponse.json({ ok: false, error: "Server isn't configured." }, { status: 503 });
+  if (!db) return NextResponse.json({ ok: false, code: "server_not_configured", error: "Server isn't configured." }, { status: 503 });
   try {
     const result = await handler(db, { uid: decoded.uid, email: decoded.email ?? null, name: typeof decoded.name === "string" ? decoded.name : null });
     return NextResponse.json(result.body, { status: result.status });

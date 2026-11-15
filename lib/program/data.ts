@@ -27,7 +27,7 @@ import type { PickListDoc } from "@/lib/pick-list/store";
 import type { MemberAccess } from "@/lib/member-access";
 import type { RoleId } from "@/lib/roles";
 import type { TeamMember } from "@/lib/team-members";
-import type { FormDoc } from "@/lib/forms/resolve";
+import type { FormDoc, FormVersion } from "@/lib/forms/resolve";
 import type { FormSubmissionSettings } from "@/lib/forms/submission-settings";
 import type { Form, FormValues, StickyNote } from "@/lib/forms/types";
 import { useProgram } from "@/lib/program/context";
@@ -157,11 +157,18 @@ export type ProgramData = {
   forms: {
     subscribeDocs(teamId: string, onData: (docs: Map<string, FormDoc>) => void, onError: DataError): Unsubscribe;
     loadVersion(teamId: string, formId: string, version: number): Promise<Form | null>;
+    /** A stored form doc / version doc read tolerantly (the admin store writes through the program's own path and needs the same reader). */
+    normalizeDoc?(docId: string, data: Record<string, unknown>): FormDoc;
+    normalizeVersion?(docId: string, data: Record<string, unknown>): FormVersion | null;
   };
   /**
    * The scheduled-match library (events and matches; FTC: `programs/ftc/libraryEvents` and `libraryMatches`). The root program has none: its hooks read
    * the root collections themselves (`lib/match-library.ts`, `lib/library/store.ts`).
    */
+  /** Admin Panel > Backups: the team's data as plain rows, by collection name (read only; team-scoped; nothing private). The root program's export reads its own collections. */
+  backup?: {
+    read(teamId: string): Promise<Record<string, Record<string, unknown>[]>>;
+  };
   library: {
     /** The shared (imported) events plus the team's own hand-made ones, optionally of one season. */
     subscribeEvents(teamId: string, seasonId: string | null, onData: (events: LibraryEvent[]) => void, onError: DataError): Unsubscribe;

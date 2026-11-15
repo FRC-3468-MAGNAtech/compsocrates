@@ -39,7 +39,8 @@ export function TemplateLibrary({
 }) {
   const svc = useTemplates();
   const [innerTab, setInnerTab] = useState<"public" | "mine">("public");
-  const tab = controlledTab ?? innerTab;
+  // A program with no cross-team sharing has only the account's own templates.
+  const tab = svc.sharing ? (controlledTab ?? innerTab) : "mine";
   const setTab = (t: "public" | "mine") => (onTabChange ? onTabChange(t) : setInnerTab(t));
   const [q, setQ] = useState("");
   const [tag, setTag] = useState<string | null>(null);
@@ -83,7 +84,7 @@ export function TemplateLibrary({
       if (t.visibility === "private" || t.visibility === "rejected") {
         list.push(btn("Edit details", Pencil, () => setDialog({ kind: "edit", t })));
         list.push(btn("Update from a form", RefreshCw, () => setDialog({ kind: "update", t })));
-        list.push(btn("Request to publish", Rocket, () => setDialog({ kind: "publish", t }), { aria: `Request to publish ${t.name} publicly` }));
+        if (svc.sharing) list.push(btn("Request to publish", Rocket, () => setDialog({ kind: "publish", t }), { aria: `Request to publish ${t.name} publicly` }));
         list.push(btn("Delete", Trash2, () => setDialog({ kind: "delete", t }), { variant: "ghost" }));
       } else if (t.visibility === "public") {
         list.push(btn("Send an update", RefreshCw, () => setDialog({ kind: "update", t }), { aria: `Send an update to ${t.name}` }));
@@ -99,7 +100,7 @@ export function TemplateLibrary({
     <div className="flex flex-col gap-4" data-testid="template-library">
       <Tabs value={tab} onValueChange={(v) => setTab(v as "public" | "mine")}>
         <TabsList>
-          <TabsTrigger value="public">Public templates</TabsTrigger>
+          {svc.sharing && <TabsTrigger value="public">Public templates</TabsTrigger>}
           <TabsTrigger value="mine">My templates{svc.mine.length > 0 ? ` (${svc.mine.length})` : ""}</TabsTrigger>
         </TabsList>
       </Tabs>

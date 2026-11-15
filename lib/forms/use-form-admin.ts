@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { useAuth } from "@/lib/auth";
+import { useProgram } from "@/lib/program/context";
 import { createFirestoreFormStore } from "@/lib/forms/firestore-store";
 import type { FormActor } from "@/lib/forms/actions";
 import type { FormStore } from "@/lib/forms/store";
@@ -22,14 +23,15 @@ export function useFormAdmin(): {
   nameOf: (uid: string | undefined) => string;
 } {
   const { user, profile } = useAuth();
+  const program = useProgram();
   const teamId = profile?.teamId ?? null;
   const uid = user?.uid ?? null;
   const name = profile?.name ?? "";
   const { entries, loaded: entriesLoaded } = useTeamScoutEntries(teamId);
   const { members } = useTeamMembers(teamId);
   const usage = useMemo(() => usageByForm(entries), [entries]);
-  const store = useMemo(() => (teamId && uid ? createFirestoreFormStore(teamId, { uid }) : null), [teamId, uid]);
-  const actor = useMemo<FormActor | null>(() => (teamId && uid ? { teamId, uid, name } : null), [teamId, uid, name]);
+  const store = useMemo(() => (teamId && uid ? createFirestoreFormStore(teamId, { uid }, program) : null), [teamId, uid, program]);
+  const actor = useMemo<FormActor | null>(() => (teamId && uid ? { teamId, uid, name, program } : null), [teamId, uid, name, program]);
   const names = useMemo(() => new Map(members.map((m) => [m.uid, m.name])), [members]);
   const nameOf = useMemo(() => (id: string | undefined) => (id ? (names.get(id) ?? "a former member") : "—"), [names]);
   return { teamId, actor, store, usage, entriesLoaded, nameOf };
