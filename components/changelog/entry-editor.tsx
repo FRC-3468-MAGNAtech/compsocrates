@@ -21,6 +21,7 @@ import {
   type DraftErrors,
 } from "@/lib/changelog";
 import { saveEntry, useAsyncAction } from "@/lib/changelog/store";
+import { useProgram } from "@/lib/program/context";
 import { cn } from "@/lib/utils";
 
 const MARKUP_HINT = "Supports **bold**, *italic*, and [links](https://example.com) — https links only.";
@@ -59,6 +60,7 @@ export function EntryEditor({
   const [draft, setDraft] = useState<ChangelogDraft>(initial);
   const [errors, setErrors] = useState<DraftErrors>({});
   const { busy, error, run } = useAsyncAction();
+  const program = useProgram();
 
   const set = <K extends keyof ChangelogDraft>(key: K, value: ChangelogDraft[K]) => setDraft((d) => ({ ...d, [key]: value }));
   const setRow = (i: number, patch: Partial<{ type: ChangeType; text: string }>) => setDraft((d) => ({ ...d, changes: d.changes.map((c, j) => (j === i ? { ...c, ...patch } : c)) }));
@@ -70,7 +72,7 @@ export function EntryEditor({
     const result = validateDraft(draft);
     setErrors(result.errors);
     if (!result.ok) return;
-    const saved = await run(() => saveEntry(actor, entryId, draft), "Couldn't save the entry. Check your connection and try again.");
+    const saved = await run(() => saveEntry(actor, entryId, draft, program), "Couldn't save the entry. Check your connection and try again.");
     if (saved) onOpenChange(false);
   };
 

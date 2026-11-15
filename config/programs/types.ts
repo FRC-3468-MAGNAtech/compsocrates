@@ -3,6 +3,8 @@
  * so a component asks `useProgram()` instead of naming a program. Pure data, safe to import from client code.
  */
 
+import type { StarterEntry } from "@/lib/changelog/seed";
+
 export const PROGRAM_IDS = ["frc", "ftc"] as const;
 export type ProgramId = (typeof PROGRAM_IDS)[number];
 export const DEFAULT_PROGRAM: ProgramId = "frc";
@@ -123,6 +125,14 @@ export type ProgramConfig = {
   admin: ProgramAdmin;
   /** May one account hold several teams and switch between them (lib/our-team.ts)? Off: one team per account, and no switcher is shown. */
   multiTeam: boolean;
+  /**
+   * What Team Settings shows beyond the team's name and number (a multi-team program edits its teams list instead of the single name/number).
+   * `ownershipTransfer`: the Ownership card (its actions call a server route that only knows the default program's teams).
+   * `activeForms`: the "form for each season" card (a program whose Admin Panel has no Forms tab chooses it here).
+   */
+  teamSettings: { ownershipTransfer: boolean; activeForms: boolean };
+  /** The starter changelog drafts created the first time an admin opens the Changelog. Absent: the default program's list (lib/changelog/seed.ts). */
+  changelogSeed?: readonly StarterEntry[];
   /**
    * Practice Scouting copy and rules that differ by program (the screens themselves are shared).
    * `noScoreIsResult`: a finished session whose library match has no official score yet shows its result (no accuracy) instead of a loading skeleton.

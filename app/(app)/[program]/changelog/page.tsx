@@ -26,6 +26,7 @@ import {
 } from "@/lib/changelog";
 import { deleteEntry, markChangelogSeen, patchEntry, seedChangelogIfNeeded, useAsyncAction, useChangelog } from "@/lib/changelog/store";
 import { usePermissions } from "@/lib/permissions";
+import { useProgram } from "@/lib/program/context";
 import { useProgramData } from "@/lib/program/data";
 import { cn } from "@/lib/utils";
 
@@ -35,7 +36,8 @@ export default function ChangelogPage() {
   const { user, profile } = useAuth();
   const { isAdmin } = usePermissions();
   const teamId = profile?.teamId ?? null;
-  const { entries, loaded } = useChangelog(teamId, isAdmin);
+  const program = useProgram();
+  const { entries, loaded, error: loadError } = useChangelog(teamId, isAdmin);
   const actor = useMemo(() => (user && profile && teamId ? { teamId, uid: user.uid, name: profile.name } : null), [user, profile, teamId]);
 
   const [types, setTypes] = useState<ChangeType[]>([]);
@@ -54,10 +56,10 @@ export default function ChangelogPage() {
   // First admin visit creates the starter drafts (guarded by a marker on the team doc, so it only ever happens once).
   const seededRef = useRef(false);
   useEffect(() => {
-    if (!isAdmin || !actor || !loaded || seededRef.current) return;
+    if (!isAdmin || !actor || !loaded || loadError || seededRef.current) return;
     seededRef.current = true;
-    seedChangelogIfNeeded(actor).catch((err) => console.error("couldn't seed the starter changelog drafts:", err));
-  }, [isAdmin, actor, loaded]);
+    seedChangelogIfNeeded(actor, program).catch((err) => console.error("couldn't seed the starter changelog drafts:", err));
+  }, [isAdmin, actor, loaded, loadError, program]);
 
   // Opening the page clears the nav dot — and so does something being published while you're looking at it.
   const latestPublished = useMemo(() => latestPublishedMs(entries), [entries]);
@@ -66,13 +68,13 @@ export default function ChangelogPage() {
   const port = useProgramData();
   const [seenError, setSeenError] = useState<string | null>(null);
   useEffect(() => {
-    if (!uid || !loaded || stampedFor.current === latestPublished) return;
+    if (!uid || !loaded || loadError || stampedFor.current === latestPublished) return;
     stampedFor.current = latestPublished;
     markChangelogSeen(uid, port).then(
       () => setSeenError(null),
       (err: unknown) => setSeenError(err instanceof Error ? err.message : "Couldn't record the changelog visit.")
     );
-  }, [uid, loaded, latestPublished, port]);
+  }, [uid, loaded, loadError, latestPublished, port]);
 
   const filterActive = types.length > 0 || query.trim() !== "";
   const displayed = useMemo(() => filterEntries(entries, { types, query }), [entries, types, query]);
@@ -93,12 +95,17 @@ export default function ChangelogPage() {
 
   const confirmDelete = async () => {
     if (!actor || !deleting) return;
-    const ok = await deleteAction.run(() => deleteEntry(actor, deleting.id), "Couldn't delete the entry. Check your connection and try again.");
+    const ok = await deleteAction.run(() => deleteEntry(actor, deleting.id, program), "Couldn't delete the entry. Check your connection and try again.");
     if (ok) setDeleteOpen(false);
   };
 
   return (
     <div className="flex flex-col gap-6">
+      {loadError && (
+        <p role="alert" className="text-sm text-red-400">
+          {loadError}
+        </p>
+      )}
       {seenError && (
         <p role="alert" className="text-sm text-red-400">
           {seenError} The unread dot will stay until it is saved.
@@ -227,8 +234,8 @@ export default function ChangelogPage() {
                     setDeleting(entry);
                     setDeleteOpen(true);
                   }}
-                  onTogglePinned={() => actor && void rowAction.run(() => patchEntry(actor, entry.id, { pinned: !entry.pinned }), "Couldn't update the entry.")}
-                  onTogglePublished={() => actor && void rowAction.run(() => patchEntry(actor, entry.id, { status: entry.status === "draft" ? "published" : "draft" }), "Couldn't update the entry.")}
+                  onTogglePinned={() => actor && void rowAction.run(() => patchEntry(actor, entry.id, { pinned: !entry.pinned }, program), "Couldn't update the entry.")}
+                  onTogglePublished={() => actor && void rowAction.run(() => patchEntry(actor, entry.id, { status: entry.status === "draft" ? "published" : "draft" }, program), "Couldn't update the entry.")}
                 />
               </motion.li>
             ))}

@@ -1,3 +1,5 @@
+import { PROGRAMS } from "@/config/programs";
+import type { ProgramId } from "@/config/programs/types";
 import type { ChangeItem } from "@/lib/changelog";
 
 // Starter changelog drafts (P14). They are created as **drafts** the first time
@@ -115,6 +117,9 @@ export const STARTER_ENTRIES: StarterEntry[] = [
     ],
   },
 ];
+
+/** The starter drafts of a program: its own (`ProgramConfig.changelogSeed`), else the default program's list above. Only features the program has are described. */
+export const starterEntriesFor = (program: ProgramId): readonly StarterEntry[] => PROGRAMS[program].changelogSeed ?? STARTER_ENTRIES;
 
 /** The Firestore doc id for a starter entry — deterministic, so two admins opening the page at once can't create it twice. */
 export const starterDocId = (teamId: string, key: string): string => `starter-${teamId}-${key}`;

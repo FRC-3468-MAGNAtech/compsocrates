@@ -1,5 +1,6 @@
 import { BRAND } from "@/config/brand";
 import { FTC_GAME_DEFINITIONS, FTC_GAME_ID_LIST } from "@/config/games/ftc";
+import { FTC_STARTER_ENTRIES } from "@/lib/ftc/changelog-seed";
 import type { ProgramConfig } from "./types";
 
 /** Pages only the other program has so far. They stay in this program's navigation as greyed-out entries; each one is planned. */
@@ -67,12 +68,18 @@ export const FTC_PROGRAM: ProgramConfig = {
       "/analytics/team-breakdown",
       "/analytics/rankings",
       "/admin",
+      "/team-settings",
+      "/changelog",
     ],
-    features: { assignments: true, subIns: false, practice: true, live: false, lobby: false, library: true, pickList: true, accuracy: true, csvImport: true, changelog: false, applications: false, joinRequests: true, announcements: false, eventLookup: true },
+    features: { assignments: true, subIns: false, practice: true, live: false, lobby: false, library: true, pickList: true, accuracy: true, csvImport: true, changelog: true, applications: false, joinRequests: true, announcements: false, eventLookup: true },
   },
   // Only the tabs whose data layer is ported: Forms, Sessions, Rescore, Backups, Templates and the platform-owner tabs are not listed, so they do not exist here.
   admin: { tabs: ["match-library", "page-access", "sidebar", "submissions", "audit-log"], platformSettings: false },
   multiTeam: true,
+  // Team Settings: the season's form is chosen here (the Forms admin tab is not ported); ownership transfer is a root-only server route, so its card is not shown.
+  teamSettings: { ownershipTransfer: false, activeForms: true },
+  // The changelog's starter drafts: only features this program has today (lib/ftc/changelog-seed.ts).
+  changelogSeed: FTC_STARTER_ENTRIES,
   practice: { noScoreIsResult: true, liveTileText: "Scout a real, livestreamed FTC match." },
   // The practice difficulty cut-offs come from each game's own config (its alliance score thresholds), read by `lib/difficulty.ts` for this program.
   gameDifficulty: Object.fromEntries(FTC_GAME_ID_LIST.map((id) => [id, FTC_GAME_DEFINITIONS[id].thresholds.difficulty])),

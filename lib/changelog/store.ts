@@ -1,20 +1,30 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { collection, doc, onSnapshot, query, runTransaction, serverTimestamp, where } from "firebase/firestore";
+import { doc, onSnapshot, query, runTransaction, serverTimestamp, where } from "firebase/firestore";
+import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
 import { buildAuditEntry, newAuditLogRef } from "@/lib/audit-log";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
+import { programCollection, programDoc } from "@/lib/firebase/paths";
+import { useProgram } from "@/lib/program/context";
 import type { ProgramData } from "@/lib/program/data";
 import { saveUserFields } from "@/lib/program/user-fields";
 import { entryFromData, hasUnread, normalizeDraft, sortEntries, timestampMs, entryToDraft, type ChangelogDraft, type ChangelogEntry } from "@/lib/changelog";
-import { STARTER_ENTRIES, starterDocId } from "@/lib/changelog/seed";
+import { starterDocId, starterEntriesFor } from "@/lib/changelog/seed";
 
-// Persistence for the Changelog (P14): `changelog/{id}`. Members read published
-// entries only; admins read and write everything (firestore.rules).
+// Persistence for the Changelog (P14): `changelog/{id}` (the root program) or `programs/<id>/changelog/{id}` (a namespaced program), through `programPath`.
+// Members read published entries only; admins read and write everything (firestore.rules). Every function takes the program (default: the root one, so the
+// default program reads and writes exactly what it always did); the hooks ask `useProgram()`. The seed, the audit entry and the team doc follow the program.
 
 const COLLECTION = "changelog";
 
 type Actor = { teamId: string; uid: string; name: string };
+
+/** The entries query: equality-only (no orderBy, no new index). A member must ask for `status == "published"` themselves; an admin reads all of the team's. */
+export function changelogQuery(program: ProgramId, teamId: string, isAdmin: boolean) {
+  const base = programCollection(db, program, COLLECTION);
+  return isAdmin ? query(base, where("teamId", "==", teamId)) : query(base, where("teamId", "==", teamId), where("status", "==", "published"));
+}
 
 /**
  * Realtime entries, newest first (pinned on top). Firestore rules aren't
@@ -22,35 +32,40 @@ type Actor = { teamId: string; uid: string; name: string };
  * itself — an unfiltered list would be rejected outright, not silently trimmed.
  */
 export function useChangelog(teamId: string | null, isAdmin: boolean) {
+  const program = useProgram();
   const [entries, setEntries] = useState<ChangelogEntry[]>([]);
   const [loaded, setLoaded] = useState(() => !isFirebaseConfigured());
+  // A failed read says so (the page shows it): it is never shown as an empty changelog.
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!teamId || !isFirebaseConfigured()) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setEntries([]);
+      setError(null);
       setLoaded(true);
       return;
     }
     setLoaded(false);
-    const base = collection(db, COLLECTION);
-    const q = isAdmin ? query(base, where("teamId", "==", teamId)) : query(base, where("teamId", "==", teamId), where("status", "==", "published"));
+    const q = changelogQuery(program, teamId, isAdmin);
     const unsubscribe = onSnapshot(
       q,
       (snap) => {
         setEntries(sortEntries(snap.docs.map((d) => entryFromData(d.id, d.data()))));
+        setError(null);
         setLoaded(true);
       },
       (err) => {
         console.error("changelog subscription failed:", err);
         setEntries([]);
+        setError("Couldn't load the changelog. Reload the page; if it keeps happening, check your connection.");
         setLoaded(true);
       }
     );
     return unsubscribe;
-  }, [teamId, isAdmin]);
+  }, [teamId, isAdmin, program]);
 
-  return { entries, loaded };
+  return { entries, loaded, error };
 }
 
 /**
@@ -59,6 +74,7 @@ export function useChangelog(teamId: string | null, isAdmin: boolean) {
  * published entries only, for every role, so it costs the same for everyone.
  */
 export function useChangelogUnread(teamId: string | null, lastSeenChangelogAt: unknown): boolean {
+  const program = useProgram();
   const [published, setPublished] = useState<Pick<ChangelogEntry, "status" | "publishedAtMs" | "legacy">[]>([]);
 
   useEffect(() => {
@@ -67,7 +83,7 @@ export function useChangelogUnread(teamId: string | null, lastSeenChangelogAt: u
       setPublished([]);
       return;
     }
-    const q = query(collection(db, COLLECTION), where("teamId", "==", teamId), where("status", "==", "published"));
+    const q = changelogQuery(program, teamId, false);
     const unsubscribe = onSnapshot(
       q,
       (snap) => setPublished(snap.docs.map((d) => ({ status: "published" as const, publishedAtMs: timestampMs(d.data().publishedAt), legacy: d.data().legacy === true }))),
@@ -77,7 +93,7 @@ export function useChangelogUnread(teamId: string | null, lastSeenChangelogAt: u
       }
     );
     return unsubscribe;
-  }, [teamId]);
+  }, [teamId, program]);
 
   const seenMs = timestampMs(lastSeenChangelogAt);
   return useMemo(() => hasUnread(published, seenMs), [published, seenMs]);
@@ -100,9 +116,9 @@ const auditView = (d: ChangelogDraft) => ({ version: d.version, title: d.title, 
  * live and kept through later edits, so tweaking a typo in an old entry doesn't
  * light the unread dot for everyone again; unpublishing clears it.
  */
-export async function saveEntry(actor: Actor, id: string | null, input: ChangelogDraft): Promise<string> {
+export async function saveEntry(actor: Actor, id: string | null, input: ChangelogDraft, program: ProgramId = DEFAULT_PROGRAM): Promise<string> {
   const draft = normalizeDraft(input);
-  const ref = id ? doc(db, COLLECTION, id) : doc(collection(db, COLLECTION));
+  const ref = id ? programDoc(db, program, COLLECTION, id) : doc(programCollection(db, program, COLLECTION));
   await runTransaction(db, async (tx) => {
     let before: ChangelogDraft | null = null;
     let wasPublished = false;
@@ -129,7 +145,7 @@ export async function saveEntry(actor: Actor, id: string | null, input: Changelo
 
     tx.set(ref, { teamId: actor.teamId, ...draft, createdBy, createdAt, updatedAt: serverTimestamp(), publishedAt, ...(legacy ? { legacy: true } : {}) });
     tx.set(
-      newAuditLogRef(),
+      newAuditLogRef(program),
       buildAuditEntry(actor.teamId, actor.uid, actor.name, id ? "edit-changelog-entry" : "create-changelog-entry", { entryId: ref.id, version: draft.version, title: draft.title }, before ? auditView(before) : null, auditView(draft))
     );
   });
@@ -137,8 +153,8 @@ export async function saveEntry(actor: Actor, id: string | null, input: Changelo
 }
 
 /** Flips pinned and/or status on the *latest stored* entry, so a quick toggle never reverts someone's concurrent edit of its text. */
-export async function patchEntry(actor: Actor, id: string, patch: Partial<Pick<ChangelogDraft, "pinned" | "status">>): Promise<void> {
-  const ref = doc(db, COLLECTION, id);
+export async function patchEntry(actor: Actor, id: string, patch: Partial<Pick<ChangelogDraft, "pinned" | "status">>, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
+  const ref = programDoc(db, program, COLLECTION, id);
   await runTransaction(db, async (tx) => {
     const snap = await tx.get(ref);
     if (!snap.exists()) throw new Error("That entry no longer exists.");
@@ -154,18 +170,18 @@ export async function patchEntry(actor: Actor, id: string, patch: Partial<Pick<C
       publishedAt = null;
     }
     tx.update(ref, { pinned: after.pinned, status: after.status, publishedAt, updatedAt: serverTimestamp() });
-    tx.set(newAuditLogRef(), buildAuditEntry(actor.teamId, actor.uid, actor.name, "edit-changelog-entry", { entryId: id, version: before.version, title: before.title }, auditView(before), auditView(after)));
+    tx.set(newAuditLogRef(program), buildAuditEntry(actor.teamId, actor.uid, actor.name, "edit-changelog-entry", { entryId: id, version: before.version, title: before.title }, auditView(before), auditView(after)));
   });
 }
 
-export async function deleteEntry(actor: Actor, id: string): Promise<void> {
-  const ref = doc(db, COLLECTION, id);
+export async function deleteEntry(actor: Actor, id: string, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
+  const ref = programDoc(db, program, COLLECTION, id);
   await runTransaction(db, async (tx) => {
     const snap = await tx.get(ref);
     if (!snap.exists()) return; // already gone (another admin got there first)
     const before = entryToDraft(entryFromData(snap.id, snap.data()));
     tx.delete(ref);
-    tx.set(newAuditLogRef(), buildAuditEntry(actor.teamId, actor.uid, actor.name, "delete-changelog-entry", { entryId: id, version: before.version, title: before.title }, auditView(before), null));
+    tx.set(newAuditLogRef(program), buildAuditEntry(actor.teamId, actor.uid, actor.name, "delete-changelog-entry", { entryId: id, version: before.version, title: before.title }, auditView(before), null));
   });
 }
 
@@ -176,14 +192,15 @@ export async function deleteEntry(actor: Actor, id: string): Promise<void> {
  * after an admin deletes them. Everything is created as a draft: nothing goes
  * live until an admin publishes it.
  */
-export async function seedChangelogIfNeeded(actor: Actor): Promise<boolean> {
-  const teamRef = doc(db, "teams", actor.teamId);
+export async function seedChangelogIfNeeded(actor: Actor, program: ProgramId = DEFAULT_PROGRAM): Promise<boolean> {
+  const teamRef = programDoc(db, program, "teams", actor.teamId);
+  const starters = starterEntriesFor(program);
   return runTransaction(db, async (tx) => {
     const team = await tx.get(teamRef);
     if (!team.exists() || team.data().changelogSeeded === true) return false;
 
-    for (const s of STARTER_ENTRIES) {
-      tx.set(doc(db, COLLECTION, starterDocId(actor.teamId, s.key)), {
+    for (const s of starters) {
+      tx.set(programDoc(db, program, COLLECTION, starterDocId(actor.teamId, s.key)), {
         teamId: actor.teamId,
         version: s.version,
         title: s.title,
@@ -199,7 +216,7 @@ export async function seedChangelogIfNeeded(actor: Actor): Promise<boolean> {
       });
     }
     tx.update(teamRef, { changelogSeeded: true });
-    tx.set(newAuditLogRef(), buildAuditEntry(actor.teamId, actor.uid, actor.name, "create-changelog-entry", { seeded: STARTER_ENTRIES.length }, null, { drafts: STARTER_ENTRIES.map((s) => s.version) }));
+    tx.set(newAuditLogRef(program), buildAuditEntry(actor.teamId, actor.uid, actor.name, "create-changelog-entry", { seeded: starters.length }, null, { drafts: starters.map((s) => s.version) }));
     return true;
   });
 }
