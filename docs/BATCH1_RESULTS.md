@@ -3,6 +3,8 @@
 
 **Done.** T2: `saveUserFields` (`lib/program/user-fields.ts`) + port `profile.updateFields`; glass level, workspace layout, changelog last-seen and push token now write the program's own user doc (FRC: `users/{uid}`, unchanged). Failures are thrown and shown (slider, workspace, changelog, push button). T3: `/analytics` connected (links filtered to FTC pages), `/events/[eventKey]` unavailable in FTC, program passed to the 3 lookup sites, `eventLookup` on, shell `ReadFailureBanner` shows failed FTC reads (`lib/read-failures.ts`). T4: rules, `data/ftc/join-requests.ts`, program-aware `JoinRequestsPanel` (confirm, loading, error, empty), `joinRequests` on. T5: adapter test mock got `useContext` (21 tests, all that cause).
 
+**Setup flow.** Both programs send a no-team account to `/<program>/apply-to-team` (`/finish-setup` redirects there). Joining FTC goes through `/api/ftc/team/request-join`, which finds a team by id or by its `joinCode` field (teams brought over from the old site keep a code that is not their id; the old client write could never reach them).
+
 **Approval model.** Approve = one batch: request `approved` + `programs/ftc/users/{uid}` as Match Scout, not admin/owner, with the team's `fieldTeamIds` (the account gains the team; nothing replaced, requesters have no profile). Deny changes only the request. Name only is shown (a request holds no email). Also new rule: you may read your own (missing) profile, so the waiting screen moves to the dashboard by itself on approval (live listener, no refresh). A denied requester can send again.
 
 **Additive fields.** Request: `decidedBy`, `decidedAt`. Approved profile: only the fields above. In memory: `TeamMember.assignedTeamIds`. Listed in `docs/REMAINING.md`.
@@ -11,7 +13,7 @@
 
 **Verify.** lint: 0 errors, 1 warning (`match-list-screen.tsx` unused `timeZone`, not mine). `npm test`: 3043 pass, 5 fail. `test:rules` (Java ok): 336/336. build: pass.
 **Unrelated failures (not fixed).** 5 in `config/brand-guard.test.ts`: `docs/FTC_COMPLETION_PLAN.md` and `app/e2e/sidebar-builder/fixture.tsx` name FTC outside scope (failed before this batch).
-**Known gaps.** `/finish-setup` is the root program's join flow (root teams and server routes): FTC codes never match there. It now forwards to the program dashboard when the last-used program has a port; an FTC-only account whose last-used program is FRC still lands in the root flow (pick FTC on the home page, or open /ftc/dashboard). Signup still enrolls through the root flow. The shared event-name store still calls the default provider; FTC codes are not TBA-shaped, so it should not fire (not verified in a browser). Nothing was run in a browser this batch.
+**Known gaps.** Signup still enrolls through the root flow. An account with an FTC team but no root profile, whose last-used program is FRC, lands on /frc/apply-to-team (pick FTC on the home page). The shared event-name store still calls the default provider; FTC codes are not TBA-shaped, so it should not fire (not verified in a browser). Nothing was run in a browser this batch.
 
 **Manual check.** 1) FTC People: only your team's members. 2) Move the glass slider on an FTC-only account, reload: it sticks. 3) Open /analytics in FTC: lands on Match Scout. 4) Open /events/<key> in FTC: not available. 5) Second account: Join a team with the code. 6) Admin: Team Management > Approve (confirm): second account reaches the dashboard unaided. 7) Send another request, Deny it.
 
