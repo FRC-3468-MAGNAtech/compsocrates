@@ -48,13 +48,18 @@ export function FloatingPanel({
       const panel = ref.current;
       if (!anchor || !panel) return;
       const a = anchor.getBoundingClientRect();
-      const { left, top } = computePanelPosition({
+      // Take off the cap this call set last time, so the panel's own natural height (and any max-h its caller gave it) is what gets measured.
+      panel.style.maxHeight = "";
+      const { left, top, maxHeight } = computePanelPosition({
         anchor: { left: a.left, top: a.top, width: a.width, height: a.height },
         panel: { width: panel.offsetWidth, height: panel.offsetHeight },
         viewport: { width: document.documentElement.clientWidth, height: window.innerHeight },
         align,
         offset,
       });
+      // Cap to the room on screen (the smaller of that and the caller's own max-h) and scroll inside, so a long list never leaves the viewport.
+      const own = parseFloat(getComputedStyle(panel).maxHeight);
+      panel.style.maxHeight = `${Number.isFinite(own) ? Math.min(own, maxHeight) : maxHeight}px`;
       panel.style.left = `${left}px`;
       panel.style.top = `${top}px`;
       panel.style.visibility = "visible";
@@ -90,7 +95,7 @@ export function FloatingPanel({
           exit={{ opacity: 0, y: -4, scale: 0.97 }}
           transition={spring}
           {...rest}
-          className={cn("glass-overlay fixed z-[var(--z-popover)]", className)}
+          className={cn("glass-overlay fixed z-[var(--z-popover)] overflow-y-auto overscroll-contain", className)}
           style={{ ...style, left: 0, top: 0, visibility: "hidden" }}
         >
           {children}

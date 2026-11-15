@@ -85,6 +85,16 @@ export function SelectTrigger({
   );
 }
 
+/**
+ * A long list (the sidebar icon picker, the Page Access member picker, any select with many items) never leaves the screen: the panel is capped to
+ * the room Radix measured between the trigger and the viewport edge (`--radix-select-content-available-height`, taken from the popper size
+ * middleware) and the item list scrolls inside it. `overscroll-contain` keeps the page behind from scrolling at the end of the list, `touch-pan-y`
+ * keeps touch scrolling working inside a bottom-sheet dialog, and Radix scrolls the highlighted item into view during keyboard navigation.
+ * Exported so a test can pin the contract (unit tests have no browser layout).
+ */
+export const SELECT_CONTENT_CLASS = "glass-overlay z-[var(--z-popover)] flex max-h-[var(--radix-select-content-available-height)] flex-col overflow-hidden rounded-2xl p-1 shadow-2xl";
+export const SELECT_VIEWPORT_CLASS = "min-h-0 overflow-y-auto overscroll-contain touch-pan-y";
+
 export function SelectContent({
   className,
   children,
@@ -105,11 +115,9 @@ export function SelectContent({
           <SelectPrimitive.Content
             position="popper"
             sideOffset={8}
+            collisionPadding={8}
             forceMount
-            className={cn(
-              "glass-overlay z-[var(--z-popover)] overflow-hidden rounded-2xl p-1 shadow-2xl",
-              className
-            )}
+            className={cn(SELECT_CONTENT_CLASS, className)}
             {...props}
             asChild
           >
@@ -121,7 +129,7 @@ export function SelectContent({
               transition={spring}
               style={overGlass ? undefined : ({ "--glass-shade": 1 } as React.CSSProperties)}
             >
-              <SelectPrimitive.Viewport>{children}</SelectPrimitive.Viewport>
+              <SelectPrimitive.Viewport className={SELECT_VIEWPORT_CLASS}>{children}</SelectPrimitive.Viewport>
             </motion.div>
           </SelectPrimitive.Content>
         )}
