@@ -12,7 +12,7 @@ describe("formDisplayName", () => {
     expect(formDisplayName("SOLO GAME", "match-scout")).toBe("SOLO GAME Match Scout Form");
   });
 
-  it("covers every game of the default program and every built-in form type (the second program's game is in lib/ftc/)", () => {
+  it("covers every game of the default program and every built-in form type", () => {
     const games = listGameDefinitions().map((g) => g.label);
     expect(games).toEqual(["REBUILT", "REEFSCAPE", "CHARGED UP"]);
     for (const game of games) {

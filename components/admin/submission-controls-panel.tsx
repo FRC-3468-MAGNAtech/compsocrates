@@ -16,7 +16,7 @@ const when = (ms: number) => new Date(ms).toLocaleString(undefined, { month: "sh
 /**
  * Admin Panel > Form Submissions (Session E): the team's switches for NEW form submissions: one master switch ("Allow form submissions") and one per season of the
  * program ("Allow submissions for REEFSCAPE"). Off means Submit is disabled with a message; the form stays open, drafts keep saving, and admins can still edit entries.
- * Stored on the team doc (`formSubmissionSettings`, merge write; the FTC team path for FTC). Nothing stored means everything is on.
+ * Stored on the team doc (`formSubmissionSettings`, merge write; the second program writes its own team path). Nothing stored means everything is on.
  * A client-side control, like other team scoping: the rules are not tightened (docs/SECURITY-NOTES.md).
  */
 export function SubmissionControlsPanel() {
