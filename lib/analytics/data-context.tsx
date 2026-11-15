@@ -5,7 +5,7 @@ import { useActiveEvents } from "@/lib/active-event";
 import { useAuth } from "@/lib/auth";
 import { orderPrimaryFirst } from "@/lib/active-events";
 import { eventsOfGameSeason } from "@/lib/analytics/event-options";
-import { hasGameConfig, pickDefaultEvent, type AllEventsScope } from "@/lib/analytics/event-defaults";
+import { hasGameConfig, librarySeasons, offeredUnderGame, pickDefaultEvent, type AllEventsScope } from "@/lib/analytics/event-defaults";
 import { isInScope, joinEntries, selectAnalyticsEntries, type AnalyticsEntry, type EntrySelection, type SelectOptions } from "@/lib/analytics/entries";
 import { useAnalyticsFilters } from "@/lib/analytics/filter-context";
 import { resolveSingleEventCode, type AnalyticsFilters } from "@/lib/analytics/filters";
@@ -13,7 +13,7 @@ import { buildAllTeamStats, type TeamStats } from "@/lib/analytics/team-stats";
 import { useTeamNames } from "@/lib/analytics/use-event-data";
 import { getEvents } from "@/lib/events/actions";
 import { collectStoredEventNames } from "@/lib/events/stored-names";
-import { resolveEventName } from "@/lib/events/names";
+import { resolveEventName, usableEventName } from "@/lib/events/names";
 import { useEventNames, useRegisterStoredEventNames } from "@/lib/events/use-event-names";
 import { useEventQuery } from "@/lib/events/use-event-query";
 import type { EventInfo } from "@/lib/events/types";
@@ -42,6 +42,10 @@ export type EventOption = {
   count: number;
   /** The event's season has no game config in this program yet (the next, unannounced game): listed, marked, never the default, and it has nothing to show. */
   noGameConfig?: boolean;
+  /** The program's name for the not-yet-announced game of this event's season (its config lists it), when it has one. */
+  upcomingGame?: string;
+  /** The events API season of the event when known: the year shown beside a name whose key carries none. */
+  season?: number;
   /** The team archived this event (Session D); listed only while "Show archived events" is on, or when it is the explicit pick. */
   archived?: boolean;
 };
@@ -82,6 +86,7 @@ type AnalyticsDataValue = {
 const DataContext = createContext<AnalyticsDataValue | null>(null);
 
 const NO_KEYS: string[] = [];
+const NO_UPCOMING: readonly { apiSeason: number; name: string }[] = [];
 
 export function AnalyticsDataProvider({ children }: { children: React.ReactNode }) {
   const { profile } = useAuth();
@@ -92,7 +97,10 @@ export function AnalyticsDataProvider({ children }: { children: React.ReactNode 
   // Everything below reads only what the active program has connected: practice sessions, the match library and event-name lookups are the default
   // program's collections and API, so a program without them asks for nothing (the filters already turn Practice off there).
   const program = useProgram();
-  const { practice: practiceConnected, library: libraryConnected, eventLookup } = useProgramConfig().connection.features;
+  const programConfig = useProgramConfig();
+  const { practice: practiceConnected, library: libraryConnected, eventLookup } = programConfig.connection.features;
+  // The program's announced-later games (a name for the next season's game, when it has one): the label of an event that has no game config yet.
+  const upcomingGames = programConfig.event.upcomingGames ?? NO_UPCOMING;
 
   const { entries: allEntries, loaded: entriesLoaded } = useTeamScoutEntries(teamId);
   const { sessions, loaded: sessionsLoaded } = useAllTeamPracticeSessions(filters.practice && practiceConnected ? teamId : null);
@@ -111,9 +119,21 @@ export function AnalyticsDataProvider({ children }: { children: React.ReactNode 
   const eventDirectory = useMemo(() => {
     const map = new Map<string, EventInfo>();
     for (const e of seasonEvents.data ?? []) map.set(e.code, e);
-    for (const e of activeEvents) map.set(e.code, e);
+    // A team event stored as a bare key (no real name yet) must not hide the season list's full record of the same event.
+    for (const e of activeEvents) {
+      const known = map.get(e.code);
+      map.set(e.code, known && usableEventName(e.name, e.code) === null ? known : e);
+    }
     return map;
   }, [seasonEvents.data, activeEvents]);
+
+  // The season of every event the practice library knows: library matches carry their game, which places an event the season list does not hold
+  // (a 2023 regional is not in the 2026 list), so practice events are filtered by season exactly like real-event ones.
+  const librarySeasonOf = useMemo(() => librarySeasons(libraryMatches, seasons), [libraryMatches, seasons]);
+  const seasonOfEvent = useMemo(
+    () => (code: string): number | undefined => eventDirectory.get(code)?.season ?? librarySeasonOf.get(code.toLowerCase()),
+    [eventDirectory, librarySeasonOf]
+  );
 
   const sessionsById = useMemo(() => new Map<string, PracticeSession>(sessions.map((s) => [s.id, s])), [sessions]);
 
@@ -121,10 +141,10 @@ export function AnalyticsDataProvider({ children }: { children: React.ReactNode 
   const allScope = useMemo<AllEventsScope>(
     () => ({
       gameSeason: game.apiSeason,
-      seasonOf: (code) => eventDirectory.get(code)?.season,
+      seasonOf: seasonOfEvent,
       excluded: filters.archived ? new Set<string>() : new Set(archivedCodes),
     }),
-    [game.apiSeason, eventDirectory, filters.archived, archivedCodes]
+    [game.apiSeason, seasonOfEvent, filters.archived, archivedCodes]
   );
 
   // Joined to the sessions once per DATA change; a filter change (event, game, accuracy) then only filters instead of rebuilding every entry.
@@ -147,7 +167,13 @@ export function AnalyticsDataProvider({ children }: { children: React.ReactNode 
   const resolvedNames = useEventNames(eventLookup ? nameKeys : NO_KEYS, { stored: storedNames });
 
   const eventNameOf = useMemo(
-    () => (code: string) => resolvedNames[code]?.name ?? resolveEventName({ key: code, api: eventDirectory.get(code)?.name, stored: storedNames[code] }).name,
+    () => (code: string) => {
+      // A name the shared store really found wins; one that is only the key (a program whose keys carry no season cannot be looked up by key) falls through
+      // to the season list's name for the event, then the stored names.
+      const found = resolvedNames[code];
+      if (found && found.source !== "key") return found.name;
+      return resolveEventName({ key: code, api: eventDirectory.get(code)?.name, stored: storedNames[code] }).name;
+    },
     [resolvedNames, eventDirectory, storedNames]
   );
 
@@ -161,11 +187,16 @@ export function AnalyticsDataProvider({ children }: { children: React.ReactNode 
     const add = (code: string, name: string, active: boolean, noGameConfig = false) => {
       // Keyed by the upper-cased code: the URL upper-cases picked codes, so the same event must not be listed twice.
       if (hidden(code) || options.has(code.toUpperCase())) return;
-      options.set(code.toUpperCase(), { code, name, event: eventDirectory.get(code) ?? null, active, count: 0, noGameConfig, archived: archivedSet.has(code.toUpperCase()) });
+      // An event of another game's season is not offered under this game, practice or not (an event nobody picked and whose season is not known stays).
+      const season = seasonOfEvent(code);
+      if (!noGameConfig && !explicit.has(code.toUpperCase()) && !offeredUnderGame(season, game.apiSeason)) return;
+      const event = eventDirectory.get(code) ?? null;
+      const upcomingGame = noGameConfig ? upcomingGames.find((g) => g.apiSeason === (event?.season ?? season))?.name : undefined;
+      options.set(code.toUpperCase(), { code, name, event, season: event?.season ?? season, active, count: 0, noGameConfig, upcomingGame, archived: archivedSet.has(code.toUpperCase()) });
     };
 
     if (filters.practice) {
-      for (const m of libraryMatches) add(m.eventCode, nameOf(m.eventCode), false);
+      for (const m of libraryMatches) if (m.seasonId === filters.gameId) add(m.eventCode, nameOf(m.eventCode), false);
     } else {
       // Only the selected events of this game's season: a 2027 event has no entries under a 2025 game. Events with data are added below.
       for (const e of eventsOfGameSeason(activeEvents, game.apiSeason)) add(e.code, nameOf(e.code), !archivedSet.has(e.code.toUpperCase()));
@@ -190,7 +221,7 @@ export function AnalyticsDataProvider({ children }: { children: React.ReactNode 
         b.count - a.count ||
         a.name.localeCompare(b.name)
     );
-  }, [allEntries, filters, libraryMatches, activeEvents, activeEventCodes, eventDirectory, gameFormIds, eventNameOf, game.apiSeason, archivedCodes, seasons]);
+  }, [allEntries, filters, libraryMatches, activeEvents, activeEventCodes, eventDirectory, gameFormIds, eventNameOf, game.apiSeason, archivedCodes, seasons, seasonOfEvent, upcomingGames]);
 
   // Names for every event that has data in scope (not just the ones passing the accuracy filter), so they don't flicker as the threshold changes.
   const nameRequests = useMemo(() => {

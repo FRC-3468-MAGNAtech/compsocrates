@@ -5,7 +5,7 @@ import { DEFAULT_FILTERS, eventCodeIn, parseFilters, resolveSingleEventCode, typ
 import { selectAnalyticsEntries } from "@/lib/analytics/entries";
 import { matchKey } from "@/lib/analytics/match-breakdown";
 import type { ScoutEntry } from "@/lib/scout-entries";
-import { gameOfSeason, hasGameConfig, inAllEventsScope, pickDefaultEvent, pickedWithoutGameConfig, type AllEventsScope } from "./event-defaults";
+import { gameNotConfiguredNote, gameOfSeason, hasGameConfig, inAllEventsScope, librarySeasons, offeredUnderGame, pickDefaultEvent, pickedWithoutGameConfig, GAME_NOT_CONFIGURED_NOTE, type AllEventsScope } from "./event-defaults";
 
 // Every season below comes from the program's own game list: no year or game name is written here.
 const frcSeasons = SEASONS.map((s) => ({ id: s.id, apiSeason: s.apiSeason }));
@@ -87,6 +87,40 @@ describe("default event", () => {
     expect(pickedWithoutGameConfig(options, ["2027ARLI"])).toEqual(["2027ARLI"]);
     expect(pickedWithoutGameConfig(options, ["FIRSTCURRENT"])).toEqual([]);
     expect(pickedWithoutGameConfig(options, [])).toEqual([]);
+  });
+});
+
+describe("practice events follow the same season rule", () => {
+  const matches = [
+    { eventCode: "2023bayou", seasonId: frcOlder.id },
+    { eventCode: "2023magnolia", seasonId: frcOlder.id },
+    { eventCode: "2026lake", seasonId: frcCurrent.id },
+    { eventCode: "weird", seasonId: "no-such-game" },
+  ];
+  const seasonOf = librarySeasons(matches, frcSeasons);
+
+  it("places a library event by its match's game", () => {
+    expect(seasonOf.get("2023bayou")).toBe(frcOlder.apiSeason);
+    expect(seasonOf.get("2026lake")).toBe(frcCurrent.apiSeason);
+    expect(seasonOf.has("weird")).toBe(false);
+  });
+  it("an older game's regional is not offered under the current game, a current one is, an unplaced one stays", () => {
+    expect(offeredUnderGame(seasonOf.get("2023bayou"), frcCurrent.apiSeason)).toBe(false);
+    expect(offeredUnderGame(seasonOf.get("2023magnolia"), frcCurrent.apiSeason)).toBe(false);
+    expect(offeredUnderGame(seasonOf.get("2026lake"), frcCurrent.apiSeason)).toBe(true);
+    expect(offeredUnderGame(undefined, frcCurrent.apiSeason)).toBe(true);
+  });
+  it("practice All Events leaves those events' entries out too", () => {
+    const sc: AllEventsScope = { gameSeason: frcCurrent.apiSeason, seasonOf: (c) => seasonOf.get(c.toLowerCase()), excluded: new Set() };
+    expect(inAllEventsScope("2023bayou", sc)).toBe(false);
+    expect(inAllEventsScope("2026lake", sc)).toBe(true);
+  });
+});
+
+describe("the not-announced note", () => {
+  it("names the coming game when the program has one, else says the generic thing", () => {
+    expect(gameNotConfiguredNote("Next Game")).toContain("Next Game has not been announced yet");
+    expect(gameNotConfiguredNote()).toBe(GAME_NOT_CONFIGURED_NOTE);
   });
 });
 

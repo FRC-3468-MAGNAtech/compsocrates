@@ -32,7 +32,7 @@ export function SessionIdCell({ value }: { value: string }) {
 
   return (
     <span className="flex min-w-0 max-w-full items-center gap-1">
-      <span className="min-w-0 truncate text-xs text-[var(--muted-foreground)]" title={value} data-session-id={value}>
+      <span className="min-w-0 truncate" title={value} data-session-id={value}>
         {middleTruncate(value, SESSION_ID_VISIBLE_CHARS)}
       </span>
       <button

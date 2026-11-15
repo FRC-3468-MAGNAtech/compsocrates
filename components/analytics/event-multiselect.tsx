@@ -10,7 +10,7 @@ import { STATUS_BADGE } from "@/components/event/selected-events-panel";
 import type { EventOption } from "@/lib/analytics/data-context";
 import type { EventScope } from "@/lib/analytics/filters";
 import { getEventStatus } from "@/lib/events/event-status";
-import { eventLabel, eventTitle, withEventYear } from "@/lib/events/names";
+import { eventLabel, eventTitleInSeason, withEventYear } from "@/lib/events/names";
 import { springSnappy } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
@@ -18,6 +18,14 @@ import { cn } from "@/lib/utils";
 const sameCode = (a: string, b: string) => a.toUpperCase() === b.toUpperCase();
 
 export const NO_GAME_CONFIG_LABEL = "No game config yet";
+
+/** The badge of an event whose game has no config: the program's own name for the coming game when it has one, else the generic wording. */
+export function noGameBadge(option: Pick<EventOption, "upcomingGame">): string {
+  return option.upcomingGame ? `${option.upcomingGame}: not announced yet` : NO_GAME_CONFIG_LABEL;
+}
+
+/** An event's title with its year: from the key when the key has a season, else from the event's own season in the program's wording. */
+export const optionTitle = (o: Pick<EventOption, "code" | "name" | "season">, seasonKind: "calendar" | "start-year") => eventTitleInSeason(o, o.season, seasonKind);
 
 /**
  * The Analytics Event control: a multi-select with two presets ("Active
@@ -38,6 +46,7 @@ export function EventMultiSelect({
   showArchived,
   onShowArchivedChange,
   hasArchived,
+  seasonKind,
 }: {
   options: EventOption[];
   scope: EventScope;
@@ -52,6 +61,8 @@ export function EventMultiSelect({
   onShowArchivedChange: (value: boolean) => void;
   /** The team has at least one archived event (the switch is hidden otherwise). */
   hasArchived: boolean;
+  /** How the program words a season next to a name (`ProgramConfig.event.seasonKind`). */
+  seasonKind: "calendar" | "start-year";
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -90,7 +101,7 @@ export function EventMultiSelect({
   const isSelected = (code: string) => selectedCodes.some((c) => sameCode(c, code));
   const nameOf = (code: string) => {
     const option = options.find((o) => sameCode(o.code, code));
-    return option ? eventTitle(option) : withEventYear(eventLabel({ key: code }), code);
+    return option ? optionTitle(option, seasonKind) : withEventYear(eventLabel({ key: code }), code);
   };
 
   const summary = singleEvent
@@ -181,6 +192,7 @@ export function EventMultiSelect({
                 option={o}
                 checked={isSelected(o.code)}
                 singleEvent={singleEvent}
+                seasonKind={seasonKind}
                 showStar={o.code === primaryCode && !practice}
                 now={now}
                 onClick={() => toggle(o.code)}
@@ -245,6 +257,7 @@ export function EventOptionRow({
   option: o,
   checked,
   singleEvent,
+  seasonKind,
   showStar,
   now,
   onClick,
@@ -252,6 +265,7 @@ export function EventOptionRow({
   option: EventOption;
   checked: boolean;
   singleEvent: boolean;
+  seasonKind: "calendar" | "start-year";
   showStar: boolean;
   now: number;
   onClick: () => void;
@@ -276,7 +290,7 @@ export function EventOptionRow({
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-1.5">
           {showStar && <Star className="h-3 w-3 shrink-0 fill-current" style={{ color: "var(--color-primary)" }} />}
-          <span className="truncate font-medium" title={eventTitle(o)}>{eventTitle(o)}</span>
+          <span className="truncate font-medium" title={optionTitle(o, seasonKind)}>{optionTitle(o, seasonKind)}</span>
         </span>
         <span className="block text-[11px] uppercase tracking-wide text-[var(--muted-foreground)]">
           {o.code} &middot; {o.count} {o.count === 1 ? "entry" : "entries"}
@@ -285,7 +299,7 @@ export function EventOptionRow({
       </span>
       {o.noGameConfig && (
         <Badge variant="outline" className="shrink-0 text-[10px]">
-          {NO_GAME_CONFIG_LABEL}
+          {noGameBadge(o)}
         </Badge>
       )}
       {status && (

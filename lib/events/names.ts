@@ -115,3 +115,18 @@ export function eventLabel(args: ResolveEventNameArgs & { withKey?: boolean }): 
   const key = String(args.key ?? "").trim();
   return args.withKey && source !== "key" && key ? `${name} (${key})` : name;
 }
+
+/**
+ * `eventTitle` for an event whose KEY carries no season (a program whose keys are bare codes): the year comes from the event's own season instead,
+ * in the program's wording (`seasonKind`: "calendar" gives 2026, "start-year" gives 2025-26). A key that states its season, a name that already
+ * states the year, a bare-key placeholder and an unknown season are all left exactly as `eventTitle` has them.
+ */
+export function eventTitleInSeason(event: { code: string; name: string }, season: number | null | undefined, seasonKind: "calendar" | "start-year"): string {
+  const keyed = eventTitle(event);
+  const text = String(event.name ?? "").trim();
+  if (keyed !== text || !text || season === null || season === undefined || !Number.isFinite(season)) return keyed;
+  if (text.toLowerCase() === String(event.code ?? "").trim().toLowerCase()) return keyed;
+  const label = seasonLabel(seasonKind, season);
+  if (labelYears(label).some((year) => new RegExp(`(?<!\d)${year}(?!\d)`).test(text))) return keyed;
+  return `${text} ${label}`;
+}

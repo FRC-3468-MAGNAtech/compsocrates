@@ -348,7 +348,7 @@ function Cell({
         </span>
       );
     case "text":
-      return <span className="min-w-0 text-xs text-[var(--muted-foreground)]">{String(col.getValue(entry) ?? "")}</span>;
+      return <span className="min-w-0">{String(col.getValue(entry) ?? "")}</span>;
     case "id":
       return <SessionIdCell value={String(col.getValue(entry) ?? "")} />;
     case "badge":

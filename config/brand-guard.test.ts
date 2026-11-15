@@ -81,6 +81,7 @@ const FTC_ALLOWED: Record<string, string> = {
   "lib/scroll-reset.test.ts": "uses an /ftc/ path to test the scroll reset on a program route",
   "lib/analytics/csv-import.test.ts": "tests CSV import for the FTC program's own port and game",
   "lib/analytics/recompute.test.ts": "tests the accuracy recompute under the FTC program id with the FTC game's form id",
+  "lib/analytics/event-defaults.test.ts": "tests the default-event rule over the FTC program's own game list (the same rule as FRC's)",
   "lib/scout-stats/actions.test.ts": "tests the scout stats actions under the FTC program id",
   "lib/scout-stats/engine-program.test.ts": "tests the stats engine with FTC seasons and the FTC game's alliance roles",
 };

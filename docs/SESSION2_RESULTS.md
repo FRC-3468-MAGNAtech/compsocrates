@@ -18,13 +18,33 @@ Branch `rebuild`. No rules, deploys or Firebase writes. No scoring, alliance tot
 
 ## Performance (`lib/analytics/pipeline.bench.test.ts`, 5,000 entries, 40 events, median ms, Node)
 select one event, join in every filter change 0.57, pre-joined 0.20; All events 1.57 vs 0.13; join once per data change 1.24; team stats all events 16.9, one event 0.4. The pure pipeline is not the bottleneck. Ranked causes (from code): 1) backdrop blur on every header and pinned cell (about 100+ blur layers) plus a blurred scroller: removed; 2) one context value re-rendering every consumer on any change: not split (large refactor, left); 3) every filter change re-joined all entries: fixed (`joinEntries` once per data change); 4) team-wide listeners (entries, practice sessions, library matches, team doc, forms) re-run everything per snapshot: unchanged. Tables were already virtualized. No dependency added.
-**Not measurable here:** render time, layout, paint, GPU cost, real snapshot sizes. Profile: 1) Chrome DevTools > Performance, record, then change the event select and scroll a long table; 2) read Scripting, Rendering, Painting totals and long tasks; 3) compare with `git stash` of this session on the same data.
+**Not measurable here:** render time, layout, paint, GPU cost, real snapshot sizes.
+Profile:
+1) Chrome DevTools > Performance, record, then change the event select and scroll a long table;
+2) read Scripting, Rendering, Painting totals and long tasks;
+3) compare with `git stash` of this session on the same data.
 
 ## Verify
 `npm run lint`: 0 errors, 1 warning (unused `timeZone`, `match-list-screen.tsx:291`, not from this session). `npm test`: 279 files, 3644 tests pass. `npm run build`: passes. Tests changed: `filters.test.ts` (codes keep case, `archived`), `rebuilt-form.test.ts` (optional key exempt from plugin-key parity). New: event defaults/All Events, event list render and keys, tables layout, stacking, climb attempt, radar label, benchmark.
 
 ## Manual check
-1. Analytics with a 2027 event: default is the first 2026 event. 2. Event select: check on the selected one, 2027 marked "No game config yet"; pick it for the note. 3. Pick a configured event: tables and forms appear. 4. All Events: numbers combine only that season; toggle archived. 5. Scroll a long table: nothing shows through the pinned header. 6. Narrow width (360px): long notes and Session IDs stay in their columns; copy works. 7. One font in every column. 8. Match Scout form: set "Attempted climb", save, open Robot Radar: Climb Reliability says "Based on 1 entry"; right label "Hub Volume" not clipped. 9. Profile (3 steps above). 10. /frc and /ftc side by side.
+1. Analytics with a 2027 event: default is the first 2026 event.
+2. Event select: check on the selected one, 2027 marked "No game config yet"; pick it for the note.
+3. Pick a configured event: tables and forms appear.
+4. All Events: numbers combine only that season; toggle archived.
+5. Scroll a long table: nothing shows through the pinned header.
+6. Narrow width (360px): long notes and Session IDs stay in their columns; copy works.
+7. One font in every column.
+8. Match Scout form: set "Attempted climb", save, open Robot Radar: Climb Reliability says "Based on 1 entry"; right label "Hub Volume" not clipped.
+9. Profile (3 steps above).
+10. /frc and /ftc side by side.
 
 ## Rules, rollback, notes
 No rule changed. Two behavior changes you should know: archived events are now hidden from the Analytics event list and All Events until toggled (was always shown); picked codes keep their case in the URL. Roll back: revert the session commits; the stored field is ignored by CS and by older code. New field: `endgame.attemptedClimb` (boolean) + `endgame.attemptedClimbRecorded` (true), form key `endgame_attemptedClimb`, `optionalAnswer: true`; listed in `docs/REMAINING.md`. Unattributed changes left uncommitted: `docs/BATCH5B_RESULTS.md`, `BATCH6_RESULTS.md`, `BATCH7_RESULTS.md`, `LIBRARY_MERGE_RESULTS.md`, `SESSION1_RESULTS.md` (list reformatting, not mine).
+
+## Follow-up after the manual check
+- Step 7: a free-text column (Auto Cycle Timer, Event, Alliance) had its own smaller, muted style; it now renders like every other cell (also the Session ID text).
+- Step 10 (second program): names fell through to the key because the shared name store answered "key" for a key with no season in it and that shadowed the season list's name; a team event stored as a bare key also hid the season list's record. Both fixed. The year now comes from the event's own season (`eventTitleInSeason`, program wording from `seasonKind`) when the key has none.
+- Coming game: `ProgramConfig.event.upcomingGames` (the second program lists its next game for 2027). Its events are badged "<name>: not announced yet", picking one says so, and the Game select lists it greyed out. A program with no entry keeps "No game config yet". The first program's 2027 game has no name yet, so it stays generic.
+- Practice events: the Analytics practice list took every library event. It now keeps only events of the selected game (library matches name their game); practice All Events uses the same season rule (`librarySeasons`, `offeredUnderGame`), plus the archived switch. The Practice Scouting match picker already filtered by season.
+- Tests 3652 pass, lint 0 errors, build passes.

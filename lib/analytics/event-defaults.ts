@@ -44,12 +44,38 @@ export function pickDefaultEvent(input: {
   return best?.code ?? null;
 }
 
+/**
+ * Is an event offered under the selected game? Only when its season is the game's, or is not known (an event we cannot place stays: its entries carry
+ * the game's own form). Practice events follow the same rule as real-event ones, so a 2023 regional never shows up under a 2026 game.
+ */
+export function offeredUnderGame(eventSeason: number | undefined, gameSeason: number): boolean {
+  return eventSeason === undefined || eventSeason === gameSeason;
+}
+
+/** The events API season of each event the practice library holds (library matches name their game), by lower-cased event code. */
+export function librarySeasons(matches: readonly { eventCode: string; seasonId: string }[], seasons: readonly GameSeason[]): Map<string, number> {
+  const byGame = new Map(seasons.map((s) => [s.id, s.apiSeason]));
+  const out = new Map<string, number>();
+  for (const m of matches) {
+    const year = byGame.get(m.seasonId);
+    if (year !== undefined) out.set(m.eventCode.toLowerCase(), year);
+  }
+  return out;
+}
+
 /** The picked events whose game is not configured yet: drives the "game not configured" empty state (never a blank table or a crash). */
 export function pickedWithoutGameConfig(options: readonly { code: string; noGameConfig?: boolean }[], pickedCodes: readonly string[]): string[] {
   return pickedCodes.filter((c) => options.some((o) => o.noGameConfig && o.code.toUpperCase() === c.toUpperCase()));
 }
 
 export const GAME_NOT_CONFIGURED_NOTE = "The game for this event is not configured yet, so there is nothing to show. Pick an event from a configured season.";
+
+/** The empty-state sentence for a picked event with no game config: names the coming game when the program has one. */
+export function gameNotConfiguredNote(upcomingGame?: string): string {
+  return upcomingGame
+    ? `${upcomingGame} has not been announced yet, so there is nothing to show. Pick an event from a configured season.`
+    : GAME_NOT_CONFIGURED_NOTE;
+}
 
 /**
  * Where "All Events" stops: the entries of the selected game at any event of that game's season, minus archived events unless the viewer asked to

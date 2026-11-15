@@ -88,6 +88,13 @@ describe("table surfaces", () => {
   it("cells inherit the app font: no monospace in any Analytics component", () => {
     for (const f of [...tables, "components/analytics/form-summaries-rebuilt-view.tsx", "components/analytics/match-row.tsx", "app/(app)/[program]/analytics/teams/[teamNumber]/page.tsx"]) expect(read(f), f).not.toContain("font-mono");
   });
+  it("a free-text column (the cycle timers, event, alliance) reads like every other cell: no own size, colour or font", () => {
+    const src = read("components/analytics/data-table.tsx");
+    const block = src.slice(src.indexOf('case "text":'), src.indexOf('case "id":'));
+    expect(block).not.toMatch(/text-xs|text-\[|font-/);
+    expect(block).not.toContain("muted-foreground");
+    expect(read("components/analytics/session-id-cell.tsx")).not.toMatch(/text-xs|font-mono/);
+  });
   it("cells stay inside their column and the table scrolls inside its own box", () => {
     for (const f of tables) {
       const src = read(f);

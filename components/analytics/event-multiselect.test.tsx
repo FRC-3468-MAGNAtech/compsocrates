@@ -1,12 +1,12 @@
 import { renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { EventOptionRow, NO_GAME_CONFIG_LABEL, nextRowIndex } from "@/components/analytics/event-multiselect";
+import { EventOptionRow, NO_GAME_CONFIG_LABEL, nextRowIndex, noGameBadge, optionTitle } from "@/components/analytics/event-multiselect";
 import { OptionCheck } from "@/components/ui/select";
 import type { EventOption } from "@/lib/analytics/data-context";
 
 const option = (over: Partial<EventOption> = {}): EventOption => ({ code: "evt1", name: "Lakeview Regional", event: null, active: true, count: 3, ...over });
 const row = (checked: boolean, over: Partial<EventOption> = {}, singleEvent = true) =>
-  renderToString(<EventOptionRow option={option(over)} checked={checked} singleEvent={singleEvent} showStar={false} now={0} onClick={() => {}} />);
+  renderToString(<EventOptionRow option={option(over)} checked={checked} singleEvent={singleEvent} seasonKind="calendar" showStar={false} now={0} onClick={() => {}} />);
 
 describe("Analytics event list: selected state", () => {
   it("a selected row has aria-selected=true and the shared check mark", () => {
@@ -34,6 +34,26 @@ describe("Analytics event list: selected state", () => {
   it("marks an event with no game config", () => {
     expect(row(false, { noGameConfig: true })).toContain(NO_GAME_CONFIG_LABEL);
     expect(row(false)).not.toContain(NO_GAME_CONFIG_LABEL);
+  });
+});
+
+describe("Analytics event list: names and years", () => {
+  it("a key with no season in it gets the year from the event's own season, in the program's wording", () => {
+    const o = option({ code: "USLAALQ", name: "Louisiana Qualifier", season: 2025 });
+    expect(optionTitle(o, "start-year")).toBe("Louisiana Qualifier 2025-26");
+    expect(optionTitle(o, "calendar")).toBe("Louisiana Qualifier 2025");
+    expect(row(false, { code: "USLAALQ", name: "Louisiana Qualifier", season: 2025 })).toContain("Louisiana Qualifier 2025");
+  });
+  it("leaves a name that already states its year, a key that carries one, a bare key and an unknown season alone", () => {
+    expect(optionTitle(option({ code: "X1", name: "Bayou 2025-26 Qualifier", season: 2025 }), "start-year")).toBe("Bayou 2025-26 Qualifier");
+    expect(optionTitle(option({ code: "2026lake", name: "Lakeview Regional", season: 2026 }), "calendar")).toBe("Lakeview Regional 2026");
+    expect(optionTitle(option({ code: "USLAALQ", name: "USLAALQ", season: 2025 }), "start-year")).toBe("USLAALQ");
+    expect(optionTitle(option({ code: "USLAALQ", name: "Louisiana Qualifier", season: undefined }), "start-year")).toBe("Louisiana Qualifier");
+  });
+  it("the badge names the program's coming game when it has one", () => {
+    expect(noGameBadge({ upcomingGame: "Next Game" })).toBe("Next Game: not announced yet");
+    expect(noGameBadge({})).toBe(NO_GAME_CONFIG_LABEL);
+    expect(row(false, { noGameConfig: true, upcomingGame: "Next Game" })).toContain("Next Game: not announced yet");
   });
 });
 
