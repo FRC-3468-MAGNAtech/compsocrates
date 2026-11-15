@@ -7,11 +7,9 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Input, Label } from "@/components/ui/input";
 import { MAX_EVENT_NAME, validateEventForm, type EventFormErrors, type EventFormInput } from "@/lib/library/event-form";
 import { MANUAL_CODE_PREFIX } from "@/lib/library/ids";
-import { createManualEvent, updateManualEvent, type Actor, type LibraryEvent } from "@/lib/library/store";
-import { DEFAULT_SEASON_ID, getEnabledSeasons } from "@/lib/seasons";
+import type { Actor, LibraryEvent } from "@/lib/library/store";
+import { useLibraryAdapter, useLibrarySeasons } from "@/lib/library/adapter";
 import { cn } from "@/lib/utils";
-
-const SEASONS = getEnabledSeasons();
 
 /** The "event form" fields, shared by the create dialog and the inline create inside Bulk import. */
 export function EventFields({
@@ -31,6 +29,7 @@ export function EventFields({
   showCode: boolean;
   showSeason?: boolean;
 }) {
+  const { seasons } = useLibrarySeasons();
   const set = (key: keyof EventFormInput, v: string) => onChange({ ...value, [key]: v });
   return (
     <div className="flex flex-col gap-4">
@@ -44,7 +43,7 @@ export function EventFields({
           <div>
             <Label htmlFor="ev-season">Season</Label>
             <select id="ev-season" className={cn(selectClass, "w-full")} value={seasonId} onChange={(e) => onSeasonChange(e.target.value)}>
-              {SEASONS.map((s) => (
+              {seasons.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}
                 </option>
@@ -97,10 +96,12 @@ export function ManualEventDialog({
   onSaved?: (code: string) => void;
 }) {
   const editing = !!event;
+  const adapter = useLibraryAdapter();
+  const { defaultSeasonId } = useLibrarySeasons();
   const [form, setForm] = useState<EventFormInput>(
     event ? { name: event.eventName, code: event.eventCode, date: event.date ?? "", sourceUrl: event.sourceUrl ?? "", defaultVideoUrl: event.defaultVideoUrl ?? "" } : emptyEventForm()
   );
-  const [seasonId, setSeasonId] = useState(event?.seasonId || DEFAULT_SEASON_ID);
+  const [seasonId, setSeasonId] = useState(event?.seasonId || defaultSeasonId);
   const [errors, setErrors] = useState<EventFormErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -113,11 +114,11 @@ export function ManualEventDialog({
     setBusy(true);
     try {
       if (event) {
-        await updateManualEvent(actor, event, form, eventMatchIds ?? []);
+        await adapter.updateEvent(actor, event, form, eventMatchIds ?? []);
         onSaved?.(event.eventCode);
         onOpenChange(false);
       } else {
-        const result = await createManualEvent(actor, form, seasonId, existingEvents);
+        const result = await adapter.createEvent(actor, form, seasonId, existingEvents);
         if (!result.ok) {
           setErrors(result.fieldErrors ?? {});
           setFormError(result.error);

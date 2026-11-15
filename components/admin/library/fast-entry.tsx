@@ -10,18 +10,18 @@ import { Input } from "@/components/ui/input";
 import { MATCH_TYPE_PREFIX } from "@/lib/analytics/game-schema";
 import { parseMatchType } from "@/lib/library/ids";
 import { emptyRawMatch, libraryMatchToValid, matchLabel, matchWarnings, nextMatchNumber, teamFieldsFor, validateRawMatch, type RawField, type RawMatch } from "@/lib/library/manual-match";
-import { upsertManualMatches, type Actor, type LibraryEvent } from "@/lib/library/store";
+import type { Actor, LibraryEvent } from "@/lib/library/store";
+import { useLibraryAdapter } from "@/lib/library/adapter";
+import { useProgramConfig } from "@/lib/program/context";
 import type { LibraryMatch } from "@/lib/match-library";
 import { cn } from "@/lib/utils";
 
-type Column = { field: RawField; label: string; width: string; tone?: "red" | "blue" };
+type Column = { field: Exclude<RawField, "scheduledTime">; label: string; width: string; tone?: "red" | "blue" };
 
-/** One team column per robot on each alliance (Red 1..n, Blue 1..n), n = the configured alliance size. */
-const TEAM_COLUMNS: Column[] = teamFieldsFor().map((field) => ({ field, label: slotLabel(field), width: "w-20", tone: field.startsWith("red") ? "red" : "blue" }));
-
-const COLUMNS: Column[] = [
+/** One team column per robot on each alliance (Red 1..n, Blue 1..n), n = the program's alliance size. */
+const columnsFor = (size: number): Column[] => [
   { field: "matchNumber", label: "#", width: "w-16" },
-  ...TEAM_COLUMNS,
+  ...teamFieldsFor(size).map((field): Column => ({ field, label: slotLabel(field), width: "w-20", tone: field.startsWith("red") ? "red" : "blue" })),
   { field: "redScore", label: "Red score", width: "w-20", tone: "red" },
   { field: "blueScore", label: "Blue score", width: "w-20", tone: "blue" },
   { field: "redPenalty", label: "Red pen.", width: "w-16", tone: "red" },
@@ -40,6 +40,11 @@ const COLUMNS: Column[] = [
  * start/end. Validation is the same `validateRawMatch` as everywhere else.
  */
 export function FastEntry({ event, eventMatches, actor }: { event: LibraryEvent; eventMatches: LibraryMatch[]; actor: Actor }) {
+  const adapter = useLibraryAdapter();
+  const config = useProgramConfig();
+  const size = config.event.allianceSize;
+  const scoresRequired = config.library.scoresRequired;
+  const COLUMNS = useMemo(() => columnsFor(size), [size]);
   const [raw, setRaw] = useState<RawMatch>(() => ({ ...emptyRawMatch(), matchNumber: String(nextMatchNumber(eventMatches, "Qualification")) }));
   const [showErrors, setShowErrors] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -48,7 +53,7 @@ export function FastEntry({ event, eventMatches, actor }: { event: LibraryEvent;
   const firstTeamRef = useRef<HTMLInputElement>(null);
 
   const set = (field: RawField, value: string) => setRaw((r) => ({ ...r, [field]: value }));
-  const result = useMemo(() => validateRawMatch(raw, { defaultVideoUrl: event.defaultVideoUrl }), [raw, event.defaultVideoUrl]);
+  const result = useMemo(() => validateRawMatch(raw, { defaultVideoUrl: event.defaultVideoUrl, allianceSize: size, scoresRequired }), [raw, event.defaultVideoUrl, size, scoresRequired]);
   const warnings = useMemo(
     () => (result.match ? matchWarnings(result.match, { event, existingIds: new Set(eventMatches.map((m) => m.id)), siblings: eventMatches.map(libraryMatchToValid) }) : []),
     [result.match, event, eventMatches]
@@ -61,8 +66,8 @@ export function FastEntry({ event, eventMatches, actor }: { event: LibraryEvent;
     if (!match) return;
     setBusy(true);
     try {
-      const summary = await upsertManualMatches(actor, event, [match], { newPublished: true, newNeedsReview: false });
-      if (summary.skipped.length > 0) {
+      const summary = await adapter.upsertMatches(actor, event, [match], { newPublished: true, newNeedsReview: false, keepScores: true });
+      if (summary.skipped && summary.skipped.length > 0) {
         setMessage({ kind: "error", text: summary.skipped[0].reason });
         return;
       }
@@ -122,7 +127,7 @@ export function FastEntry({ event, eventMatches, actor }: { event: LibraryEvent;
                 ref={c.field === "red1" ? firstTeamRef : undefined}
                 className="h-9 px-2.5 text-xs"
                 inputMode={c.field === "youtubeUrl" ? "url" : c.field === "start" || c.field === "end" ? "text" : "numeric"}
-                value={raw[c.field]}
+                value={raw[c.field] ?? ""}
                 onChange={(e) => set(c.field, e.target.value)}
                 aria-invalid={showErrors && !!result.errors[c.field]}
                 placeholder={c.field === "youtubeUrl" ? (event.defaultVideoUrl ? "(default video)" : "https://youtu.be/…") : undefined}

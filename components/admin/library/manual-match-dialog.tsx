@@ -9,9 +9,10 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Input, Label, Textarea } from "@/components/ui/input";
 import { MATCH_TYPE_PREFIX } from "@/lib/analytics/game-schema";
 import { parseMatchType } from "@/lib/library/ids";
-import { ALLIANCE_SIZE } from "@/config/alliance";
+import { useProgramConfig } from "@/lib/program/context";
+import { useLibraryAdapter } from "@/lib/library/adapter";
 import { allianceTeamFields, emptyRawMatch, libraryMatchToValid, manualMatchId, matchToRaw, matchWarnings, nextMatchNumber, validateRawMatch, type RawField, type RawMatch } from "@/lib/library/manual-match";
-import { countCompletedSessionsForMatch, upsertManualMatches, type Actor, type LibraryEvent } from "@/lib/library/store";
+import type { Actor, LibraryEvent } from "@/lib/library/store";
 import type { LibraryMatch } from "@/lib/match-library";
 import { cn } from "@/lib/utils";
 
@@ -47,13 +48,18 @@ export function ManualMatchDialog({
   onOpenRescore: () => void;
 }) {
   const editing = mode.kind === "edit";
+  const adapter = useLibraryAdapter();
+  const config = useProgramConfig();
+  const size = config.event.allianceSize;
+  const { scoresRequired, scheduledTime } = config.library;
   const [raw, setRaw] = useState<RawMatch>(() => {
-    if (mode.kind === "edit") return matchToRaw(mode.match);
+    const blank = (): RawMatch => (scheduledTime ? { ...emptyRawMatch(), scheduledTime: "" } : emptyRawMatch());
+    if (mode.kind === "edit") return matchToRaw(mode.match, scheduledTime);
     if (mode.kind === "duplicate") {
-      const base = matchToRaw(mode.match);
+      const base = matchToRaw(mode.match, scheduledTime);
       return { ...base, matchNumber: String(nextMatchNumber(eventMatches, mode.match.matchType)) };
     }
-    return { ...emptyRawMatch(), matchNumber: String(nextMatchNumber(eventMatches, "Qualification")) };
+    return { ...blank(), matchNumber: String(nextMatchNumber(eventMatches, "Qualification")) };
   });
   const [showErrors, setShowErrors] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -62,7 +68,7 @@ export function ManualMatchDialog({
 
   const set = (field: RawField, value: string) => setRaw((r) => ({ ...r, [field]: value }));
 
-  const result = useMemo(() => validateRawMatch(raw, { defaultVideoUrl: event.defaultVideoUrl }), [raw, event.defaultVideoUrl]);
+  const result = useMemo(() => validateRawMatch(raw, { defaultVideoUrl: event.defaultVideoUrl, allianceSize: size, scoresRequired }), [raw, event.defaultVideoUrl, size, scoresRequired]);
   const errors = showErrors ? result.errors : {};
 
   const warnings = useMemo(() => {
@@ -80,13 +86,15 @@ export function ManualMatchDialog({
   useEffect(() => {
     if (!editingId) return;
     let cancelled = false;
-    countCompletedSessionsForMatch(actor.teamId, editingId)
+    if (!adapter.countCompletedSessions) return;
+    adapter
+      .countCompletedSessions(actor.teamId, editingId)
       .then((n) => !cancelled && setSessionCount(n))
       .catch(() => !cancelled && setSessionCount(null));
     return () => {
       cancelled = true;
     };
-  }, [editingId, actor.teamId]);
+  }, [editingId, actor.teamId, adapter]);
 
   const save = async (addNext: boolean) => {
     setShowErrors(true);
@@ -94,15 +102,15 @@ export function ManualMatchDialog({
     if (!result.match) return;
     setBusy(true);
     try {
-      const summary = await upsertManualMatches(actor, event, [result.match], { newPublished: true, newNeedsReview: false });
-      if (summary.skipped.length > 0) {
+      const summary = await adapter.upsertMatches(actor, event, [result.match], { newPublished: true, newNeedsReview: false });
+      if (summary.skipped && summary.skipped.length > 0) {
         setSaveError(summary.skipped[0].reason);
         return;
       }
       if (addNext) {
         // Keep the type and video link; the next match has a new number and fresh teams, scores, and times.
         const type = result.match.matchType;
-        setRaw({ ...emptyRawMatch(), matchType: MATCH_TYPE_PREFIX[type], matchNumber: String(result.match.matchNumber + 1), youtubeUrl: raw.youtubeUrl });
+        setRaw({ ...emptyRawMatch(), ...(scheduledTime ? { scheduledTime: "" } : {}), matchType: MATCH_TYPE_PREFIX[type], matchNumber: String(result.match.matchNumber + 1), youtubeUrl: raw.youtubeUrl });
         setShowErrors(false);
       } else {
         onOpenChange(false);
@@ -133,7 +141,7 @@ export function ManualMatchDialog({
       <Label htmlFor={`mm-${field}`} className={tone === "red" ? "text-red-300" : "text-blue-300"}>
         {label}
       </Label>
-      <Input id={`mm-${field}`} inputMode="numeric" value={raw[field]} onChange={(e) => set(field, e.target.value)} aria-invalid={!!errors[field]} placeholder={field.endsWith("Penalty") ? "0" : "Score"} />
+      <Input id={`mm-${field}`} inputMode="numeric" value={raw[field]} onChange={(e) => set(field, e.target.value)} aria-invalid={!!errors[field]} placeholder={field.endsWith("Penalty") ? "0" : scoresRequired ? "Score" : "Score (optional)"} />
       <FieldError>{errors[field]}</FieldError>
     </div>
   );
@@ -188,17 +196,24 @@ export function ManualMatchDialog({
             {editing && <p className="col-span-full text-xs text-[var(--muted-foreground)]">To renumber a match, duplicate it and delete the original.</p>}
           </div>
 
-          <div className={cn("grid grid-cols-2 gap-3 rounded-2xl border border-red-400/20 bg-red-500/5 p-3", ALLIANCE_ROW_COLUMNS[ALLIANCE_SIZE] ?? "sm:grid-cols-4")}>
-            {allianceTeamFields("red").map((field, i) => teamField(field, `Red team ${i + 1}`, "red"))}
+          <div className={cn("grid grid-cols-2 gap-3 rounded-2xl border border-red-400/20 bg-red-500/5 p-3", ALLIANCE_ROW_COLUMNS[size] ?? "sm:grid-cols-4")}>
+            {allianceTeamFields("red", size).map((field, i) => teamField(field, `Red team ${i + 1}`, "red"))}
             {numberField("redScore", "Red score", "red")}
             {numberField("redPenalty", "Red penalty pts", "red")}
           </div>
-          <div className={cn("grid grid-cols-2 gap-3 rounded-2xl border border-blue-400/20 bg-blue-500/5 p-3", ALLIANCE_ROW_COLUMNS[ALLIANCE_SIZE] ?? "sm:grid-cols-4")}>
-            {allianceTeamFields("blue").map((field, i) => teamField(field, `Blue team ${i + 1}`, "blue"))}
+          <div className={cn("grid grid-cols-2 gap-3 rounded-2xl border border-blue-400/20 bg-blue-500/5 p-3", ALLIANCE_ROW_COLUMNS[size] ?? "sm:grid-cols-4")}>
+            {allianceTeamFields("blue", size).map((field, i) => teamField(field, `Blue team ${i + 1}`, "blue"))}
             {numberField("blueScore", "Blue score", "blue")}
             {numberField("bluePenalty", "Blue penalty pts", "blue")}
           </div>
-          <p className="-mt-2 text-xs text-[var(--muted-foreground)]">Penalty points are the points awarded to that alliance from the opponent&apos;s penalties — already included in its score.</p>
+          <p className="-mt-2 text-xs text-[var(--muted-foreground)]">Penalty points are the points awarded to that alliance from the opponent&apos;s penalties — already included in its score.{!scoresRequired && " Leave a score blank when there is no official score yet; practice then shows the total with “No official score yet”."}</p>
+          {scheduledTime && (
+            <div>
+              <Label htmlFor="mm-time">Scheduled time (optional)</Label>
+              <Input id="mm-time" type="datetime-local" value={raw.scheduledTime ?? ""} onChange={(e) => set("scheduledTime", e.target.value)} aria-invalid={!!errors.scheduledTime} />
+              <FieldError>{errors.scheduledTime}</FieldError>
+            </div>
+          )}
 
           <div className="flex flex-col gap-3">
             <div>

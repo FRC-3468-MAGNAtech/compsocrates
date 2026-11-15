@@ -6,7 +6,8 @@ import { BulkImportDialog } from "@/components/admin/library/bulk-import-dialog"
 import { FastEntry } from "@/components/admin/library/fast-entry";
 import { ManualEventDialog } from "@/components/admin/library/manual-event-dialog";
 import { ManualMatchDialog, type MatchDialogMode } from "@/components/admin/library/manual-match-dialog";
-import { FieldError, selectClass } from "@/components/admin/library/shared";
+import { AllianceCell } from "@/components/admin/library/alliance-cell";
+import { FieldError, ReadError, selectClass } from "@/components/admin/library/shared";
 import { ConfirmDeleteDialog } from "@/components/credits/credit-dialogs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,26 +17,18 @@ import { Input, Label } from "@/components/ui/input";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { useAuth } from "@/lib/auth";
 import { MATCH_TYPE_PREFIX } from "@/lib/analytics/game-schema";
-import { DIFFICULTY_CLASSNAMES, DIFFICULTY_LABELS } from "@/lib/difficulty";
-import { formatTime } from "@/lib/library/time";
+import { formatTime, showScheduledTime } from "@/lib/library/time";
+import { useLibraryAdapter, useLibrarySeasons } from "@/lib/library/adapter";
+import { useProgramConfig } from "@/lib/program/context";
 import { parseYouTubeUrl } from "@/lib/library/youtube-url";
-import {
-  deleteManualEvent,
-  deleteManualMatches,
-  setMatchesPublished,
-  setMatchesVideoLink,
-  useLibraryEvents,
-  type Actor,
-  type LibraryEvent,
-} from "@/lib/library/store";
+import { useLibraryEvents, type Actor, type LibraryEvent } from "@/lib/library/store";
 import { useLibraryMatches, type LibraryMatch } from "@/lib/match-library";
-import { getSeason } from "@/lib/seasons";
 import { cn } from "@/lib/utils";
 
 type StatusFilter = "all" | "published" | "review" | "unpublished";
 
-type MatchStatus = "published" | "review" | "unpublished";
-const statusOf = (m: LibraryMatch): MatchStatus => (m.published === false ? (m.needsReview ? "review" : "unpublished") : "published");
+export type MatchStatus = "published" | "review" | "unpublished";
+export const statusOf = (m: LibraryMatch): MatchStatus => (m.published === false ? (m.needsReview ? "review" : "unpublished") : "published");
 
 const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
   { value: "all", label: "All" },
@@ -61,7 +54,7 @@ export function OriginBadge({ origin }: { origin: "api" | "manual" }) {
   );
 }
 
-function StatusBadge({ status }: { status: MatchStatus }) {
+export function StatusBadge({ status }: { status: MatchStatus }) {
   if (status === "published") return <Badge variant="success">Published</Badge>;
   if (status === "review") return <Badge variant="warning">Needs review</Badge>;
   return <Badge variant="outline">Unpublished</Badge>;
@@ -78,12 +71,15 @@ export function ManualLibraryPanel({ onOpenRescore }: { onOpenRescore: () => voi
   const { user, profile } = useAuth();
   const actor: Actor | null = user && profile ? { teamId: profile.teamId, uid: user.uid, name: profile.name } : null;
 
-  const { events, loaded: eventsLoaded } = useLibraryEvents();
+  const adapter = useLibraryAdapter();
+  const showTime = useProgramConfig().library.scheduledTime;
+  const { nameOf } = useLibrarySeasons();
+  const { events, loaded: eventsLoaded, error: eventsError, retry: retryEvents } = useLibraryEvents();
   const manualEvents = useMemo(() => events.filter((e) => e.origin === "manual"), [events]);
   const [chosenCode, setChosenCode] = useState<string | null>(null);
   const event: LibraryEvent | null = manualEvents.find((e) => e.eventCode === chosenCode) ?? manualEvents[0] ?? null;
 
-  const { matches, loaded: matchesLoaded } = useLibraryMatches(event?.eventCode ?? null, { includeUnpublished: true });
+  const { matches, loaded: matchesLoaded, error: matchesError, retry: retryMatches, unreadable } = useLibraryMatches(event?.eventCode ?? null, { includeUnpublished: true });
 
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -158,7 +154,7 @@ export function ManualLibraryPanel({ onOpenRescore }: { onOpenRescore: () => voi
   const publish = (ids: string[], published: boolean) =>
     actor &&
     run(async () => {
-      await setMatchesPublished(actor, ids, published);
+      await adapter.setPublished(actor, ids, published);
       setSelected(new Set());
       return `${published ? "Published" : "Unpublished"} ${ids.length} match${ids.length === 1 ? "" : "es"}.`;
     });
@@ -172,7 +168,7 @@ export function ManualLibraryPanel({ onOpenRescore }: { onOpenRescore: () => voi
     if (!actor) return;
     setVideoDialogOpen(false);
     void run(async () => {
-      await setMatchesVideoLink(actor, selectedMatches, parsed.videoId);
+      await adapter.setVideoLink(actor, selectedMatches, parsed.videoId);
       setSelected(new Set());
       return `Set the video link on ${selectedMatches.length} match${selectedMatches.length === 1 ? "" : "es"}.`;
     });
@@ -183,19 +179,20 @@ export function ManualLibraryPanel({ onOpenRescore }: { onOpenRescore: () => voi
     if (confirm.kind === "matches") {
       const ids = confirm.ids;
       void run(async () => {
-        await deleteManualMatches(actor, ids);
+        await adapter.deleteMatches(actor, ids);
         setSelected(new Set());
         return `Deleted ${ids.length} match${ids.length === 1 ? "" : "es"}.`;
       });
     } else if (event) {
       void run(async () => {
-        await deleteManualEvent(actor, event);
+        await adapter.deleteEvent(actor, event);
         setChosenCode(null);
         return `Deleted ${event.eventName}.`;
       });
     }
   };
 
+  if (eventsError) return <ReadError what="the library events" error={eventsError} onRetry={retryEvents} />;
   if (!eventsLoaded) return <div className="glass-card h-24 animate-pulse" />;
 
   return (
@@ -243,7 +240,7 @@ export function ManualLibraryPanel({ onOpenRescore }: { onOpenRescore: () => voi
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[var(--muted-foreground)]">
-            <span>{getSeason(event.seasonId).name}</span>
+            <span>{nameOf(event.seasonId)}</span>
             {event.date && <span>{event.date}</span>}
             {event.sourceUrl && (
               <a href={event.sourceUrl} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-[var(--foreground)]">
@@ -342,7 +339,14 @@ export function ManualLibraryPanel({ onOpenRescore }: { onOpenRescore: () => voi
             </p>
           )}
 
-          {!matchesLoaded ? (
+          {unreadable > 0 && (
+            <p role="alert" className="text-xs text-amber-300">
+              {unreadable} stored match{unreadable === 1 ? "" : "es"} could not be read and {unreadable === 1 ? "is" : "are"} not listed.
+            </p>
+          )}
+          {matchesError ? (
+            <ReadError what="this event's matches" error={matchesError} onRetry={retryMatches} />
+          ) : !matchesLoaded ? (
             <div className="glass-card h-24 animate-pulse" />
           ) : matches.length === 0 ? (
             <p className="text-sm text-[var(--muted-foreground)]">No matches in this event yet — add one, use fast entry, or bulk import.</p>
@@ -372,6 +376,7 @@ export function ManualLibraryPanel({ onOpenRescore }: { onOpenRescore: () => voi
                   <TH>Origin</TH>
                   <TH>Red</TH>
                   <TH>Blue</TH>
+                  {showTime && <TH>Time</TH>}
                   <TH>Video</TH>
                   <TH>Status</TH>
                   <TH>&nbsp;</TH>
@@ -390,21 +395,12 @@ export function ManualLibraryPanel({ onOpenRescore }: { onOpenRescore: () => voi
                     <TD>
                       <OriginBadge origin="manual" />
                     </TD>
-                    {(["red", "blue"] as const).map((side) => {
-                      const a = m.alliances[side];
-                      return (
-                        <TD key={side}>
-                          <div className={cn("flex flex-col gap-1", side === "red" ? "text-red-300" : "text-blue-300")}>
-                            <span className="font-mono text-xs">{a.teams.join(" & ")}</span>
-                            <span className="flex items-center gap-1.5">
-                              {a.score}
-                              {a.penaltyPoints > 0 && <span className="text-[10px] text-[var(--muted-foreground)]">({a.penaltyPoints} pen.)</span>}
-                              <Badge className={DIFFICULTY_CLASSNAMES[a.difficulty]}>{DIFFICULTY_LABELS[a.difficulty]}</Badge>
-                            </span>
-                          </div>
-                        </TD>
-                      );
-                    })}
+                    {(["red", "blue"] as const).map((side) => (
+                      <TD key={side}>
+                        <AllianceCell side={side} alliance={m.alliances[side]} />
+                      </TD>
+                    ))}
+                    {showTime && <TD className="text-xs">{showScheduledTime(m.scheduledTime)}</TD>}
                     <TD>
                       {m.video ? (
                         <span className="font-mono text-xs" title="Blank start = from the beginning; blank end = until the video ends">

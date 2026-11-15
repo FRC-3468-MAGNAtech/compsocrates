@@ -9,13 +9,15 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input, Label, Textarea } from "@/components/ui/input";
 import { downloadTextFile } from "@/lib/download";
-import { BULK_COLUMNS, bulkTemplateCsv, summarizeBulk, validateBulk } from "@/lib/library/bulk";
+import { bulkColumns, bulkTemplateCsv, summarizeBulk, validateBulk } from "@/lib/library/bulk";
 import { validateEventForm, type EventFormErrors, type EventFormInput } from "@/lib/library/event-form";
 import { parseMatchType } from "@/lib/library/ids";
-import { createManualEvent, upsertManualMatches, type Actor, type LibraryEvent, type UpsertResult } from "@/lib/library/store";
+import type { Actor, LibraryEvent } from "@/lib/library/store";
+import type { UpsertResult } from "@/lib/library/schedule";
+import { useLibraryAdapter, useLibrarySeasons } from "@/lib/library/adapter";
+import { useProgramConfig } from "@/lib/program/context";
 import { parseYouTubeUrl } from "@/lib/library/youtube-url";
 import { useLibraryMatches } from "@/lib/match-library";
-import { DEFAULT_SEASON_ID } from "@/lib/seasons";
 import { cn } from "@/lib/utils";
 
 const NEW_EVENT = "__new__";
@@ -43,9 +45,15 @@ export function BulkImportDialog({
   events: LibraryEvent[];
   initialEventCode: string | null;
 }) {
+  const adapter = useLibraryAdapter();
+  const config = useProgramConfig();
+  const size = config.event.allianceSize;
+  const scoresRequired = config.library.scoresRequired;
+  const columns = useMemo(() => bulkColumns(size), [size]);
+  const { defaultSeasonId } = useLibrarySeasons();
   const [eventChoice, setEventChoice] = useState<string>(initialEventCode ?? events[0]?.eventCode ?? NEW_EVENT);
   const [newEvent, setNewEvent] = useState<EventFormInput>(emptyEventForm());
-  const [newSeason, setNewSeason] = useState(DEFAULT_SEASON_ID);
+  const [newSeason, setNewSeason] = useState(defaultSeasonId);
   const [newErrors, setNewErrors] = useState<EventFormErrors>({});
   const [newError, setNewError] = useState<string | null>(null);
   const [createdEvent, setCreatedEvent] = useState<LibraryEvent | null>(null);
@@ -73,8 +81,10 @@ export function BulkImportDialog({
       event,
       defaults: { matchType: parseMatchType(defaultType), youtubeUrl: defaultUrl.trim() || event.defaultVideoUrl || "" },
       existing: new Map(existingMatches.map((m) => [m.id, m])),
+      allianceSize: size,
+      scoresRequired,
     });
-  }, [text, event, defaultType, defaultUrl, existingMatches]);
+  }, [text, event, defaultType, defaultUrl, existingMatches, size, scoresRequired]);
   const summary = preview ? summarizeBulk(preview) : null;
 
   const createEvent = async () => {
@@ -84,7 +94,7 @@ export function BulkImportDialog({
     if (!checked.ok) return;
     setCreating(true);
     try {
-      const res = await createManualEvent(actor, newEvent, newSeason, events);
+      const res = await adapter.createEvent(actor, newEvent, newSeason, events);
       if (!res.ok) {
         setNewErrors(res.fieldErrors ?? {});
         setNewError(res.error);
@@ -111,11 +121,11 @@ export function BulkImportDialog({
     setImporting(true);
     setImportError(null);
     try {
-      const res = await upsertManualMatches(
+      const res = await adapter.upsertMatches(
         actor,
         event,
         summary.importable.map((r) => r.match!),
-        { newPublished: false, newNeedsReview: true }
+        { newPublished: false, newNeedsReview: true, keepScores: true }
       );
       setResult(res);
       setText("");
@@ -226,7 +236,7 @@ export function BulkImportDialog({
               <Button type="button" variant="glass" size="sm" className="gap-2" onClick={() => fileInput.current?.click()}>
                 <FileUp className="h-3.5 w-3.5" /> Upload CSV
               </Button>
-              <Button type="button" variant="ghost" size="sm" className="gap-2" onClick={() => downloadTextFile("library-matches-template.csv", bulkTemplateCsv(), "text/csv")}>
+              <Button type="button" variant="ghost" size="sm" className="gap-2" onClick={() => downloadTextFile("library-matches-template.csv", bulkTemplateCsv(size, scoresRequired), "text/csv")}>
                 <Download className="h-3.5 w-3.5" /> Download template
               </Button>
               {fileName && <span className="text-xs text-[var(--muted-foreground)]">Loaded {fileName}</span>}
@@ -242,10 +252,10 @@ export function BulkImportDialog({
                   setText(e.target.value);
                   setResult(null);
                 }}
-                placeholder={BULK_COLUMNS.join("\t")}
+                placeholder={columns.join("\t")}
                 spellCheck={false}
               />
-              <p className="mt-1.5 text-xs text-[var(--muted-foreground)]">With or without the header row. Columns: {BULK_COLUMNS.join(", ")}. Times can be 90, 1:30, or 1:02:30; startSec and endSec may be blank (blank start = from the beginning, blank end = until the video ends).</p>
+              <p className="mt-1.5 text-xs text-[var(--muted-foreground)]">With or without the header row. Columns: {columns.join(", ")}. Times can be 90, 1:30, or 1:02:30; startSec and endSec may be blank (blank start = from the beginning, blank end = until the video ends).</p>
             </div>
           </section>
 
@@ -315,7 +325,7 @@ export function BulkImportDialog({
           {result && (
             <div role="status" className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
               Imported {result.created} new and updated {result.updated} match{result.created + result.updated === 1 ? "" : "es"}. They start <strong>unpublished</strong> with a Needs review badge — review them in the table, then Publish.
-              {result.skipped.length > 0 && <span className="mt-1 block text-amber-200">Skipped {result.skipped.length}: {result.skipped.map((s) => s.id).join(", ")} (imported API matches are never overwritten).</span>}
+              {(result.skipped?.length ?? 0) > 0 && <span className="mt-1 block text-amber-200">Skipped {result.skipped?.length}: {(result.skipped ?? []).map((s) => s.id).join(", ")} (imported API matches are never overwritten).</span>}
             </div>
           )}
           {importError && (

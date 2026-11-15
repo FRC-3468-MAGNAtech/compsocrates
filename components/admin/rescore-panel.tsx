@@ -228,11 +228,11 @@ function SessionRescore({ teamId, actorUid, actorName }: { teamId: string; actor
       let imported: unknown;
       if (data?.library) {
         // A program with its own library imports through its port (the keys stay on the server).
-        const outcome = await data.library.importSchedule({ teamId, uid: actorUid, name: actorName }, { eventCode: code, seasonId: refreshSeasonId });
+        const outcome = await data.library.importEvent({ teamId, uid: actorUid, name: actorName }, { eventCode: code, seasonId: refreshSeasonId });
         if (!outcome.ok) throw new Error(outcome.message);
         const r = outcome.summary;
         imported = r;
-        setRefreshResult(`${r.eventName}: ${r.created} new, ${r.updated} refreshed${r.scored ? `, ${r.scored} with official scores` : ""}.` + (r.skippedManual.length > 0 ? ` Left ${r.skippedManual.length} hand-made match(es) untouched.` : ""));
+        setRefreshResult(`${r.eventName}: refreshed ${r.written} matches, skipped ${r.skipped}.` + (r.skippedManual.length > 0 ? ` Left ${r.skippedManual.length} hand-made match(es) untouched.` : "") + (r.detail ? ` ${r.detail}` : ""));
       } else {
         const r = await importLibraryEvent(refreshSeasonId, code);
         imported = r;

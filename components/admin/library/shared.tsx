@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 /** The glass-styled native select used inside the manual-entry dialogs (accessible, and well-behaved inside a dialog). */
@@ -31,3 +32,17 @@ export const MATCH_TYPE_OPTIONS = [
   { value: "Q", label: "Q — Qualification" },
   { value: "F", label: "F — Finals" },
 ];
+
+/** A failed read, said plainly (never shown as an empty list), with a retry. */
+export function ReadError({ what, error, onRetry }: { what: string; error: { code: string }; onRetry: () => void }) {
+  return (
+    <div role="alert" className="flex flex-col gap-2 rounded-2xl border border-red-400/30 bg-red-500/10 p-4 text-sm text-red-200">
+      <p>
+        Couldn&apos;t load {what} ({error.code}). It did not load; this is not an empty list.
+      </p>
+      <Button type="button" variant="glass" className="self-start" onClick={onRetry}>
+        Try again
+      </Button>
+    </div>
+  );
+}
