@@ -102,9 +102,9 @@ export function TeamTable<T>({
   };
 
   return (
-    <div ref={scrollRef} className="glass-card relative max-h-[70vh] overflow-auto rounded-2xl" style={{ scrollbarGutter: "stable" }}>
-      <div style={{ width: totalWidth, minWidth: "100%", position: "relative" }}>
-        <div role="row" className="sticky top-0 z-30 flex" style={{ height: HEADER_HEIGHT }}>
+    <div ref={scrollRef} className="table-shell relative max-h-[70vh] overflow-auto rounded-2xl" style={{ scrollbarGutter: "stable" }}>
+      <div style={{ minWidth: totalWidth, width: "100%", position: "relative" }}>
+        <div role="row" className="table-head-shadow sticky top-0 z-30 flex" style={{ height: HEADER_HEIGHT }}>
           {columns.map((col, i) => {
             const active = sort.key === col.key;
             const Icon = !col.sortValue ? null : active ? (sort.direction === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
@@ -114,11 +114,11 @@ export function TeamTable<T>({
                 role="columnheader"
                 aria-sort={active ? (sort.direction === "asc" ? "ascending" : "descending") : col.sortValue ? "none" : undefined}
                 className={cn(
-                  "glass-overlay flex shrink-0 items-center border-b border-[var(--glass-border)] px-3 text-xs font-semibold uppercase tracking-wide",
+                  "table-head-cell flex shrink-0 items-center border-b border-[var(--glass-border)] px-3 text-xs font-semibold uppercase tracking-wide",
                   col.sticky && "sticky z-40",
                   col.align === "right" ? "justify-end" : "justify-start"
                 )}
-                style={{ width: col.width, left: col.sticky ? leftOffsets[i] : undefined }}
+                style={{ width: col.width, minWidth: col.width, left: col.sticky ? leftOffsets[i] : undefined }}
               >
                 {col.sortValue ? (
                   <button
@@ -159,11 +159,11 @@ export function TeamTable<T>({
                     key={col.key}
                     role="cell"
                     className={cn(
-                      "flex shrink-0 items-center px-3 text-sm",
-                      col.sticky && "glass-overlay sticky z-20",
+                      "flex min-w-0 shrink-0 items-center overflow-hidden px-3 text-sm tabular-nums [overflow-wrap:anywhere]",
+                      col.sticky && "table-pinned-cell sticky z-20",
                       col.align === "right" ? "justify-end text-right" : "justify-start"
                     )}
-                    style={{ width: col.width, left: col.sticky ? leftOffsets[i] : undefined }}
+                    style={{ width: col.width, minWidth: col.width, left: col.sticky ? leftOffsets[i] : undefined }}
                   >
                     {col.render(row)}
                   </div>

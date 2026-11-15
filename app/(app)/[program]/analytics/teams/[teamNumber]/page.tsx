@@ -224,7 +224,7 @@ function MatchList({ stats }: { stats: TeamStats }) {
             <AnalyticsLink
               href="/analytics/match-breakdown"
               params={{ event: m.eventCode, match: m.label }}
-              className="min-w-12 rounded-lg px-2 py-1 font-mono font-semibold hover:bg-white/10"
+              className="min-w-12 rounded-lg px-2 py-1 tabular-nums font-semibold hover:bg-white/10"
               title="Open in Match Breakdown"
             >
               {m.label}
@@ -389,7 +389,7 @@ function Comments({ stats }: { stats: TeamStats }) {
         <div className="flex flex-col gap-2">
           {withComments.map((m) => (
             <div key={m.entryId} className="glass-card flex items-start gap-3 p-3 text-sm">
-              <span className="min-w-12 pt-1 font-mono text-xs font-semibold">{m.label}</span>
+              <span className="min-w-12 pt-1 tabular-nums text-xs font-semibold">{m.label}</span>
               <div className="min-w-0 flex-1">
                 {/* Collapsed to one line; click to expand — same behaviour as Match Scout Analytics' Comments column. */}
                 <CommentCell text={m.comments} forceExpanded={false} />

@@ -11,11 +11,18 @@ import { AccuracyCell } from "@/components/analytics/accuracy-cell";
 import { Badge } from "@/components/ui/badge";
 import { OUR_TEAM_ROW_CLASS, OurTeamTag } from "@/components/analytics/team-bits";
 import { useIsOurTeam } from "@/lib/our-team";
+import { columnCanGrow } from "@/lib/analytics/table-text";
+import { SessionIdCell } from "@/components/analytics/session-id-cell";
 
 export type SortState = { key: string; direction: "asc" | "desc" };
 
 const HEADER_ROW_HEIGHT = 32;
 const ROW_MIN_HEIGHT = 52;
+
+/** A column's flex box: its px width is the minimum, and a free-text column may grow into spare room (grown by its width, so the proportions hold). */
+function cellSize(width: number, canGrow: boolean): React.CSSProperties {
+  return { flex: `${canGrow ? width : 0} 0 ${width}px`, minWidth: width };
+}
 
 const SCRIPT_STATUS_LABEL: Record<AccuracyStatus, string> = {
   complete: "Complete",
@@ -78,8 +85,11 @@ export function AnalyticsDataTable({
   const groupBox = (group: { startIndex: number; span: number }) => {
     const left = leftOffsets[group.startIndex];
     const width = columns.slice(group.startIndex, group.startIndex + group.span).reduce((s, c) => s + c.width, 0);
-    const sticky = columns.slice(group.startIndex, group.startIndex + group.span).every((c) => c.sticky);
-    return { left, width, sticky };
+    const members = columns.slice(group.startIndex, group.startIndex + group.span);
+    const sticky = members.every((c) => c.sticky);
+    // A group grows by what its columns grow (same proportions as the cells below), so the header tiers stay aligned with the columns.
+    const grow = members.reduce((s, c) => s + (columnCanGrow(c.type, c.sticky) ? c.width : 0), 0);
+    return { left, width, grow, sticky };
   };
 
   // TanStack Virtual returns functions the React Compiler cannot memoize; the compiler skips this component, which is fine here.
@@ -102,12 +112,12 @@ export function AnalyticsDataTable({
   return (
     <div
       ref={scrollRef}
-      className="glass-card relative max-h-[70vh] overflow-auto rounded-2xl"
+      className="table-shell relative max-h-[70vh] overflow-auto rounded-2xl"
       style={{ scrollbarGutter: "stable" }}
     >
-      <div style={{ width: totalWidth, position: "relative" }}>
+      <div style={{ minWidth: totalWidth, width: "100%", position: "relative" }}>
         {/* 3-tier sticky header */}
-        <div className="sticky top-0 z-30">
+        <div className="table-head-shadow sticky top-0 z-30">
           <div className="flex" style={{ height: HEADER_ROW_HEIGHT }}>
             {phaseGroups.map((g) => {
               const box = groupBox(g);
@@ -133,11 +143,11 @@ export function AnalyticsDataTable({
               <div
                 key={col.key}
                 className={cn(
-                  "glass-overlay flex shrink-0 items-center border-b border-r border-[var(--glass-border)] px-3",
+                  "table-head-cell flex shrink-0 items-center border-b border-r border-[var(--glass-border)] px-3",
                   col.sticky && "sticky"
                 )}
                 style={{
-                  width: col.width,
+                  ...cellSize(col.width, columnCanGrow(col.type, col.sticky)),
                   left: col.sticky ? leftOffsets[i] : undefined,
                   top: col.sticky ? HEADER_ROW_HEIGHT * 2 : undefined,
                   zIndex: col.sticky ? 40 : 30,
@@ -198,11 +208,13 @@ export function AnalyticsDataTable({
                   <div
                     key={col.key}
                     className={cn(
-                      "flex shrink-0 items-center px-3 py-2.5 text-sm",
-                      col.sticky && "glass-overlay sticky z-20",
+                      // One font (the app's) in every cell; text wraps inside its own column and never spills into the next one.
+                      "flex shrink-0 items-center px-3 py-2.5 text-sm tabular-nums",
+                      col.type !== "actions" && "min-w-0 overflow-hidden [overflow-wrap:anywhere]",
+                      col.sticky && "table-pinned-cell sticky z-20",
                       entry.excluded && col.type !== "actions" && "line-through"
                     )}
-                    style={{ width: col.width, left: col.sticky ? leftOffsets[i] : undefined, minHeight: ROW_MIN_HEIGHT }}
+                    style={{ ...cellSize(col.width, columnCanGrow(col.type, col.sticky)), left: col.sticky ? leftOffsets[i] : undefined, minHeight: ROW_MIN_HEIGHT }}
                   >
                     <Cell
                       col={col}
@@ -228,6 +240,7 @@ export function AnalyticsDataTable({
 function HeaderCell({
   left,
   width,
+  grow,
   sticky,
   top,
   muted,
@@ -235,6 +248,7 @@ function HeaderCell({
 }: {
   left: number;
   width: number;
+  grow: number;
   sticky: boolean;
   top: number;
   muted?: boolean;
@@ -243,10 +257,10 @@ function HeaderCell({
   return (
     <div
       className={cn(
-        "glass-overlay flex shrink-0 items-center border-b border-r border-[var(--glass-border)] px-3 text-xs font-semibold uppercase tracking-wide",
+        "table-head-cell flex shrink-0 items-center border-b border-r border-[var(--glass-border)] px-3 text-xs font-semibold uppercase tracking-wide",
         muted && "font-medium normal-case tracking-normal text-[var(--muted-foreground)]"
       )}
-      style={{ width, left: sticky ? left : undefined, top: sticky ? top : undefined, zIndex: sticky ? 40 : 30, position: sticky ? "sticky" : "relative" }}
+      style={{ flex: `${grow} 0 ${width}px`, minWidth: width, left: sticky ? left : undefined, top: sticky ? top : undefined, zIndex: sticky ? 40 : 30, position: sticky ? "sticky" : "relative" }}
     >
       {children}
     </div>
@@ -334,9 +348,11 @@ function Cell({
         </span>
       );
     case "text":
-      return <span className="font-mono text-xs text-[var(--muted-foreground)]">{String(col.getValue(entry) ?? "")}</span>;
+      return <span className="min-w-0 text-xs text-[var(--muted-foreground)]">{String(col.getValue(entry) ?? "")}</span>;
+    case "id":
+      return <SessionIdCell value={String(col.getValue(entry) ?? "")} />;
     case "badge":
-      return <Badge className={cn("text-[10px]", col.getBadgeClassName?.(entry))}>{String(col.getValue(entry) ?? "")}</Badge>;
+      return <Badge className={cn("max-w-full whitespace-nowrap text-[10px]", col.getBadgeClassName?.(entry))}><span className="truncate">{String(col.getValue(entry) ?? "")}</span></Badge>;
     case "actions": {
       const activeFlagCount = entry.autoFlags.filter((f) => !f.dismissed).length + entry.manualFlags.length;
       const hasManual = entry.manualFlags.length > 0;

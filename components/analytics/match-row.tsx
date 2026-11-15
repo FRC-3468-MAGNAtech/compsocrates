@@ -62,7 +62,7 @@ export function MatchRow({
         className="flex w-full flex-col gap-2.5 p-4 text-left outline-none transition-colors hover:bg-white/5 focus-visible:bg-white/5"
       >
         <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded-lg bg-white/10 px-2.5 py-1 font-mono text-sm font-semibold">{breakdown.label}</span>
+          <span className="rounded-lg bg-white/10 px-2.5 py-1 tabular-nums text-sm font-semibold">{breakdown.label}</span>
           {showEvent && <span className="text-[11px] text-[var(--muted-foreground)]" title={match.eventCode}><EventName eventKey={match.eventCode} /></span>}
           <CoverageChip scouted={breakdown.robotsScouted} total={breakdown.robotsTotal} />
           <motion.span animate={{ rotate: expanded ? 180 : 0 }} transition={spring} className="ml-auto text-[var(--muted-foreground)]">

@@ -123,6 +123,33 @@ body {
   border: 1px solid var(--overlay-border);
 }
 
+/* Scrolling data tables (Session 2). No backdrop-filter anywhere on a table: blur on a large scroller is expensive, and a blurred pinned header
+   lets scrolled text show through it. The pinned header and pinned columns get a SOLID, slightly darker surface from tokens (they follow the theme
+   because they are mixed from --background), with a thin bottom border and a soft shadow under the header. */
+:root {
+  --table-head-bg: color-mix(in srgb, var(--background) 84%, black 16%);
+  --table-pinned-bg: color-mix(in srgb, var(--background) 94%, black 6%);
+}
+
+.table-shell {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--glass-shadow);
+}
+
+.table-head-cell {
+  background: var(--table-head-bg);
+}
+
+.table-head-shadow {
+  box-shadow: 0 1px 0 var(--glass-border), 0 4px 8px -4px rgb(0 0 0 / 0.35);
+}
+
+.table-pinned-cell {
+  background: var(--table-pinned-bg);
+}
+
 .glass-pill {
   background: var(--glass-bg);
   -webkit-backdrop-filter: blur(20px) saturate(140%);

@@ -20,6 +20,8 @@ export type ColumnType =
   | "scriptStatus"
   | "actions"
   | "text"
+  // An identifier (a Session ID): fixed width, middle-truncated with the full value in a tooltip, and a copy control.
+  | "id"
   | "badge"
   // P27: a sticky-notes cell (joined with " | ", collapsed to one line like Comments) and a photo gallery cell (thumbnails and a count)
   | "notes"
@@ -415,9 +417,9 @@ export function withPracticeColumns(schema: GameSchema): GameSchema {
     phase: "Information",
     category: "Information",
     label: "Session ID",
-    type: "text",
+    type: "id",
     sortable: true,
-    width: 110,
+    width: 160,
     getValue: (e) => e.sessionId ?? "—",
   };
   const sourceColumn: AnalyticsColumn = {

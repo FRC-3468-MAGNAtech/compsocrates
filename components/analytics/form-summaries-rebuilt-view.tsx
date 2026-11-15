@@ -92,7 +92,7 @@ function LeadSummary({ entries, teamNames, hideNames }: Props) {
                       <ul className="flex flex-col gap-1">
                         {t.notes.slice(-3).map((n, i) => (
                           <li key={i} className="text-xs">
-                            {n.matchKey && <span className="mr-1 font-mono text-[var(--muted-foreground)]">{n.matchKey}</span>}
+                            {n.matchKey && <span className="mr-1 tabular-nums text-[var(--muted-foreground)]">{n.matchKey}</span>}
                             {n.text}
                             {!hideNames && <span className="ml-1 text-[var(--muted-foreground)]">— {n.scoutName}</span>}
                           </li>
@@ -114,7 +114,7 @@ function LeadSummary({ entries, teamNames, hideNames }: Props) {
           {s.alliances.map((a) => (
             <li key={a.key} className={cn("flex flex-col gap-2 rounded-2xl border px-3 py-2 text-sm", allianceTone(a.alliance))} data-testid={`lead-alliance-${a.matchKey}-${a.alliance ?? "none"}`}>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="font-mono text-xs font-semibold">{a.matchKey}</span>
+                <span className="tabular-nums text-xs font-semibold">{a.matchKey}</span>
                 <span className="text-xs">{allianceText(a.alliance)}</span>
                 <span className="flex flex-wrap gap-1">
                   {a.teams.map((t) => (
@@ -311,7 +311,7 @@ function PlanSummary({ entries, teamNames }: Props) {
         {rows.map((r) => (
           <li key={r.entryId} className={cn("flex flex-col gap-2 rounded-2xl border px-3 py-2 text-sm", allianceTone(r.alliance))} data-testid={`plan-${r.matchKey}-${r.entryId}`}>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="font-mono text-xs font-semibold">{r.matchKey}</span>
+              <span className="tabular-nums text-xs font-semibold">{r.matchKey}</span>
               <span className="text-xs">{allianceText(r.alliance)}</span>
               <span className="flex flex-wrap gap-1">
                 {r.robots.map((x) => (
@@ -347,7 +347,7 @@ function ReflectionSummary({ entries, allEntries, teamNames }: Props) {
         {rows.map((r) => (
           <li key={r.entryId} className="flex flex-col gap-1.5 rounded-2xl border border-[var(--glass-border)] px-3 py-2 text-sm" data-testid={`reflection-${r.matchKey}-${r.entryId}`}>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="font-mono text-xs font-semibold">{r.matchKey}</span>
+              <span className="tabular-nums text-xs font-semibold">{r.matchKey}</span>
               <span className="text-xs">{allianceText(r.alliance)}</span>
               {r.plan === null ? (
                 <span className="text-xs text-[var(--muted-foreground)]">No plan to compare with</span>
