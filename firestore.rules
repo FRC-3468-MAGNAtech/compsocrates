@@ -1781,7 +1781,8 @@ service cloud.firestore {
       // transaction as the change itself, so the log has to accept their writes.
       // They still can't read the log.
       match /auditLog/{id} {
-        allow read: if ftc_isAdmin();
+        // Batch 5b: an admin reads THEIR team's log only (this was `ftc_isAdmin()` alone, so an admin of any team could list another team's log; the root rule has always had the team check).
+        allow read: if ftc_isAdmin() && ftc_sameTeam(resource.data.teamId);
         allow create: if ftc_isSignedIn()
           && request.resource.data.uid == request.auth.uid
           && ftc_sameTeam(request.resource.data.teamId)
