@@ -52,7 +52,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (loading || !user) return;
-    router.replace(profile?.teamId ? "/dashboard" : "/finish-setup");
+    router.replace(profile?.teamId ? "/dashboard" : "/apply-to-team");
   }, [loading, user, profile, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {

@@ -144,7 +144,7 @@ export default function ApplyPage() {
       <ApplicationStatusCard
         application={latest}
         onApplyAgain={() => setApplyingAgain(true)}
-        onJoinInstead={() => router.push("/finish-setup")}
+        onJoinInstead={() => router.push("/apply-to-team")}
       />
     );
   } else {

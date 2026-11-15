@@ -8,6 +8,8 @@ import { isPathConnected, PROGRAMS } from "@/config/programs";
 import { ProgramProvider, useProgram, useProgramConfig } from "@/lib/program/context";
 import { useProgramData } from "@/lib/program/data";
 import { ProgramGate } from "@/components/program/program-gate";
+import { ProgramSwitcher } from "@/components/program/program-switcher";
+import { TeamEnrollmentScreen } from "@/components/auth/team-enrollment";
 import { ProgramAuth } from "@/components/program/program-auth";
 import { ReadFailureBanner } from "@/components/program/read-failure-banner";
 import { UnconnectedPage } from "@/components/program/unconnected-page";
@@ -44,18 +46,28 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const { features } = useProgramConfig().connection;
   // One subscription for the offline / unsynced badge, shared by the sidebar and the mobile top bar.
   const connection = useConnectionNotice();
+  // Both programs send an account with no team to the same place, `/<program>/apply-to-team`: the root program's own join-or-create screen, or a program
+  // with a data port's setup screen (create a team, or ask to join with a code). Once the account has a team, that route goes on to the dashboard.
+  const onSetupRoute = pathname === "/apply-to-team";
   useEffect(() => {
     if (loading) return;
     if (!user) router.replace("/login");
-    // Signed in but no user doc yet (first-time Google sign-in, or anyone
-    // who closed the tab before finishing).
-    // CS user docs exist from signup with `teamId: ""` (a pending join request): same destination, which shows the pending state.
-    // (A ported program's people have no setup flow here yet: they get the gate below, which says why, instead of the root program's.)
-    else if (!profile?.teamId && !ported) router.replace("/finish-setup");
-  }, [loading, user, profile, router, ported]);
+    else if (!profile?.teamId && !onSetupRoute) router.replace("/apply-to-team");
+    else if (profile?.teamId && onSetupRoute) router.replace("/dashboard");
+  }, [loading, user, profile, router, onSetupRoute]);
 
-  if (loading || !user || !profile?.teamId) {
-    if (!loading && user && ported) return <ProgramGate />;
+  // (An account that already has a team and lands on the setup route sees the spinner while the effect above moves it to the dashboard.)
+  if (loading || !user || !profile?.teamId || onSetupRoute) {
+    if (!loading && user && onSetupRoute && !profile?.teamId) {
+      return ported ? (
+        <ProgramGate />
+      ) : (
+        <div className="mx-auto flex min-h-[70vh] w-full max-w-xl flex-col justify-center gap-4 px-4">
+          <ProgramSwitcher />
+          <TeamEnrollmentScreen greeting={user.displayName ? `Hi, ${user.displayName}` : undefined} onComplete={() => router.push("/dashboard")} />
+        </div>
+      );
+    }
     return (
       <div className="flex min-h-[70vh] items-center justify-center">
         <div className="glass-card h-10 w-10 animate-pulse rounded-full" />

@@ -194,7 +194,7 @@ export const PAGE_REDIRECTS: string[] = ["/analytics"];
 export const APP_SEGMENTS: string[] = [
   "account", "admin", "analytics", "assignments", "changelog", "credits", "dashboard", "drive-reflection-form", "event", "events",
   "helper-form", "judge-book", "lead-scout-form", "match-list", "match-strategy-form", "my-scouting", "people", "pit-scout-form",
-  "practice-scouting", "profile", "scout", "scout-accuracy", "team-management", "team-settings", "team-strategy-form",
+  "apply-to-team", "practice-scouting", "profile", "scout", "scout-accuracy", "team-management", "team-settings", "team-strategy-form",
 ];
 
 /** The program every old URL belongs to. */

@@ -99,7 +99,7 @@ export default function SignupPage() {
       const result = await enrollment.enroll(name);
       if (result.requested) {
         // Joining is an approval queue (CS): the request is filed, the user is not on the team yet. Finish Setup shows the pending state.
-        router.push("/finish-setup");
+        router.push("/apply-to-team");
         return;
       }
       setEnrolled(true); // a created team: stays "submitting" (see below) until the effect above navigates

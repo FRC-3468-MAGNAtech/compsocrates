@@ -235,7 +235,7 @@ export function PendingJoinCard({
 }
 
 /**
- * The full "you're signed in, now join or create a team" screen: used standalone by /finish-setup, and rendered in place of
+ * The full "you're signed in, now join or create a team" screen: used by `/<program>/apply-to-team` (the signed-in shell renders it there), and rendered in place of
  * Signup's pre-auth form once a Google sign-in there has no team yet. States, in order: on a team (leave for the dashboard), a
  * join request waiting for an admin, an application under review, then the form.
  */
