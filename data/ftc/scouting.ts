@@ -126,6 +126,7 @@ export function ftcDocToScoutEntry(id: string, doc: FtcScoutEntryDoc): ScoutEntr
     accuracy: readAccuracy(doc.accuracy),
     sessionId: nonEmptyString(doc.sessionId),
     libraryMatchId: nonEmptyString(doc.libraryMatchId),
+    ...(doc.importedFrom === "csv" ? { importedFrom: "csv" as const } : {}),
   };
 }
 

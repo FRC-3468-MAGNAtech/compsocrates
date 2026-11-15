@@ -136,6 +136,8 @@ export type ImportedRow = {
   matchType: MatchType;
   matchNumber: number;
   teamNumber: number;
+  /** The row's line number in the file (the header is row 1), so a failure can name it. */
+  rowNumber?: number;
   /** The form-field cells of the row, coerced to each field's type (P21). Normalize against the form (`normalizeValues`) before saving: it fills anything the file didn't have. */
   values: FormValues;
 };
@@ -204,6 +206,7 @@ export function parseImportCsv(schema: GameSchema, csvText: string): ImportResul
       matchNumber: match.number,
       teamNumber,
       values,
+      rowNumber: r + 1,
     });
   }
 

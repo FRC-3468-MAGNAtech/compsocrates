@@ -83,6 +83,10 @@ export type ProgramData = {
     /** Applies an app-shaped patch to a stored entry (admins only, by the rules). */
     update(id: string, patch: Partial<ScoutEntry>): Promise<void>;
     delete(id: string): Promise<void>;
+    /** One read of the event-sourced entries of one event of the team (equality-only: `teamId ==`, `eventCode ==`). What a recompute of that event starts from. */
+    getForEvent(teamId: string, eventCode: string): Promise<ScoutEntry[]>;
+    /** Writes imported entries under stable ids, in the one batch given (the caller leaves out ids that already exist, so a second import adds nothing). Resolves with the ids it wrote. */
+    importBatch(teamId: string, uid: string, rows: { id: string; input: SaveEntryInput }[]): Promise<string[]>;
   };
   formEntries: {
     subscribe(teamId: string, query: FormEntriesQuery, onData: (entries: FormEntry[]) => void, onError: DataError): Unsubscribe;

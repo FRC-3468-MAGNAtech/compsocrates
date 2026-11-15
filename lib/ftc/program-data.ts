@@ -8,7 +8,7 @@ import { getEvent, getMatchesForEvent } from "@/lib/events/actions";
 import { claimSession, deleteSession, getSession, hasCompletedAttempt, subscribeOwnPausedSession, subscribeSession, subscribeTeamSessions, updateSession } from "@/data/ftc/practice";
 import { fetchFtcSchedule } from "@/lib/ftc/library-import";
 import { approveJoinRequest, denyJoinRequest, subscribePendingJoinRequests } from "@/data/ftc/join-requests";
-import { getFormVersion, getScoutEntriesForSession, subscribeAssignments, subscribeFormDocs, subscribeFormEntries, subscribePickList, subscribeTeamAssignments, subscribeTeamAttendance, subscribeTeamDoc, subscribeTeamMembers, subscribeTeamScoutEntries, subscribeUserProfile } from "@/data/ftc/read";
+import { getFormVersion, getScoutEntriesForEvent, getScoutEntriesForSession, subscribeAssignments, subscribeFormDocs, subscribeFormEntries, subscribePickList, subscribeTeamAssignments, subscribeTeamAttendance, subscribeTeamDoc, subscribeTeamMembers, subscribeTeamScoutEntries, subscribeUserProfile } from "@/data/ftc/read";
 import {
   adminUpdateFormEntry,
   deleteFormEntry,
@@ -24,6 +24,7 @@ import {
   editPickList,
   saveFormEntry,
   saveScoutEntry,
+  importScoutEntries,
   setActiveEvents,
   setArchivedEvents,
   setFormSubmissionSettings,
@@ -46,7 +47,7 @@ export const FTC_SEASONS: readonly ProgramSeason[] = FTC_GAME_ID_LIST.map((id) =
 export const ftcProgramData: ProgramData = {
   profile: { subscribe: subscribeUserProfile, update: updateUserProfile, updateFields: updateUserFields },
   team: { subscribe: subscribeTeamDoc, setActiveEvents, setArchivedEvents, setFormSubmissionSettings },
-  scoutEntries: { subscribeTeam: subscribeTeamScoutEntries, save: saveScoutEntry, update: updateScoutEntry, delete: deleteScoutEntry },
+  scoutEntries: { subscribeTeam: subscribeTeamScoutEntries, save: saveScoutEntry, update: updateScoutEntry, delete: deleteScoutEntry, getForEvent: getScoutEntriesForEvent, importBatch: importScoutEntries },
   formEntries: {
     subscribe: (teamId, query, onData, onError) => subscribeFormEntries(teamId, query, onData, onError),
     save: saveFormEntry,

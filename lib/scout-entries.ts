@@ -24,6 +24,7 @@ import { str, stripUndefined } from "@/data/cs/util";
 import { auth, db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
 import { programData, useProgramData } from "@/lib/program/data";
+import type { FirestoreFailure } from "@/lib/firestore-errors";
 import { assertSubmissionOpen, type SubmissionGateInput } from "@/lib/forms/submission-guard";
 import type { MatchType } from "@/lib/events/types";
 import type { Form, FormValues, StickyNote } from "@/lib/forms/types";
@@ -110,6 +111,8 @@ export type ScoutEntry = {
   sessionId: string | null;
   /** P3: set for 'practice' entries scored against an imported libraryMatches doc. */
   libraryMatchId: string | null;
+  /** ADDITIVE (a program with its own store): "csv" marks an entry an admin imported from a file, so it can be told apart from a scout's own and removed. Absent on every other entry. */
+  importedFrom?: "csv";
   /** D1 (additive): the game the entry was scouted for ("REBUILT" | "REEFSCAPE" | "CHARGED_UP"), from the CS doc's `game`. */
   game?: GameId;
   /** D1 (additive): CS keeps "exclude from accuracy" on `scoutingFlagStates` (separate from `excluded`, CS's `excludeFromStats`). */
@@ -170,7 +173,7 @@ export const isScored = (entry: Pick<ScoutEntry, "scored">): boolean => entry.sc
 
 export type SaveEntryInput = Pick<ScoutEntry, "scoutName" | "eventCode" | "matchType" | "matchNumber" | "teamNumber"> &
   EntryPayload &
-  Partial<Pick<ScoutEntry, "source" | "mode" | "sessionId" | "libraryMatchId">> & {
+  Partial<Pick<ScoutEntry, "source" | "mode" | "sessionId" | "libraryMatchId" | "importedFrom">> & {
     /** Session E: which season this entry is for, so the team's submission switches apply to it. Checked by `saveEntry`, never written to the document. */
     gate?: SubmissionGateInput;
   };
@@ -393,7 +396,10 @@ export async function getEntries(teamId: string): Promise<ScoutEntry[]> {
  * "event"-sourced entries for one real event only (`source === "event"`: practice-session rows can carry the same event key and
  * must not mix into Match Analytics). Matches every spelling of the event key (aliases, config/event.ts).
  */
-export async function getEntriesForEvent(teamId: string, eventCode: string): Promise<ScoutEntry[]> {
+export async function getEntriesForEvent(teamId: string, eventCode: string, program: ProgramId = DEFAULT_PROGRAM): Promise<ScoutEntry[]> {
+  // A namespaced program reads the event's entries through its port (`teamId ==` and `eventCode ==`); the default program's read below is untouched.
+  const port = programData(program);
+  if (port) return port.scoutEntries.getForEvent(teamId, eventCode);
   const [snap, flags] = await Promise.all([getDocs(teamQuery(teamId, eventConstraint(eventCode))), loadFlagStates(teamId)]);
   return toEntries(snap.docs.map(toRaw), teamId, flags).filter((e) => e.source === "event");
 }
@@ -517,25 +523,35 @@ function subscribeTeamFeed(teamId: string, listener: (s: TeamSnapshot) => void):
 export function useTeamScoutEntries(teamId: string | null) {
   const data = useProgramData();
   const [state, setState] = useState<TeamSnapshot>({ entries: [], loaded: !isFirebaseConfigured() });
+  // A namespaced program's failed read is shown by the page that uses it (the root program's feed keeps logging only).
+  const [error, setError] = useState<FirestoreFailure | null>(null);
 
   useEffect(() => {
     if (!teamId || !isFirebaseConfigured()) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setState({ entries: [], loaded: true });
+      setError(null);
       return;
     }
     // A namespaced program reads its team's entries through its data port (no legacy rows, no separate flag states: they are on the entry).
     if (data) {
       return data.scoutEntries.subscribeTeam(
         teamId,
-        (entries) => setState({ entries, loaded: true }),
-        () => setState({ entries: [], loaded: true }) // already reported by the port
+        (entries) => {
+          setError(null);
+          setState({ entries, loaded: true });
+        },
+        (failure) => {
+          // already reported by the port
+          setError(failure);
+          setState({ entries: [], loaded: true });
+        }
       );
     }
     return subscribeTeamFeed(teamId, setState);
   }, [teamId, data]);
 
-  return { entries: state.entries, loaded: state.loaded };
+  return { entries: state.entries, loaded: state.loaded, error };
 }
 
 // ---------------------------------------------------------------------------------------------------------------------

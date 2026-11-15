@@ -5,6 +5,7 @@ vi.mock("@/data/ftc/write", () => ({
   saveScoutEntry: (...args: unknown[]) => h.saveScout(...args),
   updateScoutEntry: (...args: unknown[]) => h.updateScout(...args),
   deleteScoutEntry: (...args: unknown[]) => h.other(...args),
+  importScoutEntries: (...args: unknown[]) => h.other(...args),
   setEventAttendance: (...args: unknown[]) => h.other(...args),
   editPickList: (...args: unknown[]) => h.other(...args),
   updateUserProfile: (...args: unknown[]) => h.other(...args),

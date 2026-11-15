@@ -63,6 +63,24 @@ export async function saveScoutEntry(teamId: string, uid: string, input: SaveEnt
   }
 }
 
+/**
+ * Writes imported entries in ONE batch (the caller sends at most 400: Firestore allows 500 writes), each under the stable id it was given, as `uid`, for `teamId`.
+ * The same id written twice is the same document, so a repeat import adds nothing; the caller leaves out ids that already exist (a set over one would be an
+ * update, which only an admin may do). Resolves with the ids written.
+ */
+export async function importScoutEntries(teamId: string, uid: string, rows: { id: string; input: SaveEntryInput }[]): Promise<string[]> {
+  if (rows.length === 0) return [];
+  try {
+    const batch = writeBatch(db);
+    for (const row of rows) batch.set(programDoc(db, PROGRAM, SCOUT_ENTRIES, row.id), ftcScoutEntryDoc(teamId, uid, row.input, serverTimestamp));
+    await batch.commit();
+    return rows.map((r) => r.id);
+  } catch (err) {
+    reportFirestoreError("Couldn't import the scout entries", err, programPath(PROGRAM, SCOUT_ENTRIES));
+    throw err;
+  }
+}
+
 /** Applies an app-shaped patch to a stored entry: only its editable fields are written (see `ftcScoutEntryPatch`). A patch with nothing to write does nothing. */
 export async function updateScoutEntry(id: string, patch: Partial<ScoutEntry>): Promise<void> {
   const fields = ftcScoutEntryPatch(patch);

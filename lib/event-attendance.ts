@@ -11,6 +11,7 @@ import { fetchMemberNames } from "@/lib/assignment-io";
 import { db } from "@/lib/firebase/client";
 import { useTeamDoc } from "@/lib/team";
 import { useTeamMembers } from "@/lib/team-members";
+import type { FirestoreFailure } from "@/lib/firestore-errors";
 
 /**
  * Who's attending which event. D1: stored where CS keeps it, `teams/{teamId}.eventAttendees = { [eventKey]: (uid | name)[] }`
@@ -54,17 +55,17 @@ export function useTeamEventAttendance(teamId: string | null) {
     [teamId, team?.eventAttendees, members]
   );
   // A namespaced program's attendance is its own collection (one doc per team and event), read through its port.
-  const [ported, setPorted] = useState<{ teamId: string; records: EventAttendance[] } | null>(null);
+  const [ported, setPorted] = useState<{ teamId: string; records: EventAttendance[]; error: FirestoreFailure | null } | null>(null);
   useEffect(() => {
     if (!data || !teamId) return;
     return data.attendance.subscribeTeam(
       teamId,
-      (records) => setPorted({ teamId, records }),
-      () => setPorted({ teamId, records: [] }) // already reported by the port
+      (records) => setPorted({ teamId, records, error: null }),
+      (failure) => setPorted({ teamId, records: [], error: failure }) // already reported by the port
     );
   }, [data, teamId]);
-  if (data) return { attendance: teamId && ported?.teamId === teamId ? ported.records : NONE, loaded: !teamId || ported?.teamId === teamId };
-  return { attendance: fromTeam, loaded };
+  if (data) return { attendance: teamId && ported?.teamId === teamId ? ported.records : NONE, loaded: !teamId || ported?.teamId === teamId, error: ported?.teamId === teamId ? ported.error : null };
+  return { attendance: fromTeam, loaded, error: null as FirestoreFailure | null };
 }
 
 const NONE: EventAttendance[] = [];

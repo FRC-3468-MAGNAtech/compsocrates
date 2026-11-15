@@ -11,6 +11,7 @@ import type { CsUserDoc } from "@/data/cs/types";
 import { csUserToMember, profilePatchToCsUser } from "@/data/cs/users";
 import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
 import { programData, useProgramData } from "@/lib/program/data";
+import { describeFirestoreError, type FirestoreFailure } from "@/lib/firestore-errors";
 
 export type TeamMember = {
   uid: string;
@@ -37,6 +38,8 @@ export function useTeamMembers(teamId: string | null) {
   const data = useProgramData();
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loaded, setLoaded] = useState(false);
+  // A source that fails says so (the page names it); `loaded` still flips so nothing hangs on "loading".
+  const [error, setError] = useState<FirestoreFailure | null>(null);
 
   useEffect(() => {
     if (!teamId || !isFirebaseConfigured()) {
@@ -45,6 +48,7 @@ export function useTeamMembers(teamId: string | null) {
       // never linger on screen for a different (or no) team.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setMembers([]);
+      setError(null);
       setLoaded(true);
       return;
     }
@@ -53,11 +57,13 @@ export function useTeamMembers(teamId: string | null) {
         teamId,
         (next) => {
           setMembers(next);
+          setError(null);
           setLoaded(true);
         },
-        () => {
+        (failure) => {
           // already reported by the port
           setMembers([]);
+          setError(failure);
           setLoaded(true);
         }
       );
@@ -69,18 +75,20 @@ export function useTeamMembers(teamId: string | null) {
         setMembers(
           snap.docs.map((d) => csUserToMember(d.id, d.data() as CsUserDoc))
         );
+        setError(null);
         setLoaded(true);
       },
       (err) => {
         console.error("team members subscription failed:", err);
         setMembers([]);
+        setError(describeFirestoreError("Couldn't load team members", err, "users where teamId == ours"));
         setLoaded(true);
       }
     );
     return unsubscribe;
   }, [teamId, data]);
 
-  return { members, loaded };
+  return { members, loaded, error };
 }
 
 /**
