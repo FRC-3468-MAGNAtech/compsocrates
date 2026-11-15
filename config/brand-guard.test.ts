@@ -4,14 +4,22 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 /**
- * Guard: CompSocrates is one site with two programs (FRC and FTC), and each program's names live behind the program layer.
- *   1. The FTC program's names (its short and full name, API host and variables, game, the sibling app it came from, its
- *      multi-team model) may appear only in FTC-scoped files (FTC_SCOPE) or an ALLOWED file with a stated reason.
- *   2. FTC-scoped files must not name the FRC program's data sources or short name.
- * Everything user-visible comes from `config/brand.ts` and `config/programs/`.
+ * Guard: CompSocrates is one site with two programs (FRC and FTC). Each program's names live behind the program layer
+ * (`config/programs/<id>.ts` plus the program's own scoped files); shared code reads `ProgramConfig`.
+ *
+ *   1. FTC NAMES (the program's short and full name, API host and variables, its game, its multi-team model) may appear
+ *      only in FTC-scoped files (FTC_SCOPE) or in a file listed in FTC_ALLOWED with a reason. They may NEVER appear in an
+ *      FRC-scoped file (FRC_SCOPE), which is also where the user-visible FRC strings (brand and program config) live.
+ *      `docs/` is not scanned for them: a doc may name either program, it ships nothing to a user.
+ *   2. CE NAMES (the old sister app: its name, brand, domain and project ids all contain the same stem, plus its program
+ *      switch variable) may appear only in the files listed in CE_ALLOWED: a few docs that describe the history, and the
+ *      one-time migration script with its pure rules. Never in an FRC-scoped file.
+ *   3. FTC-scoped SOURCE files must not name the FRC program's data sources or short name (the programs do not see each
+ *      other). FTC-scoped tests may: they assert that FRC is unchanged and pass its program id.
  *
  * The forbidden words are assembled from pieces so this file can list them without being a hit itself (it is also skipped).
- * Any exception goes in ALLOWED below, with the reason, so it is a deliberate and reviewed choice.
+ * Any exception goes in a list below with its reason, so it is a deliberate and reviewed choice. Never allow a pattern
+ * (a folder or a glob) outside FTC_SCOPE: it would hide the next leak. Name the file.
  */
 
 const ROOT = path.resolve(__dirname, "..");
@@ -20,58 +28,111 @@ const SELF = path.relative(ROOT, __filename).split(path.sep).join("/");
 /** Files that belong to the FTC program: they may name FTC terms and must not name FRC ones. */
 const FTC_SCOPE: RegExp[] = [/^config\/programs\/ftc\.ts$/, /^config\/games\/ftc\//, /^lib\/ftc\//, /^data\/ftc\//, /^scripts\/migrate-ce-to-ftc/, /^docs\/ftc\//];
 
-/** path -> why this file may name a forbidden term. Keep it as small as possible. */
-const ALLOWED: Record<string, string> = {
+/** Files that belong to the FRC program, plus the user-visible brand and event copy: they may never name FTC or CE terms. */
+const FRC_SCOPE: RegExp[] = [/^config\/programs\/frc\.ts$/, /^config\/games\/(?!ftc\/)/, /^lib\/frc\//, /^data\/cs\//, /^config\/(brand|event|event-names|alliance|cs)(\.test)?\.ts$/];
+
+/** Folder whose files are not scanned for FTC names (they are written for maintainers; CE names are still checked). */
+const DOCS = /^docs\//;
+
+/** path -> why this file may name FTC terms. Keep it as small as possible. */
+const FTC_ALLOWED: Record<string, string> = {
+  // Documentation at the root and config
   "CLAUDE.md": "documents both programs and the sibling read-only reference folders",
-  "docs/MERGE_PLAN.md": "the merge plan names both programs",
-  "docs/ENVIRONMENT.md": "lists the per-program environment variables",
-  "docs/ROUTES.md": "the decision table records the program decisions",
-  "docs/REMAINING.md": "lists what is left of the program merge",
-  "docs/STEP1_RESULTS.md": "the results of the docs and tree reconciliation, which names both programs",
-  "docs/SESSION_A_RESULTS.md": "the results of the program selector and FTC team setup session",
-  "docs/BIOBUZZ_ROLES_PLAN.md": "the plan for the FTC alliance roles, which names the game and its program",
-  "docs/SESSION_C2_RESULTS.md": "the results of the FTC alliance roles session, which names the game and its program",
   ".env.example": "lists the per-program environment variables",
+  // Shared source that maps a program id or an FTC provider (the program seam itself)
   "lib/server/env.ts": "the one reader of environment variables, including the FTC ones",
   "lib/events/actions.ts": "dispatches event data calls to the FTC provider",
   "app/api/ftc/team/request-join/route.ts": "the server route for asking to join an FTC team; hands the call to the FTC-scoped server module",
   "lib/program/data.ts": "the one shared place that maps a program id to its data port",
   "config/programs/types.ts": "the program id list",
   "config/programs/index.ts": "the program registry",
+  "firestore.rules": "the FTC rules block",
+  // Tests and e2e: a legitimate FTC-program test case or program id in a path
+  "firestore.rules.test.ts": "tests the FTC rules block",
   "lib/program/paths.test.ts": "uses the program id as a path segment",
   "lib/server/env-example.test.ts": "maps the env groups to the .env.example sections",
-  "firestore.rules": "the FTC rules block",
-  "firestore.indexes.json": "FTC indexes",
-  "firestore.rules.test.ts": "tests the FTC rules block",
-  "lib/sidebar/resolve.test.ts": "tests the sidebar resolver for each program id (greyed-out pages differ by program)",
+  "lib/sidebar/resolve.test.ts": "tests the sidebar resolver for each program id (hidden pages differ by program)",
   "lib/sidebar/store.emulator.test.ts": "tests the sidebar config rules and save for both programs' paths",
   "components/admin/sidebar-panel.test.tsx": "renders the customizer for each program id",
-  "docs/SIDEBAR_PLAN.md": "the plan for the sidebar customizer, which covers both programs",
-  "docs/SESSION_F_RESULTS.md": "the results of the sidebar customizer session, which covers both programs",
-  "docs/BATCH2_RESULTS.md": "the results of the FTC match library and Admin Panel batch, which names the program",
-  "docs/BATCH3_RESULTS.md": "the results of the FTC solo practice batch, which names the program",
-  "docs/BATCH1_RESULTS.md": "the results of the FTC foundation fixes and join-request approval batch, which names the program",
-  "docs/PARITY_REPORT.md": "the FRC/FTC parity report: lists where the programs' pages differ",
-  "docs/PARITY_RESULTS.md": "the results of the FRC/FTC parity sweep",
   "config/parity-guard.test.ts": "the parity guard names both program ids and lists the files that still read a program's data port",
   "components/practice/practice-parity.test.tsx": "renders the shared practice screens under each program id",
   "components/assignments/schedule-grid.test.tsx": "renders the schedule grid under each program id (2 and 3 slots)",
+  "e2e/sidebar-builder.e2e.ts": "clicks the sidebar Sync card, whose buttons name the other program",
+  "app/e2e/sidebar-builder/fixture.tsx": "the e2e fixture for the sidebar Sync card, which is given the other program's name",
+  "lib/scroll-reset.test.ts": "uses an /ftc/ path to test the scroll reset on a program route",
+  "lib/analytics/csv-import.test.ts": "tests CSV import for the FTC program's own port and game",
+  "lib/analytics/recompute.test.ts": "tests the accuracy recompute under the FTC program id with the FTC game's form id",
+  "lib/scout-stats/actions.test.ts": "tests the scout stats actions under the FTC program id",
+  "lib/scout-stats/engine-program.test.ts": "tests the stats engine with FTC seasons and the FTC game's alliance roles",
 };
 
+/** path -> why this file may name CE terms (its name, brand, domain, project ids). Docs and the migration only. */
+const CE_ALLOWED: Record<string, string> = {
+  "CLAUDE.md": "names the sibling read-only reference folder and the pre-removal tag",
+  "docs/MERGE_PLAN.md": "the merge plan names both apps",
+  "docs/ENVIRONMENT.md": "lists the migration script's source variables",
+  "docs/FTC_COMPLETION_PLAN.md": "the FTC audit names the sister app it was ported from",
+};
+
+/** The one-time migration from the old app's data (the script and its pure rules) may name it without being listed. */
+const CE_MIGRATION = [/^scripts\/migrate-ce-to-ftc/, /^lib\/ftc\/migration(\.test)?\.ts$/];
+
+const TEST_FILE = /\.(test|e2e)\.tsx?$/;
 const inFtcScope = (file: string) => FTC_SCOPE.some((re) => re.test(file));
+const inFrcScope = (file: string) => FRC_SCOPE.some((re) => re.test(file));
 
 const join = (...parts: string[]) => parts.join("");
+const FTC = join("F", "T", "C");
 
-const FORBIDDEN: { label: string; pattern: RegExp }[] = [
-  { label: "the sibling app's name", pattern: new RegExp(join("epic", "urus"), "i") },
-  { label: "the old game", pattern: new RegExp(join("bio", "buzz"), "i") },
-  { label: "the other FIRST program (short name)", pattern: new RegExp(`\\b${join("F", "T", "C")}\\b`, "i") },
-  { label: "the other FIRST program (FTC_ variable)", pattern: new RegExp(`\\b${join("F", "T", "C")}_[A-Z0-9_]+`) },
-  { label: "the other FIRST program (API or events host)", pattern: new RegExp(`\\b${join("f", "t", "c")}-(api|events)`, "i") },
-  { label: "the other FIRST program (full name)", pattern: new RegExp(join("FIRST ", "Tech"), "i") },
-  { label: "the old program switch", pattern: new RegExp(join("EVENT_", "PROGRAM")) },
-  { label: "the multi-team model", pattern: new RegExp(`${join("field", "[ _-]?", "team")}`, "i") },
+type Group = "ftc" | "ce" | "frc";
+interface Rule {
+  label: string;
+  group: Group;
+  pattern: RegExp;
+}
+
+const RULES: Rule[] = [
+  { label: "the old game", group: "ftc", pattern: new RegExp(join("bio", "buzz"), "i") },
+  { label: "the other FIRST program (short name)", group: "ftc", pattern: new RegExp(`\\b${FTC}\\b`, "i") },
+  { label: "the other FIRST program (FTC_ variable)", group: "ftc", pattern: new RegExp(`\\b${FTC}_[A-Z0-9_]+`) },
+  { label: "the other FIRST program (API or events host)", group: "ftc", pattern: new RegExp(`\\b${join("f", "t", "c")}-(api|events)`, "i") },
+  { label: "the other FIRST program (full name)", group: "ftc", pattern: new RegExp(join("FIRST ", "Tech"), "i") },
+  { label: "the old program switch", group: "ftc", pattern: new RegExp(join("EVENT_", "PROGRAM")) },
+  { label: "the multi-team model", group: "ftc", pattern: new RegExp(`${join("field", "[ _-]?", "team")}`, "i") },
+  // The sister app's name is also the stem of its brand, domain, storage prefix and project ids.
+  { label: "the sister app's name, brand, domain or project id", group: "ce", pattern: new RegExp(join("epic", "urus"), "i") },
+  // Used on FTC-scoped files only.
+  { label: "the FRC program's short name", group: "frc", pattern: new RegExp(`\\b${join("F", "R", "C")}\\b`, "i") },
+  { label: "the FRC program's stats provider", group: "frc", pattern: new RegExp(join("stat", "botics"), "i") },
+  { label: "the FRC program's events provider (short name)", group: "frc", pattern: new RegExp(`\\b${join("T", "B", "A")}\\b`) },
+  { label: "the FRC program's events provider (full name)", group: "frc", pattern: new RegExp(join("Blue ", "Alliance"), "i") },
 ];
+
+/** May this file name this rule's terms? (Pure: the real scan and the guard's own tests both use it.) */
+function isExempt(rule: Rule, file: string): boolean {
+  switch (rule.group) {
+    case "ftc":
+      if (inFrcScope(file)) return false; // never, whatever the lists say
+      return DOCS.test(file) || inFtcScope(file) || file in FTC_ALLOWED;
+    case "ce":
+      if (inFrcScope(file)) return false;
+      return file in CE_ALLOWED || CE_MIGRATION.some((re) => re.test(file));
+    case "frc":
+      // Only FTC source files: an FTC-scoped TEST may name FRC to assert that FRC is unchanged (a program id, "FRC is unchanged").
+      return !inFtcScope(file) || TEST_FILE.test(file);
+  }
+}
+
+/** Every forbidden mention in one file's text: "<file>:<line>: <label>: <text>". */
+function violations(file: string, text: string): string[] {
+  const out: string[] = [];
+  const rules = RULES.filter((r) => !isExempt(r, file));
+  if (rules.length === 0) return out;
+  text.split(/\r?\n/).forEach((line, i) => {
+    for (const r of rules) if (r.pattern.test(line)) out.push(`${file}:${i + 1}: ${r.label}: ${line.trim().slice(0, 120)}`);
+  });
+  return out;
+}
 
 const SKIP_FILES = new Set(["package-lock.json"]);
 const SKIP_DIRS = ["node_modules/", ".next/"];
@@ -95,48 +156,116 @@ function readText(file: string): string | null {
   return buf.includes(0) ? null : buf.toString("utf8"); // a NUL byte means binary
 }
 
-describe("brand guard: nothing names the app this one was started from", () => {
+describe("brand guard: each program's names stay behind the program layer", () => {
   const files = trackedFiles();
+  const texts = new Map<string, string>();
+  for (const f of files) {
+    const t = readText(f);
+    if (t !== null) texts.set(f, t);
+  }
 
   it("scans a real set of files", () => {
     expect(files.length).toBeGreaterThan(300);
   });
 
-  it("every allowed exception is a tracked file that really needs it", () => {
-    for (const [file, reason] of Object.entries(ALLOWED)) {
-      expect(reason.trim().length, `${file} needs a reason`).toBeGreaterThan(0);
-      expect(files, `${file} is allowed but not tracked`).toContain(file);
+  it("every allowed exception is a tracked file with a reason, outside the FRC scope, and still needs it", () => {
+    const lists: [string, Record<string, string>, Group][] = [
+      ["FTC_ALLOWED", FTC_ALLOWED, "ftc"],
+      ["CE_ALLOWED", CE_ALLOWED, "ce"],
+    ];
+    const problems: string[] = [];
+    for (const [name, list, group] of lists) {
+      for (const [file, reason] of Object.entries(list)) {
+        if (reason.trim().length === 0) problems.push(`${name}: ${file} needs a reason`);
+        if (!files.includes(file)) problems.push(`${name}: ${file} is allowed but not tracked`);
+        if (inFrcScope(file)) problems.push(`${name}: ${file} is in the FRC scope and may not be allowed`);
+        const text = texts.get(file);
+        const needs = text !== undefined && text.split(/\r?\n/).some((line) => RULES.some((r) => r.group === group && r.pattern.test(line)));
+        if (text !== undefined && !needs) problems.push(`${name}: ${file} no longer names anything forbidden; remove it`);
+      }
+    }
+    expect(problems, problems.join("\n")).toEqual([]);
+  });
+
+  for (const group of ["ftc", "ce"] as const) {
+    for (const rule of RULES.filter((r) => r.group === group)) {
+      it(`finds no mention of ${rule.label} outside its files`, () => {
+        const hits: string[] = [];
+        for (const [file, text] of texts) {
+          if (isExempt(rule, file)) continue;
+          text.split(/\r?\n/).forEach((line, i) => {
+            if (rule.pattern.test(line)) hits.push(`${file}:${i + 1}: ${line.trim().slice(0, 120)}`);
+          });
+        }
+        expect(hits, hits.join("\n")).toEqual([]);
+      });
+    }
+  }
+
+  it("FTC-scoped files do not name the FRC program's sources", () => {
+    const hits: string[] = [];
+    for (const [file, text] of texts) {
+      if (inFtcScope(file)) hits.push(...violations(file, text).filter((v) => /FRC program/.test(v)));
+    }
+    expect(hits, hits.join("\n")).toEqual([]);
+  });
+
+  it("FRC-scoped files name no FTC or CE term, whatever the lists say", () => {
+    const hits: string[] = [];
+    let seen = 0;
+    for (const [file, text] of texts) {
+      if (!inFrcScope(file)) continue;
+      seen++;
+      hits.push(...violations(file, text));
+    }
+    expect(seen).toBeGreaterThan(10);
+    expect(hits, hits.join("\n")).toEqual([]);
+  });
+});
+
+describe("brand guard: the guard itself", () => {
+  const planted = `// ${FTC} scoring: see ${join("bio", "buzz")}`;
+  const plantedCe = `// ported from ${join("Comp", "Epic", "urus")}`;
+
+  it("fails a planted FTC string in an FRC file and passes it in an FTC file", () => {
+    expect(violations("lib/frc/example.ts", planted).length).toBeGreaterThan(0);
+    expect(violations("config/programs/frc.ts", planted).length).toBeGreaterThan(0);
+    expect(violations("data/cs/example.ts", planted).length).toBeGreaterThan(0);
+    expect(violations("lib/ftc/example.ts", planted)).toEqual([]);
+    expect(violations("config/programs/ftc.ts", planted)).toEqual([]);
+    expect(violations("data/ftc/example.ts", planted)).toEqual([]);
+  });
+
+  it("fails a planted FTC string in an unlisted shared file, passes it in a listed test file and in docs", () => {
+    expect(violations("components/shared/example.tsx", planted).length).toBeGreaterThan(0);
+    expect(violations("lib/analytics/new-file.ts", planted).length).toBeGreaterThan(0);
+    expect(violations("lib/scroll-reset.test.ts", planted)).toEqual([]);
+    expect(violations("docs/EXAMPLE_RESULTS.md", planted)).toEqual([]);
+  });
+
+  it("an allowlist entry never lifts the rule inside the FRC scope", () => {
+    FTC_ALLOWED["lib/frc/example.ts"] = "planted";
+    try {
+      expect(violations("lib/frc/example.ts", planted).length).toBeGreaterThan(0);
+    } finally {
+      delete FTC_ALLOWED["lib/frc/example.ts"];
     }
   });
 
-  for (const { label, pattern } of FORBIDDEN) {
-    it(`finds no mention of ${label}`, () => {
-      const hits: string[] = [];
-      for (const file of files) {
-        if (file in ALLOWED || inFtcScope(file)) continue;
-        const text = readText(file);
-        if (text === null) continue;
-        text.split(/\r?\n/).forEach((line, i) => {
-          if (pattern.test(line)) hits.push(`${file}:${i + 1}: ${line.trim().slice(0, 120)}`);
-        });
-      }
-      expect(hits, hits.join("\n")).toEqual([]);
-    });
-  }
-});
+  it("fails a planted CE name anywhere but the allowed docs and the migration", () => {
+    expect(violations("components/shared/example.tsx", plantedCe).length).toBeGreaterThan(0);
+    expect(violations("lib/ftc/example.ts", plantedCe).length).toBeGreaterThan(0);
+    expect(violations("docs/EXAMPLE_RESULTS.md", plantedCe).length).toBeGreaterThan(0);
+    expect(violations("lib/frc/example.ts", plantedCe).length).toBeGreaterThan(0);
+    expect(violations("docs/MERGE_PLAN.md", plantedCe)).toEqual([]);
+    expect(violations("scripts/migrate-ce-to-ftc.ts", plantedCe)).toEqual([]);
+  });
 
-describe("brand guard: FTC-scoped files do not name the FRC program's sources", () => {
-  const FRC_TERMS = [new RegExp(`\b${join("F", "R", "C")}\b`, "i"), new RegExp(join("stat", "botics"), "i"), new RegExp(`\b${join("T", "B", "A")}\b`), new RegExp(join("Blue ", "Alliance"), "i")];
-
-  it("finds none", () => {
-    const hits: string[] = [];
-    for (const file of trackedFiles().filter(inFtcScope)) {
-      const text = readText(file);
-      if (text === null) continue;
-      text.split(/\r?\n/).forEach((line, i) => {
-        if (FRC_TERMS.some((re) => re.test(line))) hits.push(`${file}:${i + 1}: ${line.trim().slice(0, 120)}`);
-      });
-    }
-    expect(hits, hits.join("\n")).toEqual([]);
+  it("fails a planted FRC term in an FTC file but not in an FRC file", () => {
+    const frcTerm = `// uses ${join("T", "B", "A")} data`;
+    expect(violations("lib/ftc/example.ts", frcTerm).length).toBeGreaterThan(0);
+    expect(violations("lib/ftc/example.test.ts", frcTerm)).toEqual([]); // an FTC test may assert FRC is unchanged
+    expect(violations("lib/frc/example.ts", frcTerm)).toEqual([]);
+    expect(violations("components/shared/example.tsx", frcTerm)).toEqual([]);
   });
 });
