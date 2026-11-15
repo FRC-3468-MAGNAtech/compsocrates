@@ -10,6 +10,7 @@ import { usePermissions } from "@/lib/permissions";
 import { fetchTeamCreationEnabled, setTeamCreationEnabled } from "@/lib/team-enrollment";
 import { MatchLibraryPanel } from "@/components/admin/match-library-panel";
 import { SessionsPanel } from "@/components/admin/sessions-panel";
+import { EntriesPanel } from "@/components/admin/entries-panel";
 import { RescorePanel } from "@/components/admin/rescore-panel";
 import { MatchScoutIdsPanel } from "@/components/admin/match-scout-ids-panel";
 import { PracticeSessionIdsPanel } from "@/components/admin/practice-session-ids-panel";
@@ -26,7 +27,7 @@ import { ReviewPanelHost } from "@/components/templates/review-panel";
 import { usePendingApplicationCount } from "@/lib/applications-client";
 import { SidebarPanel } from "@/components/admin/sidebar-panel";
 
-type AdminTab = "match-library" | "forms" | "page-access" | "sidebar" | "submissions" | "sessions" | "match-scout-ids" | "practice-session-ids" | "rescore" | "audit-log" | "backups" | "applications" | "templates" | "recovery" | "setup-check";
+type AdminTab = "match-library" | "forms" | "page-access" | "sidebar" | "submissions" | "entries" | "sessions" | "match-scout-ids" | "practice-session-ids" | "rescore" | "audit-log" | "backups" | "applications" | "templates" | "recovery" | "setup-check";
 
 const TAB_LABELS: Record<AdminTab, string> = {
   "match-library": "Match Library",
@@ -38,6 +39,8 @@ const TAB_LABELS: Record<AdminTab, string> = {
   sidebar: "Sidebar",
   // Session E: close new submissions for every form, or for one season's forms (team admins and owners)
   submissions: "Form Submissions",
+  // Session E: every entry of every form, with Edit
+  entries: "Entries",
   sessions: "Sessions",
   // CS's two admin ID utilities (/admin/match-scout-ids, /admin/practice-session-ids), now tabs here
   "match-scout-ids": "Match Scout IDs",
@@ -151,6 +154,7 @@ export default function AdminPanelPage() {
       {tab === "page-access" && <PageAccessPanel />}
       {tab === "sidebar" && <SidebarPanel />}
       {tab === "submissions" && <SubmissionControlsPanel />}
+      {tab === "entries" && <EntriesPanel />}
       {tab === "sessions" && <SessionsPanel />}
       {tab === "match-scout-ids" && <MatchScoutIdsPanel />}
       {tab === "practice-session-ids" && <PracticeSessionIdsPanel />}
