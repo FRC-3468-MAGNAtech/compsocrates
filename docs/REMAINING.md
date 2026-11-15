@@ -133,6 +133,7 @@ Harmless to CS (it ignores them) but not part of CS's schema. Drop them if the s
 - Old CS changelog: the notes exist only in the old project's Firestore (`teams/{id}.versionReleases`); export them and run `scripts/import-cs-changelog.ts` (dry run first). The second program's changelog is a separate follow-up (its starter text describes the FRC app).
 - App Testing: no admin button was found in the CS reference; see `docs/SESSION_G_RESULTS.md` for the question.
 - Device-only theme covers theme, mode and gradient intensity; the glass layer level stays account-wide.
+- `programs/ftc/libraryEvents/{code}` and `libraryMatches/{id}` (Batch 2): `teamId` on hand-made (origin `manual`) docs only (their owner team; imported docs are shared and carry none), `scheduledTime` (ISO or null) on matches. An FTC library match has no score.
 - Admins who saved Private while they were admins (the old code kept that choice) are now private to non-admin teammates. Check before the rules are deployed.
 
 ## Cleanup left
