@@ -17,7 +17,7 @@ Report: `docs/PARITY_REPORT.md`. Branch `rebuild`. No data schema, scoring, rule
 - `npm run build`: passed. Emulator and e2e suites not run.
 
 ## Still different (accepted or next)
-- **Next task: Group B**, merge the Match Library panels (`schedule-library-panel` + `schedule-*` into the shared `match-library-panel`). Also `admin/library/manual-match-dialog.tsx` and the live/lobby flows read the fixed `ALLIANCE_SIZE` (FRC-only today).
+- **Group B is done** (`docs/LIBRARY_MERGE_RESULTS.md`): one Match Library panel, and its dialogs follow the program's alliance size. The live and lobby flows still read the fixed `ALLIANCE_SIZE` (Batch 6).
 - Team setup: after submitting, FRC shows "Waiting for approval" and FTC shows "Request sent" (different post-submit screens); the frame, card and greeting match.
 - FTC has the admin tabs Forms (with its templates), Sessions, Rescore and Backups since Batch 5b; it still lacks Entries, the two ID tools and Setup Check, and 8 pages (`connection.paths`): unported, not in scope.
 
