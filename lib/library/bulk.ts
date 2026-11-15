@@ -38,7 +38,7 @@ const HEADER_ALIASES: Record<string, BulkColumn> = {
   event: "eventCode",
 };
 
-const requiredColumns = (size: number): BulkColumn[] => ["matchNumber", ...teamFieldsFor(size), "redScore", "blueScore"];
+const requiredColumns = (size: number, scoresRequired: boolean): BulkColumn[] => ["matchNumber", ...teamFieldsFor(size), ...(scoresRequired ? (["redScore", "blueScore"] as const) : [])];
 
 const FIELD_FOR_COLUMN: Record<Exclude<BulkColumn, "eventCode">, RawField> = {
   matchType: "matchType",
@@ -60,6 +60,7 @@ const FIELD_FOR_COLUMN: Record<Exclude<BulkColumn, "eventCode">, RawField> = {
 };
 
 const FIELD_LABELS: Record<RawField, string> = {
+  scheduledTime: "Scheduled time",
   matchType: "Match type",
   matchNumber: "Match number",
   red1: "Red 1",
@@ -110,12 +111,12 @@ export type BulkResult = {
   rows: BulkRow[];
 };
 
-export function bulkTemplateCsv(size: number = ALLIANCE_SIZE): string {
+export function bulkTemplateCsv(size: number = ALLIANCE_SIZE, scoresRequired = true): string {
   const red = (a: string[]) => a.slice(0, size);
   return serializeCsv([
     bulkColumns(size),
-    ["Q", "1", ...red(["254", "971", "1678"]), ...red(["118", "1114", "2056"]), "142", "98", "6", "0", "", "", "", ""],
-    ["Q", "2", ...red(["6672", "8110", "148"]), ...red(["3468", "7244", "4414"]), "76", "104", "0", "12", "", "", "", "Example row — replace or delete"],
+    ["Q", "1", ...red(["254", "971", "1678"]), ...red(["118", "1114", "2056"]), scoresRequired ? "142" : "", scoresRequired ? "98" : "", "6", "0", "", "", "", ""],
+    ["Q", "2", ...red(["6672", "8110", "148"]), ...red(["3468", "7244", "4414"]), scoresRequired ? "76" : "", scoresRequired ? "104" : "", "0", "12", "", "", "", "Example row — replace or delete"],
   ]);
 }
 
@@ -142,9 +143,11 @@ export type BulkInput = {
   existing: ReadonlyMap<string, { origin?: unknown }>;
   /** Robots per alliance (defaults to the configured event's). */
   allianceSize?: number;
+  /** Both scores required per row (default true). False: a blank or missing score column means no official score yet. */
+  scoresRequired?: boolean;
 };
 
-export function validateBulk({ text, event, defaults, existing, allianceSize = ALLIANCE_SIZE }: BulkInput): BulkResult {
+export function validateBulk({ text, event, defaults, existing, allianceSize = ALLIANCE_SIZE, scoresRequired = true }: BulkInput): BulkResult {
   const table = splitBulkText(text);
   if (table.length === 0) return { columnErrors: ["Nothing to import — paste some rows or choose a file."], hasHeader: false, rows: [] };
 
@@ -156,7 +159,7 @@ export function validateBulk({ text, event, defaults, existing, allianceSize = A
   const columnErrors: string[] = [];
   if (headerColumns) {
     const present = new Set(headerColumns.filter(Boolean));
-    for (const col of requiredColumns(allianceSize)) if (!present.has(col)) columnErrors.push(`Missing column: ${col}.`);
+    for (const col of requiredColumns(allianceSize, scoresRequired)) if (!present.has(col)) columnErrors.push(`Missing column: ${col}.`);
     if (!present.has("matchType") && !defaults.matchType) columnErrors.push("Missing column: matchType (or choose a default match type).");
   }
   if (columnErrors.length > 0) return { columnErrors, hasHeader: true, rows: [] };
@@ -176,7 +179,7 @@ export function validateBulk({ text, event, defaults, existing, allianceSize = A
     });
 
     const errors: string[] = [];
-    const result = validateRawMatch(raw, { defaultVideoUrl: defaults.youtubeUrl, defaultMatchType: defaults.matchType, allianceSize });
+    const result = validateRawMatch(raw, { defaultVideoUrl: defaults.youtubeUrl, defaultMatchType: defaults.matchType, allianceSize, scoresRequired });
     for (const [field, message] of Object.entries(result.errors)) errors.push(`${FIELD_LABELS[field as RawField]}: ${message}`);
     if (rowEventCode !== "" && rowEventCode.toUpperCase() !== event.eventCode.toUpperCase()) {
       errors.push(`Event: this row's eventCode "${rowEventCode}" doesn't match the target event ${event.eventCode}. Leave it blank or fix it.`);

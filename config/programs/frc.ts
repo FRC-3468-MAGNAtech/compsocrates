@@ -24,5 +24,6 @@ export const FRC_PROGRAM: ProgramConfig = {
   // Team Settings: FRC's page is unchanged (its form choice lives in Admin Panel > Forms, its ownership transfer is the root route's).
   teamSettings: { ownershipTransfer: true },
   // FRC keeps the skeleton until accuracy exists (CS behavior, unchanged); see the note in components/practice/results-screen.tsx.
+  library: { scoresRequired: true, importKind: "played", scheduledTime: false, editImportedScores: false, backfill: true, placeholderVideoSwitch: true, videoCsv: true },
   practice: { noScoreIsResult: false, liveTileText: "Scout a real, livestreamed FRC match." },
 };

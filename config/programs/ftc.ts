@@ -81,6 +81,7 @@ export const FTC_PROGRAM: ProgramConfig = {
   teamSettings: { ownershipTransfer: false },
   // The changelog's starter drafts: only features this program has today (lib/ftc/changelog-seed.ts).
   changelogSeed: FTC_STARTER_ENTRIES,
+  library: { scoresRequired: false, importKind: "schedule", scheduledTime: true, editImportedScores: true, backfill: false, placeholderVideoSwitch: false, videoCsv: false },
   practice: { noScoreIsResult: true, liveTileText: "Scout a real, livestreamed FTC match." },
   // The practice difficulty cut-offs come from each game's own config (its alliance score thresholds), read by `lib/difficulty.ts` for this program.
   gameDifficulty: Object.fromEntries(FTC_GAME_ID_LIST.map((id) => [id, FTC_GAME_DEFINITIONS[id].thresholds.difficulty])),

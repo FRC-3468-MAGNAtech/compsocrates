@@ -12,7 +12,7 @@ import { canonicalYouTubeUrl, parseYouTubeUrl } from "@/lib/library/youtube-url"
 import { getSeason } from "@/lib/seasons";
 import { useAuth } from "@/lib/auth";
 import { useProgramData } from "@/lib/program/data";
-import type { FirestoreFailure } from "@/lib/firestore-errors";
+import { describeFirestoreError, type FirestoreFailure } from "@/lib/firestore-errors";
 import type { LibraryMatch, LibraryVideo } from "@/lib/match-library";
 import type { TeamDoc } from "@/lib/team";
 
@@ -69,6 +69,8 @@ export function useLibraryEvents(seasonId: string | null = null) {
   const teamId = useAuth().profile?.teamId ?? null;
   const [portState, setPortState] = useState<{ key: string; events: LibraryEvent[]; error: FirestoreFailure | null } | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const [rootError, setRootError] = useState<FirestoreFailure | null>(null);
+  const [rootAttempt, setRootAttempt] = useState(0);
   const portKey = port && teamId ? JSON.stringify([teamId, seasonId, attempt]) : "";
 
   useEffect(() => {
@@ -89,22 +91,24 @@ export function useLibraryEvents(seasonId: string | null = null) {
       collection(db, EVENTS),
       (snap) => {
         setEvents(snap.docs.map((d) => toEvent(d.id, d.data())).sort((a, b) => a.eventName.localeCompare(b.eventName)));
+        setRootError(null);
         setLoaded(true);
       },
       (err) => {
         console.error("libraryEvents subscription failed:", err);
+        setRootError(describeFirestoreError("Couldn't load the library events", err, "libraryEvents"));
         setEvents([]);
         setLoaded(true);
       }
     );
     return unsubscribe;
-  }, [port]);
+  }, [port, rootAttempt]);
 
   if (port) {
     const current = portState && portState.key === portKey ? portState : null;
     return { events: current?.events ?? [], loaded: portKey === "" || current !== null, error: current?.error ?? null, retry: () => setAttempt((n) => n + 1) };
   }
-  return { events, loaded, error: null as FirestoreFailure | null, retry: () => {} };
+  return { events, loaded, error: rootError, retry: () => setRootAttempt((n) => n + 1) };
 }
 
 const chunk = <T,>(items: T[], size: number): T[][] => {

@@ -287,6 +287,9 @@ export function useLibraryMatches(eventCode: string | null, options: { includeUn
   // A program with a library port reads through it; the root program keeps the reads below exactly as they were.
   const portActive = useProgramData()?.library != null;
   const portState = usePortLibraryMatches(portActive && eventCode ? { eventCode, includeUnpublished } : null);
+  // A failed read says so (it used to look like an empty event); `retry` subscribes again.
+  const [rootError, setRootError] = useState<FirestoreFailure | null>(null);
+  const [rootAttempt, setRootAttempt] = useState(0);
 
   useEffect(() => {
     if (portActive) return;
@@ -302,16 +305,17 @@ export function useLibraryMatches(eventCode: string | null, options: { includeUn
         const next = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as LibraryMatch);
         next.sort((a, b) => (a.matchType === b.matchType ? a.matchNumber - b.matchNumber : a.matchType.localeCompare(b.matchType)));
         setMatches(next);
+        setRootError(null);
         setLoaded(true);
       },
       (err) => {
-        reportFirestoreError("libraryMatches (by event) subscription failed", err, `libraryMatches where eventCode == ${eventCode}${includeUnpublished ? "" : ", published == true"}`);
+        setRootError(reportFirestoreError("libraryMatches (by event) subscription failed", err, `libraryMatches where eventCode == ${eventCode}${includeUnpublished ? "" : ", published == true"}`));
         setMatches([]);
         setLoaded(true);
       }
     );
     return unsubscribe;
-  }, [eventCode, includeUnpublished, portActive]);
+  }, [eventCode, includeUnpublished, portActive, rootAttempt]);
 
   // D1: scout-facing lists (no drafts) also show CS's imported practice matches for this event, read-only; an admin table does not.
   const imported = useCsImportedMatches(Boolean(eventCode) && !includeUnpublished && !portActive);
@@ -320,7 +324,7 @@ export function useLibraryMatches(eventCode: string | null, options: { includeUn
     [matches, imported, eventCode]
   );
   if (portActive) return { matches: portState.matches, loaded: eventCode ? portState.loaded : true, error: portState.error, unreadable: portState.unreadable, retry: portState.retry };
-  return { matches: merged, loaded, error: null as FirestoreFailure | null, unreadable: 0, retry: () => {} };
+  return { matches: merged, loaded, error: rootError, unreadable: 0, retry: () => setRootAttempt((n) => n + 1) };
 }
 
 /**

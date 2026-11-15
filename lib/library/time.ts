@@ -52,3 +52,19 @@ export function validateVideoWindow(startSec: number, endSec: number): string | 
 
 /** A clip longer than this is probably a whole stream rather than one match — worth a (non-blocking) warning. */
 export const LONG_CLIP_SECONDS = 10 * 60;
+
+/** An ISO time as the value of a `datetime-local` input (local time), or "" when absent or unreadable. */
+export function toLocalInput(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** A scheduled start for display ("No time" when absent or unreadable). */
+export function showScheduledTime(iso: string | null | undefined): string {
+  if (!iso) return "No time";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "No time" : d.toLocaleString([], { dateStyle: "short", timeStyle: "short" });
+}

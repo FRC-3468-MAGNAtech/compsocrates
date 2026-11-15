@@ -3,7 +3,8 @@
 import { FTC_GAME_DEFINITIONS, FTC_GAME_ID_LIST, CURRENT_FTC_GAME_ID } from "@/config/games/ftc";
 import { FTC_BUILTIN_FORMS } from "@/lib/ftc/games";
 import type { ProgramData, ProgramSeason } from "@/lib/program/data";
-import { createManualEvent, deleteManualEvent, deleteManualMatches, importSchedule, setMatchesPublished, setMatchScores, subscribeLibraryEvents, subscribeLibraryMatches, upsertManualMatches } from "@/data/ftc/library";
+import { createManualEvent, deleteManualEvent, deleteManualMatches, importSchedule, setMatchesPublished, setMatchScores, setMatchesVideoLink, setMatchVideo, subscribeLibraryEvents, subscribeLibraryMatches, updateManualEvent, upsertManualMatches } from "@/data/ftc/library";
+import { scheduleInputFromValid } from "@/lib/library/schedule";
 import { getEvent, getMatchesForEvent } from "@/lib/events/actions";
 import { claimSession, deleteSession, getSession, hasCompletedAttempt, subscribeOwnPausedSession, subscribeSession, subscribeTeamSessions, updateSession } from "@/data/ftc/practice";
 import { ftcDocToFormDoc, ftcDocToFormVersion } from "@/data/ftc/forms";
@@ -75,11 +76,14 @@ export const ftcProgramData: ProgramData = {
     subscribeMatches: subscribeLibraryMatches,
     createEvent: createManualEvent,
     deleteEvent: deleteManualEvent,
-    upsertMatches: upsertManualMatches,
+    updateEvent: updateManualEvent,
+    upsertMatches: (actor, event, matches, options) => upsertManualMatches(actor, event, matches.map((m) => scheduleInputFromValid(m, { keepScores: options.keepScores })), options),
+    setVideoLink: async (actor, matches, videoId) => void (await setMatchesVideoLink(actor, matches, videoId)),
+    setMatchVideo: async (actor, id, video) => void (await setMatchVideo(actor, id, video)),
     setPublished: setMatchesPublished,
     setScores: setMatchScores,
     deleteMatches: deleteManualMatches,
-    importSchedule: async (actor, { eventCode, seasonId }) => {
+    importEvent: async (actor, { eventCode, seasonId }) => {
       const season = FTC_SEASONS.find((s) => s.id === seasonId);
       if (!season) return { ok: false, message: "Pick a season first." };
       // The fetch runs in the server actions (keys read through lib/server/env.ts there); only the schedule comes back.
@@ -89,7 +93,19 @@ export const ftcProgramData: ProgramData = {
       );
       if (!schedule.ok) return { ok: false, message: schedule.message };
       try {
-        return { ok: true, summary: await importSchedule(actor, { event: { eventCode: schedule.eventCode, eventName: schedule.eventName, seasonId }, matches: schedule.matches }) };
+        const r = await importSchedule(actor, { event: { eventCode: schedule.eventCode, eventName: schedule.eventName, seasonId }, matches: schedule.matches });
+        return {
+          ok: true,
+          summary: {
+            eventCode: r.eventCode,
+            eventName: r.eventName,
+            written: r.created + r.updated,
+            skipped: r.skippedNoTeams,
+            skippedReason: "not scheduled with teams yet (import again later)",
+            skippedManual: r.skippedManual,
+            detail: `${r.created} new, ${r.updated} updated.` + (r.scored ? ` ${r.scored} with official scores.` : ""),
+          },
+        };
       } catch (err) {
         return { ok: false, message: err instanceof Error && err.message ? err.message : "Couldn't save the imported schedule. Run the import again: it picks up where it stopped." };
       }

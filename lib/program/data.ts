@@ -35,7 +35,9 @@ import type { SaveEntryInput, ScoutEntry } from "@/lib/scout-entries";
 import type { TeamDoc } from "@/lib/team";
 import type { LibraryEvent } from "@/lib/library/store";
 import type { EventFormInput } from "@/lib/library/event-form";
-import type { CreateEventResult, ImportOutcome, LibraryActor, MatchScores, ScheduleMatchInput, UpsertOptions, UpsertResult } from "@/lib/library/schedule";
+import type { CreateEventResult, LibraryActor, LibraryImportOutcome, MatchScores, UpsertOptions, UpsertResult } from "@/lib/library/schedule";
+import type { ValidMatch } from "@/lib/library/manual-match";
+import type { LibraryVideo } from "@/lib/match-library";
 import type { LibraryMatch } from "@/lib/match-library";
 import type { AllianceColor, PracticeSession, SessionKind } from "@/lib/practice-sessions";
 
@@ -176,19 +178,26 @@ export type ProgramData = {
     subscribeMatches(teamId: string, filter: { eventCode?: string | null; seasonId?: string | null; includeUnpublished: boolean }, onData: (matches: LibraryMatch[], unreadable: number) => void, onError: DataError): Unsubscribe;
     /** Creates a hand-made event owned by the actor's team (no API key needed). */
     createEvent(actor: LibraryActor, input: EventFormInput, seasonId: string, existing: readonly LibraryEvent[]): Promise<CreateEventResult>;
-    /** Deletes a hand-made event and its matches (batched); resolves with how many matches went. */
-    deleteEvent(actor: LibraryActor, event: LibraryEvent): Promise<number>;
+    /** Edits a hand-made event's details; a new name is copied onto its matches. */
+    updateEvent(actor: LibraryActor, event: LibraryEvent, patch: Pick<EventFormInput, "name" | "date" | "sourceUrl" | "defaultVideoUrl">, matchIds: string[]): Promise<void>;
+    /** Deletes a hand-made event; refuses while it still has matches (delete them first), as the default program does. */
+    deleteEvent(actor: LibraryActor, event: LibraryEvent): Promise<void>;
     /** Creates or replaces hand-made matches of one event. A new match is an unpublished draft; an edit keeps its published state. */
-    upsertMatches(actor: LibraryActor, event: LibraryEvent, matches: readonly ScheduleMatchInput[], options?: UpsertOptions): Promise<UpsertResult>;
-    setPublished(actor: LibraryActor, ids: readonly string[], published: boolean): Promise<number>;
+    upsertMatches(actor: LibraryActor, event: LibraryEvent, matches: ValidMatch[], options: UpsertOptions & { keepScores?: boolean }): Promise<UpsertResult>;
+    /** One YouTube link on many matches (each keeps its own start and end), and one match's video (null removes it). */
+    setVideoLink(actor: LibraryActor, matches: Pick<LibraryMatch, "id" | "video">[], videoId: string): Promise<void>;
+    setMatchVideo(actor: LibraryActor, id: string, video: LibraryVideo | null): Promise<void>;
+    setPublished(actor: LibraryActor, ids: string[], published: boolean): Promise<number>;
     /** Sets (or, with null, clears) the OFFICIAL score of one match: what Practice Scouting compares a session's total with. A match with none is "No official score yet". */
     setScores(actor: LibraryActor, id: string, scores: MatchScores | null): Promise<number>;
-    deleteMatches(actor: LibraryActor, ids: readonly string[]): Promise<number>;
+    deleteMatches(actor: LibraryActor, ids: string[]): Promise<number>;
     /**
      * Fetches the event's schedule on the server (keys never reach the browser) and writes it under stable ids, so importing twice updates in place.
      * A missing or rejected key, a rate limit or an unknown event comes back as `{ ok: false, message }` with nothing written.
      */
-    importSchedule(actor: LibraryActor, args: { eventCode: string; seasonId: string }): Promise<ImportOutcome>;
+    importEvent(actor: LibraryActor, args: { eventCode: string; seasonId: string }): Promise<LibraryImportOutcome>;
+    /** Optional: how many completed practice sessions used a match (the edit warning); a program with none leaves it out and the warning is not shown. */
+    countCompletedSessions?(teamId: string, matchId: string): Promise<number>;
   };
   /**
    * Practice sessions (FTC: `programs/ftc/practiceSessions`). The root program has none: its hooks read the root collections themselves

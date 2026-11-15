@@ -17,6 +17,7 @@ import { createMergedFeed, ftcDocToLibraryEvent, ftcDocsToLibraryMatches, ftcMat
 import { LIBRARY_BATCH_SIZE, buildManualMatchDoc, chunk, type CreateEventResult, type ImportSummary, type MatchScores, type LibraryActor, type LibraryEventRef, type LibraryWrite, type ScheduleMatchInput, type UpsertOptions, type UpsertResult } from "@/lib/library/schedule";
 import { validateEventForm, type EventFormInput } from "@/lib/library/event-form";
 import { validateEventCode } from "@/lib/library/ids";
+import { canonicalYouTubeUrl, parseYouTubeUrl } from "@/lib/library/youtube-url";
 import type { EventMatch } from "@/lib/events/types";
 import type { LibraryEvent } from "@/lib/library/store";
 import type { LibraryMatch } from "@/lib/match-library";
@@ -151,7 +152,7 @@ export async function createManualEvent(actor: Actor, input: EventFormInput, sea
     code = generateFtcManualEventCode(input.name, taken);
   }
   const now = new Date().toISOString();
-  const event: LibraryEvent = { eventCode: code, eventName: input.name.trim(), seasonId, origin: "manual", date: input.date.trim() || null, sourceUrl: input.sourceUrl.trim() || null, defaultVideoUrl: null, createdBy: actor.uid, createdAt: now, updatedAt: now, teamId: actor.teamId };
+  const event: LibraryEvent = { eventCode: code, eventName: input.name.trim(), seasonId, origin: "manual", date: input.date.trim() || null, sourceUrl: input.sourceUrl.trim() || null, defaultVideoUrl: normalizeVideoUrl(input.defaultVideoUrl), createdBy: actor.uid, createdAt: now, updatedAt: now, teamId: actor.teamId };
   const batch = writeBatch(db);
   batch.set(programDoc(db, PROGRAM, EVENTS, code), event);
   audit(batch, actor, { op: "create-event", eventCode: code }, null, { eventName: event.eventName, seasonId });
@@ -164,16 +165,12 @@ export async function createManualEvent(actor: Actor, input: EventFormInput, sea
   return { ok: true, event };
 }
 
-/** Deletes a hand-made event and every match under it (batched). Imported events cannot be deleted (the rules refuse it); unpublish them instead. */
-export async function deleteManualEvent(actor: Actor, event: LibraryEvent): Promise<number> {
+/** Deletes a hand-made event that has no matches left (as in the default program: delete its matches first). Imported events cannot be deleted; unpublish them instead. */
+export async function deleteManualEvent(actor: Actor, event: LibraryEvent): Promise<void> {
   if (event.origin !== "manual") throw new Error("Only hand-made events can be deleted. Unpublish an imported event instead.");
   const existing = await readEventMatches(event, actor.teamId);
-  const ids = [...existing.keys()];
+  if (existing.size > 0) throw new Error("Delete this event's matches first.");
   const eventRef = programDoc(db, PROGRAM, EVENTS, event.eventCode);
-  const groups = chunk(ids, LIBRARY_BATCH_SIZE);
-  for (let i = 0; i < groups.length; i++) {
-    await commitMatchOps(actor, groups[i].map((id) => ({ kind: "delete" as const, id })), i === 0 ? { op: "delete-matches", eventCode: event.eventCode, count: ids.length, matchIds: ids.slice(0, 50) } : { op: "delete-matches", eventCode: event.eventCode, continued: true });
-  }
   const batch = writeBatch(db);
   batch.delete(eventRef);
   audit(batch, actor, { op: "delete-event", eventCode: event.eventCode }, { eventName: event.eventName }, null);
@@ -183,7 +180,44 @@ export async function deleteManualEvent(actor: Actor, event: LibraryEvent): Prom
     reportFirestoreError("Couldn't delete the library event", err, eventRef.path);
     throw err;
   }
-  return ids.length;
+}
+
+/** Edits a hand-made event's details; a new name is copied onto the denormalized `eventName` of every match under it (batched). */
+export async function updateManualEvent(actor: Actor, event: LibraryEvent, patch: Pick<EventFormInput, "name" | "date" | "sourceUrl" | "defaultVideoUrl">, matchIds: readonly string[]): Promise<void> {
+  const now = new Date().toISOString();
+  const next = { eventName: patch.name.trim(), date: patch.date.trim() || null, sourceUrl: patch.sourceUrl.trim() || null, defaultVideoUrl: normalizeVideoUrl(patch.defaultVideoUrl), updatedAt: now };
+  const eventRef = programDoc(db, PROGRAM, EVENTS, event.eventCode);
+  const batch = writeBatch(db);
+  batch.update(eventRef, next);
+  audit(batch, actor, { op: "edit-event", eventCode: event.eventCode }, { eventName: event.eventName, date: event.date, sourceUrl: event.sourceUrl, defaultVideoUrl: event.defaultVideoUrl }, next);
+  try {
+    await batch.commit();
+  } catch (err) {
+    reportFirestoreError("Couldn't save the library event", err, eventRef.path);
+    throw err;
+  }
+  if (next.eventName !== event.eventName) {
+    for (const ids of chunk([...matchIds], LIBRARY_BATCH_SIZE)) await commitMatchOps(actor, ids.map((id) => ({ kind: "update" as const, id, data: { eventName: next.eventName, updatedAt: now } })), { op: "rename-event-matches", eventCode: event.eventCode, count: ids.length });
+  }
+}
+
+function normalizeVideoUrl(value: string): string | null {
+  const parsed = parseYouTubeUrl(value);
+  return parsed ? canonicalYouTubeUrl(parsed.videoId) : null;
+}
+
+/** Sets one YouTube link on many matches; each keeps its own start and end times. */
+export function setMatchesVideoLink(actor: Actor, matches: readonly Pick<LibraryMatch, "id" | "video">[], videoId: string): Promise<number> {
+  const now = new Date().toISOString();
+  const youtubeUrl = canonicalYouTubeUrl(videoId);
+  const ops = matches.map((m) => ({ kind: "update" as const, id: m.id, data: { video: { youtubeUrl, startSec: m.video?.startSec ?? null, endSec: m.video?.endSec ?? null }, updatedAt: now } }));
+  return commitMatchOps(actor, ops, { op: "set-video", count: matches.length, matchIds: matches.slice(0, 50).map((m) => m.id) }, { youtubeUrl });
+}
+
+/** Sets or, with null, removes one match's video. */
+export function setMatchVideo(actor: Actor, id: string, video: { youtubeUrl: string; startSec?: number | null; endSec?: number | null } | null): Promise<number> {
+  const now = new Date().toISOString();
+  return commitMatchOps(actor, [{ kind: "update", id, data: { video: video ? { youtubeUrl: video.youtubeUrl, startSec: video.startSec ?? null, endSec: video.endSec ?? null } : null, updatedAt: now } }], { op: "set-video", count: 1, matchIds: [id] }, video);
 }
 
 // --- matches --------------------------------------------------------------------------------------------------------

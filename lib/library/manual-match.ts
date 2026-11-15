@@ -3,7 +3,7 @@ import { MATCH_TYPE_PREFIX } from "@/lib/analytics/game-schema";
 import { getDifficulty, type Difficulty } from "@/lib/difficulty";
 import type { MatchType } from "@/lib/events/types";
 import { libraryMatchId, parseMatchType } from "@/lib/library/ids";
-import { LONG_CLIP_SECONDS, formatTime, parseTimeInput, validateVideoWindow } from "@/lib/library/time";
+import { LONG_CLIP_SECONDS, formatTime, parseTimeInput, toLocalInput, validateVideoWindow } from "@/lib/library/time";
 import { canonicalYouTubeUrl, parseYouTubeUrl } from "@/lib/library/youtube-url";
 import type { LibraryMatch } from "@/lib/match-library";
 
@@ -31,6 +31,8 @@ export type RawMatch = {
   start: string;
   end: string;
   notes: string;
+  /** Only for a program whose hand-made matches carry a scheduled start (`datetime-local` text); absent elsewhere. */
+  scheduledTime?: string;
 };
 
 export type RawField = keyof RawMatch;
@@ -66,7 +68,8 @@ export function teamFieldsFor(size: number = ALLIANCE_SIZE): TeamField[] {
   return [...allianceTeamFields("red", size), ...allianceTeamFields("blue", size)];
 }
 
-export type ManualAlliance = { teams: number[]; score: number; penaltyPoints: number };
+/** `scoreKnown: false` (only when a program allows a blank score) means no official score yet: `score` and `penaltyPoints` are placeholders (0) nobody may show. */
+export type ManualAlliance = { teams: number[]; score: number; penaltyPoints: number; scoreKnown?: false };
 
 export type ValidMatch = {
   matchType: MatchType;
@@ -76,6 +79,8 @@ export type ValidMatch = {
   /** Null when no link was given (admins can add the video later). The times are optional: null = blank (see lib/library/video-window.ts). */
   video: { youtubeUrl: string; startSec: number | null; endSec: number | null } | null;
   notes: string;
+  /** ISO scheduled start, or null; set only when the raw row carried the field. */
+  scheduledTime?: string | null;
 };
 
 export type FieldErrors = Partial<Record<RawField, string>>;
@@ -91,6 +96,8 @@ export type ValidateOptions = {
   defaultMatchType?: MatchType | null;
   /** Robots per alliance to require. Defaults to the configured event's (FRC 3). */
   allianceSize?: number;
+  /** Both scores must be typed (default true: played matches). False: a blank score is "no official score yet" and is never stored as 0. */
+  scoresRequired?: boolean;
 };
 
 function parseWhole(value: string, max: number): number | null {
@@ -135,8 +142,11 @@ export function validateRawMatch(raw: RawMatch, options: ValidateOptions = {}): 
     if (n === null) errors[field] = `${label} must be a whole number from 0 to ${MAX_SCORE}.`;
     return n;
   };
-  const redScore = scoreOf(raw.redScore, "The red score", "redScore");
-  const blueScore = scoreOf(raw.blueScore, "The blue score", "blueScore");
+  const optionalScores = options.scoresRequired === false;
+  const redUnknown = optionalScores && raw.redScore.trim() === "";
+  const blueUnknown = optionalScores && raw.blueScore.trim() === "";
+  const redScore = redUnknown ? 0 : scoreOf(raw.redScore, "The red score", "redScore");
+  const blueScore = blueUnknown ? 0 : scoreOf(raw.blueScore, "The blue score", "blueScore");
   // A blank penalty means 0 (event default).
   const penaltyOf = (value: string, label: string, field: RawField): number | null => {
     if (value.trim() === "") return 0;
@@ -151,6 +161,20 @@ export function validateRawMatch(raw: RawMatch, options: ValidateOptions = {}): 
   }
   if (blueScore !== null && bluePenalty !== null && bluePenalty > blueScore) {
     errors.bluePenalty = "Penalty points are already part of the score, so they can't be more than it.";
+  }
+
+  if (redUnknown && redPenalty) errors.redPenalty = "Enter the red score first, or leave the penalty points blank.";
+  if (blueUnknown && bluePenalty) errors.bluePenalty = "Enter the blue score first, or leave the penalty points blank.";
+
+  // Scheduled start (only for a program whose matches carry one)
+  let scheduledTime: string | null | undefined;
+  if (raw.scheduledTime !== undefined) {
+    scheduledTime = null;
+    if (raw.scheduledTime.trim() !== "") {
+      const ms = Date.parse(raw.scheduledTime);
+      if (Number.isNaN(ms)) errors.scheduledTime = "Use a date and time, or leave it blank.";
+      else scheduledTime = new Date(ms).toISOString();
+    }
   }
 
   // Notes
@@ -190,10 +214,11 @@ export function validateRawMatch(raw: RawMatch, options: ValidateOptions = {}): 
     match: {
       matchType,
       matchNumber,
-      red: { teams: allianceTeamFields("red", allianceSize).map((f) => teams[f]!), score: redScore, penaltyPoints: redPenalty },
-      blue: { teams: allianceTeamFields("blue", allianceSize).map((f) => teams[f]!), score: blueScore, penaltyPoints: bluePenalty },
+      red: { teams: allianceTeamFields("red", allianceSize).map((f) => teams[f]!), score: redScore, penaltyPoints: redPenalty, ...(redUnknown ? { scoreKnown: false as const } : {}) },
+      blue: { teams: allianceTeamFields("blue", allianceSize).map((f) => teams[f]!), score: blueScore, penaltyPoints: bluePenalty, ...(blueUnknown ? { scoreKnown: false as const } : {}) },
       video,
       notes: raw.notes.trim(),
+      ...(scheduledTime !== undefined ? { scheduledTime } : {}),
     },
   };
 }
@@ -202,10 +227,12 @@ export function validateRawMatch(raw: RawMatch, options: ValidateOptions = {}): 
 export function matchToRaw(m: {
   matchType: MatchType;
   matchNumber: number;
-  alliances: { red: { teams: number[]; score: number; penaltyPoints: number }; blue: { teams: number[]; score: number; penaltyPoints: number } };
+  alliances: { red: { teams: number[]; score: number; penaltyPoints: number; scoreKnown?: boolean }; blue: { teams: number[]; score: number; penaltyPoints: number; scoreKnown?: boolean } };
   video: { youtubeUrl: string; startSec?: number | null; endSec?: number | null } | null;
   notes?: string;
-}): RawMatch {
+  scheduledTime?: string | null;
+}, withTime = false): RawMatch {
+  const known = (a: { scoreKnown?: boolean }) => a.scoreKnown !== false;
   return {
     matchType: MATCH_TYPE_PREFIX[m.matchType],
     matchNumber: String(m.matchNumber),
@@ -215,20 +242,21 @@ export function matchToRaw(m: {
     blue1: String(m.alliances.blue.teams[0] ?? ""),
     blue2: String(m.alliances.blue.teams[1] ?? ""),
     blue3: String(m.alliances.blue.teams[2] ?? ""),
-    redScore: String(m.alliances.red.score),
-    blueScore: String(m.alliances.blue.score),
-    redPenalty: String(m.alliances.red.penaltyPoints),
-    bluePenalty: String(m.alliances.blue.penaltyPoints),
+    redScore: known(m.alliances.red) ? String(m.alliances.red.score) : "",
+    blueScore: known(m.alliances.blue) ? String(m.alliances.blue.score) : "",
+    redPenalty: known(m.alliances.red) ? String(m.alliances.red.penaltyPoints) : "",
+    bluePenalty: known(m.alliances.blue) ? String(m.alliances.blue.penaltyPoints) : "",
     youtubeUrl: m.video?.youtubeUrl ?? "",
     start: m.video && typeof m.video.startSec === "number" ? formatTime(m.video.startSec) : "",
     end: m.video && typeof m.video.endSec === "number" ? formatTime(m.video.endSec) : "",
     notes: m.notes ?? "",
+    ...(withTime ? { scheduledTime: toLocalInput(m.scheduledTime) } : {}),
   };
 }
 
 /** A stored library match as the validated shape (for sanity checks against the event's other matches). */
 export function libraryMatchToValid(m: LibraryMatch): ValidMatch {
-  const side = (a: LibraryMatch["alliances"]["red"]): ManualAlliance => ({ teams: [...a.teams], score: a.score, penaltyPoints: a.penaltyPoints });
+  const side = (a: LibraryMatch["alliances"]["red"]): ManualAlliance => ({ teams: [...a.teams], score: a.score, penaltyPoints: a.penaltyPoints, ...(a.scoreKnown === false ? { scoreKnown: false as const } : {}) });
   return { matchType: m.matchType, matchNumber: m.matchNumber, red: side(m.alliances.red), blue: side(m.alliances.blue), video: m.video ? { youtubeUrl: m.video.youtubeUrl, startSec: m.video.startSec ?? null, endSec: m.video.endSec ?? null } : null, notes: m.notes ?? "" };
 }
 
@@ -334,8 +362,10 @@ export function matchWarnings(match: ValidMatch, ctx: { event: Pick<EventRef, "e
   const label = matchLabel(match);
   if (ctx.existingIds.has(id)) warnings.push(`${label} already exists in this event — saving will replace it.`);
 
-  const others = ctx.siblings.filter((s) => manualMatchId(ctx.event, s) !== id).flatMap((s) => [s.red.score, s.blue.score]);
-  for (const [name, score] of [["Red", match.red.score], ["Blue", match.blue.score]] as const) {
+  const others = ctx.siblings.filter((s) => manualMatchId(ctx.event, s) !== id).flatMap((s) => [s.red, s.blue]).filter((a) => a.scoreKnown !== false).map((a) => a.score);
+  for (const [name, side] of [["Red", match.red], ["Blue", match.blue]] as const) {
+    if (side.scoreKnown === false) continue;
+    const score = side.score;
     const outlier = scoreOutlier(score, others);
     if (outlier) warnings.push(`${name} score ${score} is far from this event's other matches (typically ${outlier.low}-${outlier.high}).`);
   }

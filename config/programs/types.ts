@@ -144,5 +144,15 @@ export type ProgramConfig = {
    * The practice difficulty cut-offs of the games this program has that the default program's registry does not know, by game id (upper case):
    * `lib/difficulty.ts` reads them for this program. Absent: the default program's own game table applies.
    */
+  /**
+   * Match Library rules that differ by program (the panel, its dialogs and its tables are shared).
+   * `scoresRequired`: a hand-made match needs both scores (played matches); off, a blank score means "no official score yet" (scheduled matches).
+   * `importKind`: what the events API gives, played matches with scores or a schedule; it only picks the words of the import copy.
+   * `scheduledTime`: hand-made matches may carry a scheduled start time.
+   * `editImportedScores`: an admin may enter the official score of an imported match (off: the API's scores stand).
+   * `backfill`: the one-time "Update library" stamp for documents written before publishing existed.
+   * `placeholderVideoSwitch`, `videoCsv`: tools that write the default program's team document or video map.
+   */
+  library: { scoresRequired: boolean; importKind: "played" | "schedule"; scheduledTime: boolean; editImportedScores: boolean; backfill: boolean; placeholderVideoSwitch: boolean; videoCsv: boolean };
   gameDifficulty?: Readonly<Record<string, { readonly easyMax: number; readonly mediumMax: number }>>;
 };
