@@ -14,7 +14,7 @@ describe("program connection config", () => {
     const connected = [
       "/scout", "/event", "/assignments", "/match-list",
       "/lead-scout-form", "/pit-scout-form", "/team-strategy-form", "/match-strategy-form", "/drive-reflection-form", "/helper-form",
-      "/dashboard", "/my-scouting", "/people", "/team-management", "/account", "/profile", "/credits", "/analytics",
+      "/dashboard", "/my-scouting", "/people", "/team-management", "/account", "/profile", "/achievements", "/credits", "/analytics",
       "/analytics/match-scout", "/analytics/lead-scout", "/analytics/pit-scout", "/analytics/team-strategy", "/analytics/match-strategy", "/analytics/drive-reflection", "/analytics/helper",
       "/practice-scouting", "/scout-accuracy", "/team-settings", "/changelog", "/analytics/pick-list", "/analytics/scout-status", "/analytics/match-breakdown", "/analytics/teams", "/analytics/team-averages", "/analytics/team-breakdown", "/analytics/rankings", "/admin",
       "/events/[eventKey]", "/analytics/performance-reliability", "/analytics/robot-radar",

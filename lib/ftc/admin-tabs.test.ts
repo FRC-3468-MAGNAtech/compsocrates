@@ -4,7 +4,7 @@ import { ADMIN_TAB_IDS } from "@/config/programs/types";
 import { activeAdminTab, resolveAdminTabs } from "@/lib/admin/tabs";
 
 // FRC's Admin Panel tab list as it was before the per-program config (the order of the page's label table).
-const FRC_BEFORE = ["match-library", "forms", "page-access", "sidebar", "submissions", "entries", "sessions", "match-scout-ids", "practice-session-ids", "rescore", "audit-log", "backups", "applications", "templates", "recovery", "platform-changelog", "platform-credits", "setup-check"];
+const FRC_BEFORE = ["match-library", "forms", "page-access", "sidebar", "achievements", "submissions", "entries", "sessions", "match-scout-ids", "practice-session-ids", "rescore", "audit-log", "backups", "applications", "templates", "recovery", "platform-changelog", "platform-credits", "setup-check"];
 const PLATFORM = ["applications", "templates", "recovery", "platform-changelog", "platform-credits"];
 const owner = { isPlatformOwner: true, canManageForms: true };
 const plainAdmin = { isPlatformOwner: false, canManageForms: true };
@@ -20,7 +20,7 @@ describe("admin tab resolver", () => {
 
   it("FTC shows the nine ported tabs in FRC's order (Forms, Sessions, Rescore and Backups are the Batch 5b ones; templates live inside Forms)", () => {
     const ftc = resolveAdminTabs(PROGRAMS.ftc.admin, plainAdmin);
-    expect(ftc).toEqual(["match-library", "forms", "page-access", "sidebar", "submissions", "sessions", "rescore", "audit-log", "backups"]);
+    expect(ftc).toEqual(["match-library", "forms", "page-access", "sidebar", "achievements", "submissions", "sessions", "rescore", "audit-log", "backups"]);
     // the shared tabs keep the order FRC has them in
     const frc = resolveAdminTabs(PROGRAMS.frc.admin, plainAdmin);
     expect(frc.filter((t) => ftc.includes(t))).toEqual(ftc);
