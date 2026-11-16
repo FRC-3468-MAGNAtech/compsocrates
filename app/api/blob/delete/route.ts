@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { blobToken } from "@/lib/server/env";
+import { tokenForBlobUrl } from "@/lib/blob/stores";
+import { classifyBlobError, STORE_ACCESS_MISMATCH, storeAccessMismatchText } from "@/lib/blob/errors";
 import { del } from "@vercel/blob";
 import { getAdminFirestore } from "@/lib/firebase/admin";
 import { verifyBearerToken } from "@/lib/server/require-user";
@@ -17,8 +18,6 @@ const json = (body: Record<string, unknown>, status: number) => NextResponse.jso
  * Blob URLs are public, so the URL alone proves nothing: the check is on the Firebase token and the path's team and uid tag.
  */
 export async function POST(request: Request) {
-  if (!blobToken()) return json({ code: "not-configured", error: "Photo uploads aren't set up on this server." }, 503);
-
   const decoded = await verifyBearerToken(request);
   if (!decoded) return json({ code: "not-signed-in", error: "Not signed in." }, 401);
   const db = getAdminFirestore();
@@ -41,6 +40,11 @@ export async function POST(request: Request) {
   const prefix = PROGRAMS[program].firestorePrefix;
   if (typeof url !== "string" || !url) return json({ code: "bad-request", error: "That request couldn't be read." }, 400);
 
+  // The token is chosen by the URL's host (public store, or the legacy private one for older files); any other host is refused, and a store whose variable is
+  // unset is a 503 naming it. One store's token is never used on another store's file.
+  const choice = tokenForBlobUrl(url);
+  if (!choice.ok) return json({ code: choice.code, error: choice.message }, choice.status);
+
   const decision = await authorizeBlobDelete({
     uid: decoded.uid,
     url,
@@ -57,10 +61,11 @@ export async function POST(request: Request) {
 
   try {
     // Delete by the pathname we validated, not the caller's URL string.
-    await del(decision.pathname);
+    await del(decision.pathname, { token: choice.token });
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("blob delete failed:", err instanceof Error ? err.message : err);
+    if (classifyBlobError(err) === STORE_ACCESS_MISMATCH) return json({ code: STORE_ACCESS_MISMATCH, error: storeAccessMismatchText() }, 502);
     return json({ code: "error", error: "Something went wrong." }, 500);
   }
 }

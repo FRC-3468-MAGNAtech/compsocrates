@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { blobToken } from "@/lib/server/env";
+import { blobStore } from "@/lib/blob/stores";
+import { isStoreAccessMismatch, STORE_ACCESS_MISMATCH, storeAccessMismatchText } from "@/lib/blob/errors";
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { getAdminFirestore } from "@/lib/firebase/admin";
 import { parsePageAccess } from "@/lib/page-access/access";
@@ -23,7 +24,8 @@ const json = (body: Record<string, unknown>, status: number) => NextResponse.jso
  * the signature) and carries no Firebase token, so it is let through to handleUpload without our auth (and does nothing).
  */
 export async function POST(request: Request) {
-  if (!blobToken()) return json({ code: "not-configured", error: "Photo uploads aren't set up on this server." }, 503);
+  const { token, envName } = blobStore("formPhotos");
+  if (!token) return json({ code: "not-configured", error: `Photo uploads aren't set up on this server: set ${envName}.` }, 503);
 
   if (Number(request.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) return json({ code: "too-large", error: "That's too large." }, 413);
   const raw = await request.text().catch(() => "");
@@ -68,6 +70,8 @@ export async function POST(request: Request) {
     const result = await handleUpload({
       request,
       body,
+      // The public store was connected with a custom prefix, so the SDK would not find its token by itself: pass it explicitly.
+      token,
       onBeforeGenerateToken: async (pathname, clientPayload) => {
         const decision = await authorizeBlobUpload({ uid: uid ?? "", pathname, clientPayload, deps: depsFor(parseClientPayload(clientPayload)?.program ?? DEFAULT_PROGRAM) });
         if (!decision.ok) {
@@ -89,6 +93,7 @@ export async function POST(request: Request) {
       return json({ code: d.code, error: d.message }, d.status);
     }
     console.error("blob upload route failed:", err instanceof Error ? err.message : err);
+    if (isStoreAccessMismatch(err)) return json({ code: STORE_ACCESS_MISMATCH, error: storeAccessMismatchText() }, 502);
     return json({ code: "error", error: "Something went wrong." }, 400);
   }
 }
