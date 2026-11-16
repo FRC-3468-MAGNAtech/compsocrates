@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { formatEntryDate } from "@/lib/changelog";
 import { hasUnread, latestVisiblePublishedMs, sortEntries, type PlatformEntry } from "@/lib/platform-changelog/model";
 
 // Session 9, Task 1: characterization tests. They pin how ordering and the unread dot behave TODAY (before the date lock and the posted/edited
@@ -51,5 +52,21 @@ describe("the unread dot today", () => {
     expect(hasUnread([e({ legacy: true, publishedAtMs: 9000 })], "frc", 0, null)).toBe(false);
     expect(hasUnread([e({ status: "draft", publishedAtMs: 9000 })], "frc", 0, null)).toBe(false);
     expect(latestVisiblePublishedMs([e({ legacy: true, publishedAtMs: 9000 })], "frc")).toBeNull();
+  });
+});
+
+describe("tie-break and date display today", () => {
+  it("imported entries have publishedAt == createdAt, so their order among equal dates is the same under either rule (newest first)", () => {
+    const list = [e({ id: "a", legacy: true, createdAtMs: 100, publishedAtMs: 100 }), e({ id: "b", legacy: true, createdAtMs: 900, publishedAtMs: 900 })];
+    expect(ids(list)).toEqual(["b", "a"]);
+  });
+  it("equal dates, equal times: the version (numeric) and then the id decide", () => {
+    expect(ids([e({ id: "a", version: "v2" }), e({ id: "b", version: "v10" })])).toEqual(["b", "a"]);
+  });
+  it("formatEntryDate shows the stored calendar day in UTC, so it never shifts with the viewer's zone, and passes invalid text through", () => {
+    expect(formatEntryDate("2026-11-05")).toBe("Nov 5, 2026");
+    expect(formatEntryDate("2026-01-01")).toBe("Jan 1, 2026");
+    expect(formatEntryDate("2026-02-30")).toBe("2026-02-30");
+    expect(formatEntryDate("")).toBe("");
   });
 });
