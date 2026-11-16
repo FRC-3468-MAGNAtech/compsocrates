@@ -24,4 +24,11 @@ One page and one component set for both; no program-id comparisons added. No FRC
 `npm run lint`: 0 errors, 1 warning (unused `timeZone`, `match-list-screen.tsx:291`, not from this session). `npm test`: 272 files, 3578 tests pass. `npm run build`: passes. No browser or e2e run (not run here); no Playwright for the dropdown scroll.
 
 ## Manual check
-1. Active Events, Analytics, Assignments, Match List: year on every event. 2. Signed out at 360px: FRC and FTC cards visible with no scroll. 3. Signed in: no Log in or Sign up on any marketing page. 4. Admin Panel > Sidebar icon picker and Page Access member picker: scroll on desktop and phone. 5. Analytics: Table and Summary icon beside text. 6. Team setup: Sign out. 7. Footer text and link on several pages, including the scout form's sticky bar. 8. Same pages side by side in /frc and /ftc.
+1. Active Events, Analytics, Assignments, Match List: year on every event.
+2. Signed out at 360px: FRC and FTC cards visible with no scroll.
+3. Signed in: no Log in or Sign up on any marketing page.
+4. Admin Panel > Sidebar icon picker and Page Access member picker: scroll on desktop and phone.
+5. Analytics: Table and Summary icon beside text.
+6. Team setup: Sign out.
+7. Footer text and link on several pages, including the scout form's sticky bar.
+8. Same pages side by side in /frc and /ftc.

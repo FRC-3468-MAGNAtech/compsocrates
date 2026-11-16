@@ -12,5 +12,16 @@
 **FRC issues seen, NOT fixed (your call).** A session rescore resets admins' flag dismissals in FRC; an event rescore with the events API down overwrites recorded accuracies with n/a; a partial FRC rescore now reports a count (new, harmless) instead of the raw error.
 **Verify.** lint 0 errors, 1 warning (`match-list-screen.tsx`, not mine); `npm test` 3337 pass (246 files); `test:rules` 405 pass (7 files); build pass.
 **Left for later:** restore; Entries, ID tools, Setup Check tabs; announcements, sub-ins, applications, Template Review, Recovery; the open 5a changelog bug (FTC drafts seen in FRC) is still unexplained.
-**Manual check (11).** 1) /ftc/admin as admin: nine tabs. 2) Forms: new custom form from the built-in, tag `biobuzz`, publish. 3) Set as active: a form with no Hive/Garden fields is refused; the good one works; Team Settings has no form card; /ftc/scout uses it. 4) Forms > Templates: save a form as a template, use it, delete one. 5) Sessions: earlier practice sessions listed, a no-score one says "No official score", exclude one and it leaves the accuracy average. 6) Rescore: Preview, read counts, Apply; values unchanged, skips counted. 7) Backups: export, open the file: your team only, no joinCode or emails. 8) Audit Log shows these actions. 9) Plain member: /ftc/admin shows no access. 10) /frc/admin Forms, Sessions, Rescore, Backups unchanged. 11) SIDE BY SIDE /frc/admin and /ftc/admin through the shared tabs: layout, controls, wording, empty and error states.
+**Manual check (11).**
+1) /ftc/admin as admin: nine tabs.
+2) Forms: new custom form from the built-in, tag `biobuzz`, publish.
+3) Set as active: a form with no Hive/Garden fields is refused; the good one works; Team Settings has no form card; /ftc/scout uses it.
+4) Forms > Templates: save a form as a template, use it, delete one.
+5) Sessions: earlier practice sessions listed, a no-score one says "No official score", exclude one and it leaves the accuracy average.
+6) Rescore: Preview, read counts, Apply; values unchanged, skips counted.
+7) Backups: export, open the file: your team only, no joinCode or emails.
+8) Audit Log shows these actions.
+9) Plain member: /ftc/admin shows no access.
+10) /frc/admin Forms, Sessions, Rescore, Backups unchanged.
+11) SIDE BY SIDE /frc/admin and /ftc/admin through the shared tabs: layout, controls, wording, empty and error states.
 **Next step:** deploy the `auditLog` rule line, run the manual check, then Group B (merge the two Match Library panels).

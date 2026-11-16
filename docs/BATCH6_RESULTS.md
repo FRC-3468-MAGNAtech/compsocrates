@@ -18,5 +18,15 @@
 
 **Verify.** lint 0 errors, 1 warning (`match-list-screen.tsx`, not mine). `npm test`: 3449 pass, 3 fail, all `brand-guard`: 2 as before (FTC names in 9 tracked doc, test and route files, none mine) and 1 mine: `lib/server/live-program.ts` is in `FTC_ALLOWED` but is not git-tracked until you commit it (passes after the commit). `test:rules` 419/419. build pass.
 **Left for later:** DOM click tests; live and lobby never run against a real stream, `FTC_API_*`, `CRON_SECRET` scheduler or FCM push; FTC solo practice still forces the placeholder video (Batch 3) while the FTC lobby plays a match's own video; the FTC rejoin banner skips closed lobbies.
-**Manual check.** 1) /ftc/practice-scouting: Live and Lobby tiles show, game box disabled. 2) Paste a YouTube link, pick the event (FTC events) and a match, enter two team numbers by hand for an unposted match (2 boxes), pick a robot, scout, submit: "Waiting for official scores". 3) A second account joins from the Presence panel as the partner robot (forced onto the other robot); both submit. 4) Once the FTC API posts the score (or run the poller by hand with the bearer token): both sessions show accuracy, entries show it on Scout Accuracy, a "Scores are available" popup appears. 5) Host a lobby, join with the LB- code from a second account, start (needs an even number, at least 4), submit all, check results and ranking; Play Again; close. 6) Close the tab mid-lobby and reopen: the Rejoin banner appears. 7) A scout of another FTC team cannot join your lobby code. 8) FRC SIDE BY SIDE: run steps 2 to 5 in /frc/practice-scouting and compare tiles, panels, banners, countdown, results, wording, empty and error states. 9) /frc live and lobby still work with 3 robots as before.
+**Manual check.**
+1) /ftc/practice-scouting: Live and Lobby tiles show, game box disabled.
+2) Paste a YouTube link, pick the event (FTC events) and a match, enter two team numbers by hand for an unposted match (2 boxes), pick a robot, scout, submit: "Waiting for official scores".
+3) A second account joins from the Presence panel as the partner robot (forced onto the other robot); both submit.
+4) Once the FTC API posts the score (or run the poller by hand with the bearer token): both sessions show accuracy, entries show it on Scout Accuracy, a "Scores are available" popup appears.
+5) Host a lobby, join with the LB- code from a second account, start (needs an even number, at least 4), submit all, check results and ranking; Play Again; close.
+6) Close the tab mid-lobby and reopen: the Rejoin banner appears.
+7) A scout of another FTC team cannot join your lobby code.
+8) FRC SIDE BY SIDE: run steps 2 to 5 in /frc/practice-scouting and compare tiles, panels, banners, countdown, results, wording, empty and error states.
+9) /frc live and lobby still work with 3 robots as before.
+
 **Next step:** run the 9 checks (steps 4 and 6 need the FTC keys and a deployed or local server), then decide on the optional Batch 7 (applications, announcements, sub-ins) in `docs/FTC_COMPLETION_PLAN.md`.

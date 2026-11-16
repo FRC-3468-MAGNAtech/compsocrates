@@ -18,4 +18,13 @@
 
 **Verify.** lint 0 errors, 1 warning (`match-list-screen.tsx`, not mine). `npm test` 3539/3539 (266 files). `test:rules` 419/419. build passes. tsc clean. Unrelated: `docs/BATCH5B_RESULTS.md` has an uncommitted edit that is not mine (left out).
 **Left for later:** DOM tests of the loaded event page (SSR tests cannot run effects); FTC API payloads still unverified against a real key; FTC event codes repeat across seasons, stored events keep the bare code; FTC alliance-adjusted totals and an EPA radar axis.
-**Manual check (needs real keys: 1, 2).** 1) /ftc/event, open Details on an event: name, dates, status, teams, schedule, rankings; without keys you see the error naming `FTC_API_USERNAME`/`FTC_API_KEY` and the stored name. 2) A finished FTC event says Completed. 3) /ftc/analytics/performance-reliability with a few entries: spot-check one team's average by hand; the role note shows. 4) /ftc/analytics/robot-radar: pick one and two teams; check a Hive number against entries that recorded it, labelled (alliance). 5) No Agility axis or climb plot in FTC, both present in /frc. 6) Both pages in the FTC analytics tab strip and Admin > Sidebar (Analytics). 7) A bad key `/ftc/events/2026lake` gives Event not found. 8) SIDE BY SIDE `/frc/events/2026lake` and `/ftc/events/2025-USCALAB`, then both analytics pages in /frc and /ftc: layout, controls, wording, empty and error states. 9) /frc Robot Radar looks as before.
+**Manual check (needs real keys: 1, 2).**
+1) /ftc/event, open Details on an event: name, dates, status, teams, schedule, rankings; without keys you see the error naming `FTC_API_USERNAME`/`FTC_API_KEY` and the stored name.
+2) A finished FTC event says Completed.
+3) /ftc/analytics/performance-reliability with a few entries: spot-check one team's average by hand; the role note shows.
+4) /ftc/analytics/robot-radar: pick one and two teams; check a Hive number against entries that recorded it, labelled (alliance).
+5) No Agility axis or climb plot in FTC, both present in /frc.
+6) Both pages in the FTC analytics tab strip and Admin > Sidebar (Analytics).
+7) A bad key `/ftc/events/2026lake` gives Event not found.
+8) SIDE BY SIDE `/frc/events/2026lake` and `/ftc/events/2025-USCALAB`, then both analytics pages in /frc and /ftc: layout, controls, wording, empty and error states.
+9) /frc Robot Radar looks as before.

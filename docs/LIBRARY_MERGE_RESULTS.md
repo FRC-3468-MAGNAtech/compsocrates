@@ -11,4 +11,14 @@
 **Rules: NONE changed, nothing to deploy.** Roll back: `git revert` the merge commits (the characterization tests stay).
 **Verify.** lint 0 errors, 1 warning (`match-list-screen.tsx`, not mine). `npm test`: 3383 pass, 2 fail (`brand-guard`, same 7 doc and test files as before this work). `test:rules` 405/405. build pass.
 **Left for later:** video CSV import and the placeholder-video switch for FTC (need program-aware writes); the completed-sessions warning when editing an FTC match; a time field in fast entry and bulk for FTC; select-all toolbar on the Imported tab (Publish all / Unpublish all instead); DOM click tests; the live and lobby alliance size (Batch 6).
-**Manual check.** 1) /frc/admin > Match Library: Imported tab (import an event, publish and unpublish a row, edit a video), Manual tab (add by hand, fast entry, edit, delete). 2) /ftc/admin > Match Library: same layout and dialogs. 3) FTC: New manual event, add two matches by hand (2 team boxes, scores optional), edit one with a score, then blank it. 4) FTC: import an event twice, no duplicates; matches start "Needs review", Publish all. 5) FTC imported row: Score dialog set and clear. 6) FTC: set a video on a match, then check Practice Scouting plays it. 7) Scout match picker and Practice Scouting show published matches in both programs. 8) A non-admin gets no Admin tab. 9) SIDE BY SIDE: open both library tabs and compare layout, buttons, wording, row heights, and the empty state (new account) and error state (offline). 10) FTC: delete an event with matches is refused until they are deleted.
+**Manual check.**
+1) /frc/admin > Match Library: Imported tab (import an event, publish and unpublish a row, edit a video), Manual tab (add by hand, fast entry, edit, delete).
+2) /ftc/admin > Match Library: same layout and dialogs.
+3) FTC: New manual event, add two matches by hand (2 team boxes, scores optional), edit one with a score, then blank it.
+4) FTC: import an event twice, no duplicates; matches start "Needs review", Publish all.
+5) FTC imported row: Score dialog set and clear.
+6) FTC: set a video on a match, then check Practice Scouting plays it.
+7) Scout match picker and Practice Scouting show published matches in both programs.
+8) A non-admin gets no Admin tab.
+9) SIDE BY SIDE: open both library tabs and compare layout, buttons, wording, row heights, and the empty state (new account) and error state (offline).
+10) FTC: delete an event with matches is refused until they are deleted.
