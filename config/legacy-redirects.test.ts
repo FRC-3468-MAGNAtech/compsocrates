@@ -8,6 +8,7 @@ import {
   PAGE_REDIRECTS,
   UNREACHABLE_ROUTES,
   APP_SEGMENTS,
+  PUBLIC_TOO_SEGMENTS,
   toNextRedirects,
 } from "./legacy-redirects";
 
@@ -107,7 +108,10 @@ describe("program prefix redirects", () => {
   it("lists every top-level folder of the signed-in app", () => {
     const dir = path.join(APP_DIR, "(app)", "[program]");
     const folders = readdirSync(dir).filter((n) => statSync(path.join(dir, n)).isDirectory());
-    expect([...APP_SEGMENTS].sort()).toEqual(folders.sort());
+    // `credits` also has a public page at /credits, so it is the one folder that is not redirected (PUBLIC_TOO_SEGMENTS).
+    expect([...APP_SEGMENTS, ...PUBLIC_TOO_SEGMENTS].sort()).toEqual(folders.sort());
+    expect(APP_SEGMENTS).not.toContain("credits");
+    expect(toNextRedirects().some((r) => r.source === "/credits")).toBe(false);
   });
 
   it("sends unprefixed app URLs to /frc and old CS URLs to their /frc page", () => {

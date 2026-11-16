@@ -2,15 +2,11 @@ import { renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_CREDITS } from "@/lib/credits/seed";
 import { CreditsBoard } from "./credits-board";
-import { CreditsEditToggle } from "./credits-edit-toggle";
 
-// FIX4: Credits is a clean normal view for EVERYONE, admins included (identical markup, no controls). An admin
-// gets the editing controls only after pressing "Edit credits" (the `editing` switch, which is never the default);
-// a non-admin never gets any, even if `editing` were forced on. Rendered server-side, the page's first paint.
+// Credits is a clean normal view for EVERYONE (identical markup, no controls). The owner's editor (Admin Panel > Credits) turns the controls on
+// with `admin` + `editing`; a viewer never gets any, even if `editing` were forced on. Rendered server-side, the page's first paint.
 
 const board = (admin: boolean, editing?: boolean) => renderToString(<CreditsBoard sections={DEFAULT_CREDITS} admin={admin} editing={editing} onOp={() => {}} />);
-const toggle = (props: Partial<Parameters<typeof CreditsEditToggle>[0]> = {}) =>
-  renderToString(<CreditsEditToggle canEdit editing={false} unsavedCount={0} onEdit={() => {}} onDone={() => {}} {...props} />);
 
 const CONTROLS = ["Add section", "Add credit", "Rename", "Delete", "Move", "Edit", "Drag"];
 
@@ -44,21 +40,5 @@ describe("Credits normal view", () => {
   it("a non-admin never gets controls, even if editing is somehow on", () => {
     const html = board(false, true);
     for (const label of CONTROLS) expect(html, label).not.toContain(label);
-  });
-});
-
-describe("the Edit credits toggle", () => {
-  it("a non-admin never sees an Edit button (or Done)", () => {
-    const html = toggle({ canEdit: false });
-    expect(html).toBe("");
-    expect(toggle({ canEdit: false, editing: true })).toBe("");
-  });
-
-  it("an admin starts in normal view with an Edit credits button, and sees Done only while editing", () => {
-    expect(toggle()).toContain("Edit credits");
-    expect(toggle()).not.toContain("Done");
-    const editing = toggle({ editing: true });
-    expect(editing).toContain("Done");
-    expect(editing).not.toContain("Edit credits");
   });
 });

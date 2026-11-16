@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Input, Label, Textarea } from "@/components/ui/input";
 import {
   MAX_DESCRIPTION,
+  MAX_SECTION_DESCRIPTION,
   MAX_NAME,
   MAX_SECTION_TITLE,
   normalizeEntryFields,
@@ -15,6 +16,7 @@ import {
   type EntryErrors,
   type EntryFields,
 } from "@/lib/credits/ops";
+import { findUnsafeLinks } from "@/lib/rich-text";
 
 function FieldError({ children }: { children?: string | null }) {
   if (!children) return null;
@@ -30,22 +32,29 @@ export function SectionDialog({
   open,
   onOpenChange,
   initialTitle,
+  initialDescription = "",
   onSave,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** null = adding a new section. */
   initialTitle: string | null;
-  onSave: (title: string) => void;
+  initialDescription?: string;
+  onSave: (title: string, description: string) => void;
 }) {
   const [title, setTitle] = useState(initialTitle ?? "");
+  const [description, setDescription] = useState(initialDescription);
   const [error, setError] = useState<string | null>(null);
+  const [descriptionError, setDescriptionError] = useState<string | null>(null);
 
   const submit = () => {
     const problem = validateSectionTitle(title);
+    const d = description.trim();
+    const dProblem = d.length > MAX_SECTION_DESCRIPTION ? `Keep it under ${MAX_SECTION_DESCRIPTION} characters.` : findUnsafeLinks(d).length > 0 ? "Links must start with https://." : null;
     setError(problem);
-    if (problem) return;
-    onSave(title.trim());
+    setDescriptionError(dProblem);
+    if (problem || dProblem) return;
+    onSave(title.trim(), d);
     onOpenChange(false);
   };
 
@@ -66,6 +75,11 @@ export function SectionDialog({
             <Label htmlFor="credit-section-title">Title</Label>
             <Input id="credit-section-title" autoFocus value={title} maxLength={MAX_SECTION_TITLE} onChange={(e) => setTitle(e.target.value)} aria-invalid={!!error} />
             <FieldError>{error}</FieldError>
+          </div>
+          <div>
+            <Label htmlFor="credit-section-description">Description (optional)</Label>
+            <Textarea id="credit-section-description" rows={2} value={description} maxLength={MAX_SECTION_DESCRIPTION} onChange={(e) => setDescription(e.target.value)} aria-invalid={!!descriptionError} />
+            <FieldError>{descriptionError}</FieldError>
           </div>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>

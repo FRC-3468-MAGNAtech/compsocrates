@@ -188,11 +188,17 @@ export const CS_ROUTE_INVENTORY: string[] = [
 export const PAGE_REDIRECTS: string[] = ["/analytics"];
 
 /**
+ * Segments that exist inside the signed-in app AND at a public path of the same name (`/credits` is the public Credits page; each program has its own
+ * in-app one at `/<program>/credits`). They are deliberately NOT in APP_SEGMENTS, so the unprefixed URL is not redirected to `/frc`.
+ */
+export const PUBLIC_TOO_SEGMENTS: string[] = ["credits"];
+
+/**
  * Top-level segments of the signed-in app (`app/(app)/[program]/`). Every unprefixed URL under one of them was an FRC URL
  * (CS, and this app before programs) and redirects to `/frc/...`. `legacy-redirects.test.ts` fails if a segment is missing.
  */
 export const APP_SEGMENTS: string[] = [
-  "account", "admin", "analytics", "assignments", "changelog", "credits", "dashboard", "drive-reflection-form", "event", "events",
+  "account", "admin", "analytics", "assignments", "changelog", "dashboard", "drive-reflection-form", "event", "events",
   "helper-form", "judge-book", "lead-scout-form", "match-list", "match-strategy-form", "my-scouting", "people", "pit-scout-form",
   "apply-to-team", "practice-scouting", "profile", "scout", "scout-accuracy", "team-management", "team-settings", "team-strategy-form",
 ];

@@ -26,7 +26,7 @@ function useDragSensors() {
 const gripClass = "touch-none cursor-grab rounded-lg p-1.5 text-[var(--muted-foreground)] outline-none hover:text-[var(--foreground)] focus-visible:ring-2 focus-visible:ring-[rgba(var(--glow),0.5)] active:cursor-grabbing";
 
 type Dialogs =
-  | { kind: "section"; key: number; sectionId: string | null; title: string | null }
+  | { kind: "section"; key: number; sectionId: string | null; title: string | null; description: string }
   | { kind: "entry"; key: number; sectionId: string; entry: CreditEntry | null }
   | { kind: "delete-section"; section: CreditSection }
   | { kind: "delete-entry"; section: CreditSection; entry: CreditEntry };
@@ -80,7 +80,7 @@ export function CreditsBoard({ sections, admin: isAdmin, editing = false, onOp }
               open={!collapsed.has(section.id)}
               onToggle={() => toggle(section.id)}
               onOp={onOp}
-              onRename={() => show({ kind: "section", key: counter + 1, sectionId: section.id, title: section.title })}
+              onRename={() => show({ kind: "section", key: counter + 1, sectionId: section.id, title: section.title, description: section.description ?? "" })}
               onDelete={() => show({ kind: "delete-section", section })}
               onAddEntry={() => show({ kind: "entry", key: counter + 1, sectionId: section.id, entry: null })}
               onEditEntry={(entry) => show({ kind: "entry", key: counter + 1, sectionId: section.id, entry })}
@@ -92,7 +92,7 @@ export function CreditsBoard({ sections, admin: isAdmin, editing = false, onOp }
 
       {admin && (
         <div>
-          <Button variant="outline" onClick={() => show({ kind: "section", key: counter + 1, sectionId: null, title: null })}>
+          <Button variant="outline" onClick={() => show({ kind: "section", key: counter + 1, sectionId: null, title: null, description: "" })}>
             <Plus className="h-4 w-4" /> Add section
           </Button>
         </div>
@@ -104,7 +104,13 @@ export function CreditsBoard({ sections, admin: isAdmin, editing = false, onOp }
           open={dialogOpen}
           onOpenChange={setDialogOpen}
           initialTitle={dialog.title}
-          onSave={(title) => onOp(dialog.sectionId === null ? { type: "add-section", id: crypto.randomUUID(), title } : { type: "edit-section", sectionId: dialog.sectionId, title })}
+          initialDescription={dialog.description}
+          onSave={(title, description) => {
+            if (dialog.sectionId !== null) return onOp({ type: "edit-section", sectionId: dialog.sectionId, title, description });
+            const id = crypto.randomUUID();
+            onOp({ type: "add-section", id, title });
+            if (description) onOp({ type: "edit-section", sectionId: id, title, description });
+          }}
         />
       )}
       {dialog?.kind === "entry" && (
@@ -217,6 +223,11 @@ function SectionCard({
           {open && (
             <motion.div id={bodyId} key="body" initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={spring} className="overflow-hidden">
               <div className="pt-4">
+                {section.description && (
+                  <p className="pb-3 text-sm text-[var(--muted-foreground)]">
+                    <RichText text={section.description} />
+                  </p>
+                )}
                 {section.entries.length === 0 ? (
                   <p className="text-sm text-[var(--muted-foreground)]">No credits in this section yet.</p>
                 ) : (

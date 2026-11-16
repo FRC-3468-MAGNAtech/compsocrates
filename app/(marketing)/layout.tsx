@@ -1,5 +1,6 @@
 "use client";
 
+import NextLink from "next/link";
 import Link from "@/components/program/link";
 import { Trophy } from "lucide-react";
 import { HeaderAuthActions } from "@/components/marketing/auth-actions";
@@ -22,6 +23,10 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
           <span className="text-sm font-semibold sm:text-base">{BRAND.name}</span>
         </Link>
         <div className="flex items-center gap-2 sm:gap-3">
+          {/* A plain link on purpose: /credits is the public page, not a program's (the program Link would send it into the app). */}
+          <NextLink href="/credits" className="inline-flex min-h-11 items-center rounded-xl px-3 text-sm font-medium text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]">
+            Credits
+          </NextLink>
           <div className="hidden sm:block">
             <ColorModeToggle compact />
           </div>

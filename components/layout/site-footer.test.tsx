@@ -28,9 +28,11 @@ describe("SiteFooter", () => {
     expect(PLATFORM.footer.teams).toMatch(/ & .* \+ /);
   });
 
-  it("has nothing else: one link only, no donation link", () => {
-    expect(html.match(/<a /g)?.length).toBe(1);
-    expect(html.toLowerCase()).not.toMatch(/donat|credits|changelog|privacy|terms/);
+  it("has two links only: the holder, and a Credits link to the public /credits page (no donation link)", () => {
+    expect(html.match(/<a /g)?.length).toBe(2);
+    expect(html).toContain("href=\"/credits\"");
+    expect(html).toContain(">Credits<");
+    expect(html.toLowerCase()).not.toMatch(/donat|changelog|privacy|terms/);
   });
 
   it("is plain end-of-page content: never fixed or sticky, safe-area padding on phones", () => {
