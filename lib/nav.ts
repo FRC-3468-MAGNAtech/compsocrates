@@ -24,6 +24,7 @@ import {
   Lightbulb,
   HandHelping,
   BookOpen,
+  Award,
 } from "lucide-react";
 
 export type NavItem = {
@@ -55,6 +56,7 @@ export const mainNav: NavItem[] = [
   { id: "my-scouting", href: "/my-scouting", label: "My Scouting", icon: UserCircle },
   { id: "judge-book", href: "/judge-book", label: "Judge Book", icon: BookOpen, matchPrefix: true },
   { id: "people", href: "/people", label: "People", icon: Users },
+  { id: "achievements", href: "/achievements", label: "Achievements", icon: Award },
   { id: "team-management", href: "/team-management", label: "Team Management", icon: UsersRound },
 ];
 

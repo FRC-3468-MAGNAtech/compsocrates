@@ -27,7 +27,7 @@ describe("default layout (no config)", () => {
 
   it("keeps non-form pages (Analytics, Practice Scouting, Judge Book) outside the group, and today's order otherwise", () => {
     const out = resolveSidebar(input());
-    expect(topIds(out.main)).toEqual(["event-selection", "assignments", "dashboard", "match-list", "forms", "analytics", "practice-scouting", "scout-accuracy", "my-scouting", "judge-book", "people", "team-management"]);
+    expect(topIds(out.main)).toEqual(["event-selection", "assignments", "dashboard", "match-list", "forms", "analytics", "practice-scouting", "scout-accuracy", "my-scouting", "judge-book", "people", "achievements", "team-management"]);
     expect(topIds(out.footer)).toEqual(secondaryNav.map((i) => i.id));
   });
 

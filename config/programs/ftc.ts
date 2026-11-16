@@ -64,6 +64,7 @@ export const FTC_PROGRAM: ProgramConfig = {
       "/people",
       "/account",
       "/profile",
+      "/achievements",
       "/credits",
       "/team-management",
       "/analytics",
@@ -95,6 +96,7 @@ export const FTC_PROGRAM: ProgramConfig = {
   // Only the tabs whose data layer is ported, in the shared order. Not listed, so they do not exist here: Entries, the two ID tools, Setup Check and the platform-owner tabs
   // (Team Applications, Template Review, Recovery). The team's own templates live inside the Forms tab (as in the other program), without public sharing.
   admin: { tabs: ["match-library", "forms", "page-access", "sidebar", "submissions", "sessions", "rescore", "audit-log", "backups", "platform-changelog", "platform-credits"], platformSettings: false, templateSharing: false },
+  achievementMetrics: "all",
   multiTeam: true,
   // Team Settings: the season's form is chosen in Admin Panel > Forms (as in the other program); ownership transfer is a root-only server route, so its card is not shown.
   teamSettings: { ownershipTransfer: false },

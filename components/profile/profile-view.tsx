@@ -5,6 +5,7 @@ import { GlassPanel } from "@/components/ui/glass-panel";
 import { ProfileBody } from "@/components/profile/profile-body";
 import { BackLink, ProfileScreen } from "@/components/profile/profile-screen";
 import { ProfileActivitySkeleton, ProfileHeaderSkeleton } from "@/components/profile/profile-sections";
+import { useAchievementConfig, useAchievementItems } from "@/lib/achievements/use-achievements";
 import { useActiveEvents } from "@/lib/active-event";
 import { useAuth } from "@/lib/auth";
 import { eventLabel, withEventYear } from "@/lib/events/names";
@@ -119,7 +120,9 @@ function ProfileFull({ member, profile, teamId, isSelf, canModerate }: { member:
   const statEventCodes = useMemo(() => stats?.events.map((e) => e.eventCode) ?? [], [stats]);
   const statEventNames = useEventNames(statEventCodes);
   const eventName = (code: string) => withEventYear(activeEvents.find((e) => e.code === code)?.name ?? statEventNames[code]?.name ?? eventLabel({ key: code }), code);
-  const ready = stats !== null && targets.loaded && slotsLoaded;
+  const settings = useAchievementConfig(true);
+  const achievements = useAchievementItems(stats?.achievementFacts ?? null, settings.config);
+  const ready = stats !== null && targets.loaded && slotsLoaded && settings.status !== "loading";
 
   // The event whose target to show: the primary active one, when this member is part of it (attending, has entries or a target).
   const target = useMemo(() => {
@@ -135,6 +138,7 @@ function ProfileFull({ member, profile, teamId, isSelf, canModerate }: { member:
       profile={profile}
       isSelf={isSelf}
       stats={ready ? stats : null}
+      achievements={ready ? achievements : null}
       nowMs={nowMs}
       eventName={eventName}
       target={target}

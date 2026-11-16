@@ -5,6 +5,7 @@ import { Eraser } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { ProfileActivity, ProfileActivitySkeleton, ProfileHeader } from "@/components/profile/profile-sections";
+import type { AchievementItem } from "@/lib/achievements/view";
 import type { ProfileDoc } from "@/lib/profile/model";
 import type { EventTargetProgress, ProfileStats } from "@/lib/profile/stats";
 import type { TeamMember } from "@/lib/team-members";
@@ -19,6 +20,7 @@ export function ProfileBody({
   profile,
   isSelf,
   stats,
+  achievements,
   nowMs,
   eventName,
   target,
@@ -31,6 +33,8 @@ export function ProfileBody({
   isSelf: boolean;
   /** null while the team's scouting data loads. */
   stats: ProfileStats | null;
+  /** The team's achievements for this person (settings applied); omitted: the built-in ones. */
+  achievements?: AchievementItem[] | null;
   nowMs: number;
   eventName: (code: string) => string;
   target: EventTargetProgress | null;
@@ -75,7 +79,7 @@ export function ProfileBody({
           ) : null
         }
       />
-      {stats ? <ProfileActivity stats={stats} eventName={eventName} target={target} targetEventName={targetEventName} /> : <ProfileActivitySkeleton />}
+      {stats ? <ProfileActivity stats={stats} eventName={eventName} target={target} targetEventName={targetEventName} achievements={achievements} isSelf={isSelf} /> : <ProfileActivitySkeleton />}
 
       <Dialog open={confirming} onOpenChange={(v) => !busy && setConfirming(v)}>
         <DialogContent className="w-[min(94vw,460px)]">

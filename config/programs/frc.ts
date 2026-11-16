@@ -39,6 +39,7 @@ export const FRC_PROGRAM: ProgramConfig = {
   },
   // Today's Admin Panel, unchanged: every tab, in this order (the platform-owner tabs and Forms are still gated by who is looking).
   admin: { tabs: ADMIN_TAB_IDS, platformSettings: true, templateSharing: true },
+  achievementMetrics: "all",
   multiTeam: false,
   // Team Settings: FRC's page is unchanged (its form choice lives in Admin Panel > Forms, its ownership transfer is the root route's).
   teamSettings: { ownershipTransfer: true },

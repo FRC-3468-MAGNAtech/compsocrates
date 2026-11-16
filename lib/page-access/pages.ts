@@ -35,6 +35,7 @@ export const PAGES: PageDef[] = [
   { id: "practice-scouting", title: "Practice Scouting", routes: ["/practice-scouting"], access: "open", defaultRoles: [] },
   { id: "my-scouting", title: "My Scouting", routes: ["/my-scouting"], access: "open", defaultRoles: [] },
   { id: "people", title: "People", routes: ["/people", "/profile"], access: "open", defaultRoles: [] },
+  { id: "achievements", title: "Achievements", routes: ["/achievements"], access: "open", defaultRoles: [] },
   { id: "changelog", title: "Changelog", routes: ["/changelog"], access: "open", defaultRoles: [] },
   { id: "credits", title: "Credits", routes: ["/credits"], access: "open", defaultRoles: [] },
   { id: "account-settings", title: "Account Settings", routes: ["/account"], access: "open", defaultRoles: [] },

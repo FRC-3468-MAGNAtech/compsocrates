@@ -12,7 +12,7 @@ import { ROLES, type RoleId } from "@/lib/roles";
 const user = (over: Partial<AccessUser> = {}): AccessUser => ({ uid: "u1", isAdmin: false, isOwner: false, primaryRole: "match-scout", secondaryRoles: [], ...over });
 const ids = (u: AccessUser, cfg?: PageAccessConfig | null) => accessiblePages(u, cfg).map((p) => p.id);
 
-const OPEN = ["dashboard", "match-scout-form", "analytics", "practice-scouting", "my-scouting", "people", "changelog", "credits", "account-settings", "match-list", "event-details", "judge-book"];
+const OPEN = ["dashboard", "match-scout-form", "analytics", "practice-scouting", "my-scouting", "people", "achievements", "changelog", "credits", "account-settings", "match-list", "event-details", "judge-book"];
 const ALL = PAGES.map((p) => p.id);
 
 /** What each role opens beyond the open pages, with no stored config. */

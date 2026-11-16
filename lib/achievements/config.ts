@@ -3,7 +3,7 @@ import { BUILTIN_ACHIEVEMENTS, BUILTIN_IDS } from "./builtins";
 import type { AchievementDefinition, AchievementScope } from "./engine";
 import { isMetricId, METRICS, metricsForProgram, type MetricId } from "./metrics";
 
-// Session 8: a team's achievement settings (`teams/{teamId}/achievementConfig/main`, FTC: the program path) and the ONE resolver that turns
+// Session 8: a team's achievement settings (`teams/{teamId}/achievementConfig/main`, the other program: its own path) and the ONE resolver that turns
 // them into the list the pages show. Pure. The document is written only by the server route (Admin SDK), which validates with
 // validateConfigInput(); the readers here are lenient (a bad entry is dropped, never thrown on), so a stored mistake cannot break a profile.
 

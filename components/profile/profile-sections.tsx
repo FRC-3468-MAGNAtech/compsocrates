@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "@/components/program/link";
-import { CalendarCheck, Flag, Flame, Layers, Lock, Medal, ShieldCheck, Sparkles, Target, Trophy, type LucideIcon } from "lucide-react";
+import { Flame, Lock, ShieldCheck } from "lucide-react";
+import { AchievementsCompact } from "@/components/achievements/achievements-view";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { GlassPanel } from "@/components/ui/glass-panel";
@@ -12,7 +13,8 @@ import { getPercentColor } from "@/lib/accuracy/engine";
 import type { ProfileDoc } from "@/lib/profile/model";
 import { headerName } from "@/lib/profile/model";
 import { monthYear, relativeTime } from "@/lib/profile/format";
-import type { BadgeResult } from "@/lib/profile/badges";
+import { EMPTY_ACHIEVEMENT_CONFIG } from "@/lib/achievements/config";
+import { buildItems, type AchievementItem } from "@/lib/achievements/view";
 import type { CategoryStat, EventEntries, EventTargetProgress, ProfileStats } from "@/lib/profile/stats";
 import { getRole, ROLES } from "@/lib/roles";
 import type { ScoutCategory } from "@/lib/scout-stats/types";
@@ -251,45 +253,23 @@ function EventsSection({ events, eventName, target, targetEventName }: { events:
   );
 }
 
-const BADGE_ICONS: Record<string, LucideIcon> = { flag: Flag, layers: Layers, medal: Medal, target: Target, sparkles: Sparkles, flame: Flame, calendar: CalendarCheck, trophy: Trophy };
-
-function BadgesSection({ badges }: { badges: BadgeResult[] }) {
-  const earned = badges.filter((b) => b.earned).length;
-  return (
-    <section aria-label="Achievements" className="flex flex-col gap-3">
-      <SectionTitle hint={<span className="text-xs text-[var(--muted-foreground)]">{earned} of {badges.length}</span>}>Achievements</SectionTitle>
-      <GlassPanel>
-        {earned === 0 && (
-          <p data-testid="profile-no-badges" className="mb-3 text-sm text-[var(--muted-foreground)]">
-            No achievements yet — they appear as practice and events add up.
-          </p>
-        )}
-        <ul data-testid="profile-badges" className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {badges.map(({ badge, earned: isEarned }) => {
-            const Icon = BADGE_ICONS[badge.icon] ?? Medal;
-            return (
-              <li
-                key={badge.id}
-                data-testid={`badge-${badge.id}`}
-                data-earned={isEarned}
-                title={badge.description}
-                className={cn("glass-card flex flex-col items-center gap-1.5 p-3 text-center", !isEarned && "border border-dashed border-[var(--glass-border)] text-[var(--muted-foreground)]")}
-              >
-                <span className={cn("flex h-10 w-10 items-center justify-center rounded-full", isEarned ? "text-[var(--color-primary-foreground)]" : "bg-black/5 text-[var(--muted-foreground)] dark:bg-white/10")} style={isEarned ? { background: "var(--theme-gradient)" } : undefined}>
-                  <Icon className="h-5 w-5" aria-hidden />
-                </span>
-                <span className="text-xs font-medium">{badge.label}</span>
-                <span className="sr-only">{isEarned ? "Earned." : "Not earned yet."} {badge.description}</span>
-              </li>
-            );
-          })}
-        </ul>
-      </GlassPanel>
-    </section>
-  );
-}
-
-export function ProfileActivity({ stats, eventName, target, targetEventName }: { stats: ProfileStats; eventName: (code: string) => string; target: EventTargetProgress | null; targetEventName: string | null }) {
+export function ProfileActivity({
+  stats,
+  eventName,
+  target,
+  targetEventName,
+  achievements,
+  isSelf = true,
+}: {
+  stats: ProfileStats;
+  eventName: (code: string) => string;
+  target: EventTargetProgress | null;
+  targetEventName: string | null;
+  /** The achievements to show (the team's settings applied); without them the built-in ones from the stats. */
+  achievements?: AchievementItem[] | null;
+  /** Whose profile this is: only its owner sees progress and the unearned ones. */
+  isSelf?: boolean;
+}) {
   return (
     <div className="flex flex-col gap-6" data-testid="profile-activity">
       <AccuracyCards categories={stats.categories} />
@@ -297,7 +277,7 @@ export function ProfileActivity({ stats, eventName, target, targetEventName }: {
         <PracticeSection stats={stats} />
         <EventsSection events={stats.events} eventName={eventName} target={target} targetEventName={targetEventName} />
       </div>
-      <BadgesSection badges={stats.badges} />
+      <AchievementsCompact items={achievements ?? buildItems(EMPTY_ACHIEVEMENT_CONFIG, stats.achievementFacts, "all")} isSelf={isSelf} />
     </div>
   );
 }

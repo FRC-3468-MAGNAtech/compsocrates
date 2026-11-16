@@ -244,7 +244,7 @@ describe("facts from profile data (both programs' shapes)", () => {
     expect(f["scout-entries"]?.all.value).toBe(3);
     expect(f["scout-entries"]?.season?.value).toBe(2);
   });
-  it("FTC event keys (season start year): events attended and entries in the current season", () => {
+  it("season-code event keys (season start year): events attended and entries in the current season", () => {
     const f = run({
       entries: [entry("a", { eventCode: "2025-USCALAB" }), entry("b", { eventCode: "2024-USCALAB" })],
       attendance: [att("2025-USCALAB"), att("2024-USCALAB")],

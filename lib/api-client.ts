@@ -20,7 +20,7 @@ export class ApiError extends Error {
  * way lib/team-enrollment.ts does, but keeping the status, `code` and `fields` so callers can react to a specific
  * refusal ("email-unverified", "reauth-required", ...). Throws ApiError on any non-2xx or `{ ok: false }` answer.
  */
-export async function authedApi<T = Record<string, unknown>>(path: string, init: { method?: "GET" | "POST"; body?: unknown; timeoutMs?: number } = {}): Promise<T> {
+export async function authedApi<T = Record<string, unknown>>(path: string, init: { method?: "GET" | "POST" | "PUT" | "DELETE"; body?: unknown; timeoutMs?: number } = {}): Promise<T> {
   if (!auth.currentUser) throw new ApiError("Not signed in.", 401, "not-signed-in", null);
   const idToken = await auth.currentUser.getIdToken();
   const method = init.method ?? (init.body === undefined ? "GET" : "POST");

@@ -130,6 +130,8 @@ export type ProgramAdmin = {
 
 export type ProgramConfig = {
   id: ProgramId;
+  /** Session 8: the measures an achievement may use here (ids in lib/achievements/metrics.ts). Missing means all. */
+  achievementMetrics?: "all" | readonly string[];
   brand: ProgramBrand;
   event: ProgramEventRules;
   /**

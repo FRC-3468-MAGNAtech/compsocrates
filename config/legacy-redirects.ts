@@ -198,7 +198,7 @@ export const PUBLIC_TOO_SEGMENTS: string[] = ["credits"];
  * (CS, and this app before programs) and redirects to `/frc/...`. `legacy-redirects.test.ts` fails if a segment is missing.
  */
 export const APP_SEGMENTS: string[] = [
-  "account", "admin", "analytics", "assignments", "changelog", "dashboard", "drive-reflection-form", "event", "events",
+  "account", "achievements", "admin", "analytics", "assignments", "changelog", "dashboard", "drive-reflection-form", "event", "events",
   "helper-form", "judge-book", "lead-scout-form", "match-list", "match-strategy-form", "my-scouting", "people", "pit-scout-form",
   "apply-to-team", "practice-scouting", "profile", "scout", "scout-accuracy", "team-management", "team-settings", "team-strategy-form",
 ];
