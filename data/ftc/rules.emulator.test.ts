@@ -17,7 +17,6 @@ import { ftcJoinRequestDoc, ftcNewTeamDocs } from "@/data/ftc/enrollment";
 import { ftcApprovedProfileDoc, ftcJoinDecisionFields } from "@/data/ftc/join-request-docs";
 import { programPath } from "@/lib/firebase/paths";
 import { ftcAccountTeamsFields as fieldTeamsFields } from "@/data/ftc/teams";
-import { FTC_STARTER_ENTRIES } from "@/lib/ftc/changelog-seed";
 import { ftcMatchId, planScheduleImport } from "@/lib/ftc/library";
 import { buildManualMatchDoc } from "@/lib/library/schedule";
 import { tryClaimDoc } from "@/lib/claim-doc";
@@ -25,6 +24,11 @@ import { ftcSessionStub } from "@/lib/ftc/practice";
 import { lobbyStub } from "@/lib/ftc/lobby";
 import type { EventMatch } from "@/lib/events/types";
 import type { SaveEntryInput, ScoutEntry } from "@/lib/scout-entries";
+// The first-visit seed no longer runs in the app (Session 7); the rules still accept it, so the test keeps a small synthetic fixture.
+const FTC_STARTER_ENTRIES = [
+  { key: "v0-a", version: "v0.1", title: "Synthetic starter A", date: "2026-01-01", summary: "", changes: [{ type: "new", text: "synthetic" }] },
+  { key: "v0-b", version: "v0.2", title: "Synthetic starter B", date: "2026-01-02", summary: "", changes: [{ type: "new", text: "synthetic" }] },
+];
 
 // The FTC data layer against the real firestore.rules (the `programs/ftc` block), in the Firestore emulator: the documents it writes are accepted, and
 // every query it makes (the same shapes as data/ftc/read.ts, whose constraints data/ftc/read.test.ts pins) is one the rules allow: only the account's
