@@ -1,7 +1,10 @@
-import { EVENT_VETERAN_EVENTS, STREAK_BADGE_DAYS } from "@/lib/profile/config";
+import { BUILTIN_ACHIEVEMENTS } from "@/lib/achievements/builtins";
+import { evaluate } from "@/lib/achievements/engine";
+import type { AchievementFacts } from "@/lib/achievements/metrics";
 
-// P25: achievements. Computed in the browser from data that already exists (no collection, nothing stored), from
-// this one list. To add or retune a badge, edit BADGES; the profile renders whatever it returns.
+// P25 / Session 8: the profile's built-in achievements. The thresholds now live in ONE place, lib/achievements/builtins.ts (definitions
+// the engine evaluates); this module keeps the profile's original shape (BadgeFacts, BADGES, computeBadges) on top of it, so what a person
+// has earned is exactly what it was (pinned by badges-characterization.test.ts). Computed in the browser; nothing is stored.
 
 /** The facts badges are computed from — gathered once by computeProfileStats(). */
 export type BadgeFacts = {
@@ -21,21 +24,32 @@ export type BadgeDef = {
   id: string;
   label: string;
   description: string;
-  /** A glyph name the profile knows (components/profile/profile-badges.tsx). */
+  /** A glyph name the profile knows (components/achievements/achievement-icon.tsx). */
   icon: string;
   earned: (f: BadgeFacts) => boolean;
 };
 
-export const BADGES: BadgeDef[] = [
-  { id: "first-session", label: "First Session", description: "Completed a first practice session.", icon: "flag", earned: (f) => f.sessionCount >= 1 },
-  { id: "ten-sessions", label: "10 Sessions", description: "Completed 10 practice sessions.", icon: "layers", earned: (f) => f.sessionCount >= 10 },
-  { id: "fifty-sessions", label: "50 Sessions", description: "Completed 50 practice sessions.", icon: "medal", earned: (f) => f.sessionCount >= 50 },
-  { id: "perfect-session", label: "100% Session", description: "A practice session at 100% accuracy.", icon: "target", earned: (f) => f.bestSessionAccuracy !== null && Math.round(f.bestSessionAccuracy) >= 100 },
-  { id: "excellent", label: "Excellent status", description: "Excellent accuracy status in a category.", icon: "sparkles", earned: (f) => f.hasExcellentStatus },
-  { id: "streak", label: `${STREAK_BADGE_DAYS}-Day Streak`, description: `Practiced ${STREAK_BADGE_DAYS} days in a row.`, icon: "flame", earned: (f) => f.longestStreakDays >= STREAK_BADGE_DAYS },
-  { id: "event-veteran", label: "Event Veteran", description: `Attended ${EVENT_VETERAN_EVENTS} or more events.`, icon: "calendar", earned: (f) => f.eventsAttended >= EVENT_VETERAN_EVENTS },
-  { id: "perfect-alliance", label: "Perfect Alliance", description: "A Real Event alliance scouted at 100% accuracy.", icon: "trophy", earned: (f) => f.hasPerfectAlliance },
-];
+const all = (value: number | null, samples = value === null ? 0 : 1) => ({ all: { value, samples }, season: null });
+
+/** The same facts in the engine's shape (only what the eight built-ins read). */
+export function factsFromBadgeFacts(f: BadgeFacts): AchievementFacts {
+  return {
+    "practice-sessions": all(f.sessionCount, f.sessionCount),
+    "best-accuracy": all(f.bestSessionAccuracy === null ? null : Math.round(f.bestSessionAccuracy)),
+    "excellent-categories": all(f.hasExcellentStatus ? 1 : 0),
+    "longest-streak": all(f.longestStreakDays),
+    "events-attended": all(f.eventsAttended),
+    "perfect-entries": all(f.hasPerfectAlliance ? 1 : 0),
+  };
+}
+
+export const BADGES: BadgeDef[] = BUILTIN_ACHIEVEMENTS.map((def) => ({
+  id: def.id,
+  label: def.name,
+  description: def.description,
+  icon: def.icon,
+  earned: (f) => evaluate(def, factsFromBadgeFacts(f))?.earned === true,
+}));
 
 export type BadgeResult = { badge: BadgeDef; earned: boolean };
 

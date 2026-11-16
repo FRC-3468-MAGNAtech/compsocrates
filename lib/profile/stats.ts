@@ -2,6 +2,7 @@ import type { EventAttendance } from "@/lib/event-attendance";
 import { canonicalEventKey, seasonOfEventKey, type EventKeyShape } from "@/lib/events/event-key";
 import type { LibraryMatch } from "@/lib/match-library";
 import type { PracticeSession } from "@/lib/practice-sessions";
+import type { AchievementFacts, MetricValue } from "@/lib/achievements/metrics";
 import { computeBadges, type BadgeResult } from "@/lib/profile/badges";
 import { RECENT_SESSIONS_SHOWN } from "@/lib/profile/config";
 import { currentStreak, longestStreak } from "@/lib/profile/streak";
@@ -35,6 +36,8 @@ export type ProfileStats = {
   /** The latest session or entry activity (ms), or null when there's none. */
   lastActiveMs: number | null;
   badges: BadgeResult[];
+  /** Session 8: the numbers achievements are measured on (the built-ins above are evaluated from the same facts). */
+  achievementFacts: AchievementFacts;
 };
 
 export type ProfileStatsInput = {
@@ -53,6 +56,16 @@ export type ProfileStatsInput = {
 };
 
 const isRealEntry = (e: ScoutEntry) => e.source === "event" || e.source === "live";
+
+// The three badge computations, lifted out of computeProfileStats unchanged so the built-in achievements and the metrics share them.
+/** Highest accuracy (0-100) over non-excluded completed sessions, or null. */
+export const bestAccuracyOf = (accuracies: number[]): number | null => (accuracies.length > 0 ? Math.max(...accuracies) : null);
+/** How many categories are at Excellent status. */
+export const excellentCategoryCount = (categories: CategoryStat[]): number => categories.filter((c) => c.detail?.status?.id === "excellent").length;
+/** Entries whose complete alliance accuracy is 100% (rounded). */
+export const perfectEntryCount = (ownEntries: ScoutEntry[]): number =>
+  ownEntries.filter((e) => e.accuracy?.status === "complete" && e.accuracy.value !== null && Math.round(e.accuracy.value * 100) >= 100).length;
+const measured = (value: number | null, samples: number): MetricValue => ({ value, samples });
 
 export function computeProfileStats(input: ProfileStatsInput): ProfileStats {
   const { uid, members, sessions, entries, libraryMatchesById, attendance } = input;
@@ -102,17 +115,35 @@ export function computeProfileStats(input: ProfileStatsInput): ProfileStats {
   const lastActiveMs = activity.length > 0 ? Math.max(...activity) : null;
 
   const nonExcludedAccuracies = ownCompleted.filter((s) => !s.excluded && s.accuracy !== null).map((s) => s.accuracy as number);
+  const bestAccuracy = bestAccuracyOf(nonExcludedAccuracies);
+  const excellentCount = excellentCategoryCount(categories);
+  const perfectCount = perfectEntryCount(ownEntries);
   const badges = computeBadges({
     sessionCount: ownCompleted.length,
-    bestSessionAccuracy: nonExcludedAccuracies.length > 0 ? Math.max(...nonExcludedAccuracies) : null,
-    hasExcellentStatus: categories.some((c) => c.detail?.status?.id === "excellent"),
+    bestSessionAccuracy: bestAccuracy,
+    hasExcellentStatus: excellentCount > 0,
     longestStreakDays: longest,
     // Achievements stay all-time: the card shows one season, but an earned badge is not taken back by a new season.
     eventsAttended: attendedKeys.length,
-    hasPerfectAlliance: ownEntries.some((e) => e.accuracy?.status === "complete" && e.accuracy.value !== null && Math.round(e.accuracy.value * 100) >= 100),
+    hasPerfectAlliance: perfectCount > 0,
   });
 
-  return { categories, recentSessions, sessionCount: ownCompleted.length, streak, longestStreak: longest, events, lastActiveMs, badges };
+  // Season scope (only with an event scope): the Events card's own list, and entries whose event key is in the shown season.
+  const seasonEntryCount = scope ? ownEntries.filter((e) => seasonOfEventKey(scope.keyShape, canon(e.eventCode)) === scope.season).length : 0;
+  const mean = nonExcludedAccuracies.length > 0 ? nonExcludedAccuracies.reduce((a, b) => a + b, 0) / nonExcludedAccuracies.length : null;
+  const achievementFacts: AchievementFacts = {
+    "practice-sessions": { all: measured(ownCompleted.length, ownCompleted.length), season: null },
+    "longest-streak": { all: measured(longest, ownCompleted.length), season: null },
+    "events-attended": { all: measured(attendedKeys.length, attendedKeys.length), season: scope ? measured(events.length, events.length) : null },
+    "scout-entries": { all: measured(ownEntries.length, ownEntries.length), season: scope ? measured(seasonEntryCount, seasonEntryCount) : null },
+    "best-accuracy": { all: measured(bestAccuracy === null ? null : Math.round(bestAccuracy), nonExcludedAccuracies.length), season: null },
+    // The same Math.round the status tiers use, so "90" here means Excellent there. A session with no accuracy is not in the list, so it is never a 0.
+    "average-accuracy": { all: measured(mean === null ? null : Math.round(mean), nonExcludedAccuracies.length), season: null },
+    "excellent-categories": { all: measured(excellentCount, 3), season: null },
+    "perfect-entries": { all: measured(perfectCount, ownEntries.length), season: null },
+  };
+
+  return { categories, recentSessions, sessionCount: ownCompleted.length, streak, longestStreak: longest, events, lastActiveMs, badges, achievementFacts };
 }
 
 export type EventTargetProgress = {
