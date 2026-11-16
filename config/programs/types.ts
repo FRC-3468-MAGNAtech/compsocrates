@@ -102,6 +102,7 @@ export const ADMIN_TAB_IDS = [
   "forms",
   "page-access",
   "sidebar",
+  "achievements",
   "submissions",
   "entries",
   "sessions",

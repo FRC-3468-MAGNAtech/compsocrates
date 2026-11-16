@@ -61,6 +61,7 @@ const FTC_ALLOWED: Record<string, string> = {
   "app/api/ftc/team/request-join/route.ts": "the server route for asking to join an FTC team; hands the call to the FTC-scoped server module",
   "app/api/ftc/team/sync-field-teams/route.ts": "the server route for Team Settings of an FTC account; hands the call to the FTC-scoped server module",
   "app/api/ftc/team/sync-field-teams/route.test.ts": "tests that route's token checks and an admin success",
+  "app/api/achievements/achievements.routes.test.ts": "tests the achievement settings routes for both program ids (their own paths, admin checks): program ids as data in paths",
   "app/api/platform/platform.routes.test.ts": "tests the platform changelog and credits routes: entries are tagged with program ids as data (frc, ftc), nothing else names a program",
   "lib/platform-changelog/model.test.ts": "tests the platform changelog model: program tags are data (ids), the default view and the unread rule per program id",
   "components/changelog/entry-card.test.tsx": "renders the one changelog card for program-tagged items (the program badge) under each program id",

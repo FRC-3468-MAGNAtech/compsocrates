@@ -29,6 +29,7 @@ import { activeAdminTab, resolveAdminTabs } from "@/lib/admin/tabs";
 import type { AdminTabId } from "@/config/programs/types";
 import { usePendingApplicationCount } from "@/lib/applications-client";
 import { SidebarPanel } from "@/components/admin/sidebar-panel";
+import { AchievementsPanel } from "@/components/admin/achievements-panel";
 import { AdminsSeeProfilesSetting } from "@/components/admin/admins-see-profiles-setting";
 import { PlatformChangelogPanel } from "@/components/admin/platform-changelog-panel";
 import { PlatformCreditsPanel } from "@/components/admin/platform-credits-panel";
@@ -43,6 +44,8 @@ const TAB_LABELS: Record<AdminTab, string> = {
   "page-access": "Page Access",
   // Session F: arrange the sidebar for the team (admins only: this whole panel is admin-only)
   sidebar: "Sidebar",
+  // Session 8: rename built-in achievements, make the team's own (admins only: this whole panel is admin-only)
+  achievements: "Achievements",
   // Session E: close new submissions for every form, or for one season's forms (team admins and owners)
   submissions: "Form Submissions",
   // Session E: every entry of every form, with Edit
@@ -163,6 +166,7 @@ export default function AdminPanelPage() {
       {tab === "forms" && can("manageForms") && <FormsPanel onOpenRescore={() => setTab("rescore")} />}
       {tab === "page-access" && <PageAccessPanel />}
       {tab === "sidebar" && <SidebarPanel />}
+      {tab === "achievements" && <AchievementsPanel />}
       {tab === "submissions" && <SubmissionControlsPanel />}
       {tab === "entries" && <EntriesPanel />}
       {tab === "sessions" && <SessionsPanel />}

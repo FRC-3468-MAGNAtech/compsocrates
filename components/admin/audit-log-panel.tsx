@@ -49,6 +49,8 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   "template-reviewed": "Template Reviewed (platform)",
   "clear-profile-text": "Cleared Profile Bio / Pronouns",
   "edit-page-access": "Edit Page Access",
+  "edit-achievements": "Edit Achievements",
+  "remove-member-photo": "Remove Member Photo",
   "decide-page-access-request": "Decide Page Access Request",
   "edit-sidebar": "Edit Sidebar",
   "edit-form-entry": "Edit Form Entry",

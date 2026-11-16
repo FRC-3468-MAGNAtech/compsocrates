@@ -65,7 +65,10 @@ export type AuditAction =
   | "edit-form-entry"
   // Batch 5a: the account's teams (add, rename, remove) and which of them a member is assigned to
   | "edit-account-teams"
-  | "edit-member-teams";
+  | "edit-member-teams"
+  // Session 8: a team admin changed the team's achievements (renamed or hid a built-in, made or edited a custom one) or removed a member's uploaded photo
+  | "edit-achievements"
+  | "remove-member-photo";
 
 export type AuditLogEntry = {
   id: string;
