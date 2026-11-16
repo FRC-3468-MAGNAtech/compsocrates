@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { seasonRangeLabel } from "@/lib/events/event-key";
+import { eventGamesOf, gameNameOfSeason } from "@/lib/events/event-games";
 import { eventTitle } from "@/lib/events/names";
 import { AnimatePresence, motion } from "framer-motion";
 import { AlertTriangle, Check, CheckCircle2, Clock, MapPin, RefreshCw, Star, Users } from "lucide-react";
@@ -66,7 +66,10 @@ export default function EventSelectionPage() {
   // The program picks the season range (its current game), the events API it asks, and where the selection is saved.
   const program = useProgram();
   const { event: eventRules } = useProgramConfig();
-  const { selectableApiSeasons: seasons, defaultApiSeason } = useForms();
+  const { allSeasons, defaultApiSeason } = useForms();
+  // Events are sorted by GAME, not by year: one entry per game the program has events for (its scouted games plus the others its config names), newest first.
+  const games = useMemo(() => eventGamesOf(allSeasons, eventRules.otherGames), [allSeasons, eventRules.otherGames]);
+  const gameName = (s: number) => gameNameOfSeason(games, s) ?? String(s);
   const [season, setSeason] = useState(defaultApiSeason);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<EventStatusFilter>("all");
@@ -197,15 +200,13 @@ export default function EventSelectionPage() {
             className="flex-1"
           />
           <Select value={String(season)} onValueChange={(v) => setSeason(Number(v))}>
-            <SelectTrigger className="sm:w-36">
-              <SelectValue>
-                {seasonRangeLabel(eventRules.seasonKind, season)}
-              </SelectValue>
+            <SelectTrigger className="sm:w-44" aria-label="Game">
+              <SelectValue>{gameName(season)}</SelectValue>
             </SelectTrigger>
             <SelectContent>
-              {seasons.map((s) => (
-                <SelectItem key={s} value={String(s)}>
-                  {seasonRangeLabel(eventRules.seasonKind, s)}
+              {games.map((g) => (
+                <SelectItem key={g.apiSeason} value={String(g.apiSeason)}>
+                  {g.name}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -259,7 +260,7 @@ export default function EventSelectionPage() {
 
       {eventsQuery.status === "empty" && (
         <GlassPanel className="py-10 text-center text-sm text-[var(--muted-foreground)]">
-          No events found for the {seasonRangeLabel(eventRules.seasonKind, season)} season.
+          No events found for {gameName(season)}.
         </GlassPanel>
       )}
 

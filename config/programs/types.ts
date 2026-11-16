@@ -35,10 +35,10 @@ export type ProgramEventRules = {
   /** Does this program have EPA (Statbotics) data? */
   hasEpa: boolean;
   /**
-   * Games the program has announced a season for but not released (no scoring or form yet): `name` labels an event of that `apiSeason` ("{name} has not been announced yet"),
-   * and the Analytics Game list shows it greyed out. A season with no entry here and no game config is labelled generically.
+   * Games that have events but no scouting config: `upcoming` ones (not announced yet) are a place in Analytics' Game list for the season's registered events and
+   * show a notice where the stats would be; the rest (a past game that is not scouted) only appear in Event Select's game list.
    */
-  upcomingGames?: { apiSeason: number; name: string }[];
+  otherGames?: { apiSeason: number; name: string; upcoming?: boolean }[];
   /** The shape of the event key in `/events/[eventKey]` (`lib/events/event-key.ts`): "tba" is `2026lake`, "season-code" is `2025-USCALAB`. */
   keyShape: EventKeyShape;
   /** What the event's key is called on screen. */

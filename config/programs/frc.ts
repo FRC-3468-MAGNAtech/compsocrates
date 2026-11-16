@@ -14,6 +14,11 @@ export const FRC_PROGRAM: ProgramConfig = {
   event: { allianceSize: 3, seasonKind: "calendar", unspecifiedGameId: "reefscape",
     hasEpa: true,
     keyShape: "tba",
+    // games with events but no scouting config: the coming game (its 2027 events are registered) and a past one that is not scouted
+    otherGames: [
+      { apiSeason: 2027, name: "BIOCORE", upcoming: true },
+      { apiSeason: 2024, name: "CRESCENDO" },
+    ],
     codeLabel: "Event Key",
     eventCopy: {
       invalidKeyReason: "That isn't an event key from The Blue Alliance (it should start with the year, like 2026arli).",

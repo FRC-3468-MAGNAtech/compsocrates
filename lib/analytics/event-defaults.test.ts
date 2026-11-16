@@ -5,7 +5,7 @@ import { DEFAULT_FILTERS, eventCodeIn, parseFilters, resolveSingleEventCode, typ
 import { selectAnalyticsEntries } from "@/lib/analytics/entries";
 import { matchKey } from "@/lib/analytics/match-breakdown";
 import type { ScoutEntry } from "@/lib/scout-entries";
-import { gameNotConfiguredNote, gameOfSeason, hasGameConfig, inAllEventsScope, librarySeasons, offeredUnderGame, pickDefaultEvent, pickedWithoutGameConfig, GAME_NOT_CONFIGURED_NOTE, type AllEventsScope } from "./event-defaults";
+import { gameOfSeason, hasGameConfig, inAllEventsScope, librarySeasons, offeredUnderGame, pickDefaultEvent, pickedWithoutGameConfig, upcomingGameFor, upcomingGameNote, upcomingGamesOf, type AllEventsScope } from "./event-defaults";
 
 // Every season below comes from the program's own game list: no year or game name is written here.
 const frcSeasons = SEASONS.map((s) => ({ id: s.id, apiSeason: s.apiSeason }));
@@ -117,10 +117,26 @@ describe("practice events follow the same season rule", () => {
   });
 });
 
-describe("the not-announced note", () => {
-  it("names the coming game when the program has one, else says the generic thing", () => {
-    expect(gameNotConfiguredNote("Next Game")).toContain("Next Game has not been announced yet");
-    expect(gameNotConfiguredNote()).toBe(GAME_NOT_CONFIGURED_NOTE);
+describe("an upcoming game (a place for registered events, no stats)", () => {
+  const other = [{ apiSeason: unconfiguredYear, name: "Next Game", upcoming: true }, { apiSeason: 2001, name: "Old Game" }];
+  const upcoming = upcomingGamesOf(other);
+
+  it("lists only the upcoming entries, with a URL-safe id from the name", () => {
+    expect(upcoming).toEqual([{ id: "next_game", name: "Next Game", apiSeason: unconfiguredYear }]);
+    expect(upcomingGamesOf(undefined)).toEqual([]);
+  });
+  it("a Game filter value names it, a real game does not", () => {
+    expect(upcomingGameFor(upcoming, "next_game")?.name).toBe("Next Game");
+    expect(upcomingGameFor(upcoming, DEFAULT_SEASON_ID)).toBeNull();
+  });
+  it("its events are the default pick when it is the selected game, and the current game is untouched by it", () => {
+    const seasons = [...frcSeasons, ...upcoming.map((g) => ({ id: g.id, apiSeason: g.apiSeason }))];
+    const events = [ev("future", unconfiguredYear, "2027-03-01"), ev("now", frcCurrent.apiSeason, "2026-03-01")];
+    expect(pickDefaultEvent({ events, seasons, seasonId: "next_game" })).toBe("future");
+    expect(pickDefaultEvent({ events, seasons, seasonId: DEFAULT_SEASON_ID })).toBe("now");
+  });
+  it("says it is not announced where the stats would be", () => {
+    expect(upcomingGameNote("Next Game")).toBe("Next Game has not been announced yet, so there are no stats to show.");
   });
 });
 

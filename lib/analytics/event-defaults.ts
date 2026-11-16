@@ -63,19 +63,32 @@ export function librarySeasons(matches: readonly { eventCode: string; seasonId: 
   return out;
 }
 
+/** A game the program has named for a coming season but not released: it has events, no form and no stats yet. */
+export type UpcomingGame = { id: string; name: string; apiSeason: number };
+
+/** The id an upcoming game takes in the Analytics Game filter (the URL's `game=`): its name, lower-cased (`BIOCORE` is `biocore`). */
+export const upcomingGameId = (name: string): string => name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_");
+
+/** The program's upcoming games, newest first, from its `ProgramEventRules.otherGames` (the entries flagged `upcoming`). */
+export function upcomingGamesOf(otherGames: readonly { apiSeason: number; name: string; upcoming?: boolean }[] | undefined): UpcomingGame[] {
+  return (otherGames ?? [])
+    .filter((g) => g.upcoming)
+    .map((g) => ({ id: upcomingGameId(g.name), name: g.name, apiSeason: g.apiSeason }))
+    .sort((a, b) => b.apiSeason - a.apiSeason);
+}
+
+/** The upcoming game a Game filter value names, or null for a real game. */
+export const upcomingGameFor = (games: readonly UpcomingGame[], gameId: string): UpcomingGame | null => games.find((g) => g.id === gameId) ?? null;
+
+/** The sentence shown where the stats would be while an upcoming game is selected. */
+export const upcomingGameNote = (name: string): string => `${name} has not been announced yet, so there are no stats to show.`;
+
 /** The picked events whose game is not configured yet: drives the "game not configured" empty state (never a blank table or a crash). */
 export function pickedWithoutGameConfig(options: readonly { code: string; noGameConfig?: boolean }[], pickedCodes: readonly string[]): string[] {
   return pickedCodes.filter((c) => options.some((o) => o.noGameConfig && o.code.toUpperCase() === c.toUpperCase()));
 }
 
 export const GAME_NOT_CONFIGURED_NOTE = "The game for this event is not configured yet, so there is nothing to show. Pick an event from a configured season.";
-
-/** The empty-state sentence for a picked event with no game config: names the coming game when the program has one. */
-export function gameNotConfiguredNote(upcomingGame?: string): string {
-  return upcomingGame
-    ? `${upcomingGame} has not been announced yet, so there is nothing to show. Pick an event from a configured season.`
-    : GAME_NOT_CONFIGURED_NOTE;
-}
 
 /**
  * Where "All Events" stops: the entries of the selected game at any event of that game's season, minus archived events unless the viewer asked to

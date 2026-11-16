@@ -27,7 +27,7 @@ export type AnalyticsFilters = {
   practiceMode: PracticeModeFilter;
   practiceSource: PracticeSourceFilter;
   accuracy: AccuracyThreshold;
-  /** "Show archived events": archived events are listed in the Event select and counted by All Events only when on (off by default). */
+  /** "Show archived events": archived events are listed in the Event select and counted by All Events only when on (on by default; `archived=0` turns it off). */
   archived: boolean;
 };
 
@@ -40,7 +40,7 @@ export const DEFAULT_FILTERS: AnalyticsFilters = {
   practiceMode: "all",
   practiceSource: "all",
   accuracy: null,
-  archived: false,
+  archived: true,
 };
 
 /** Whole number, clamped to 1-100. */
@@ -110,7 +110,7 @@ export function parseFilters(params: ParamReader, validGameIds: string[] = Objec
     practiceMode: MODES.includes(modeRaw as PracticeModeFilter) ? (modeRaw as PracticeModeFilter) : "all",
     practiceSource: SOURCES.includes(sourceRaw as PracticeSourceFilter) ? (sourceRaw as PracticeSourceFilter) : "all",
     accuracy: acc,
-    archived: params.get("archived") === "1",
+    archived: params.get("archived") !== "0",
   };
 }
 
@@ -126,7 +126,7 @@ export function serializeFilters(filters: AnalyticsFilters): URLSearchParams {
     if (filters.practiceSource !== "all") params.set("source", filters.practiceSource);
   }
   if (filters.accuracy !== null) params.set("acc", String(filters.accuracy));
-  if (filters.archived) params.set("archived", "1");
+  if (!filters.archived) params.set("archived", "0");
   return params;
 }
 

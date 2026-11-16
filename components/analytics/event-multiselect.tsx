@@ -19,11 +19,6 @@ const sameCode = (a: string, b: string) => a.toUpperCase() === b.toUpperCase();
 
 export const NO_GAME_CONFIG_LABEL = "No game config yet";
 
-/** The badge of an event whose game has no config: the program's own name for the coming game when it has one, else the generic wording. */
-export function noGameBadge(option: Pick<EventOption, "upcomingGame">): string {
-  return option.upcomingGame ? `${option.upcomingGame}: not announced yet` : NO_GAME_CONFIG_LABEL;
-}
-
 /** An event's title with its year: from the key when the key has a season, else from the event's own season in the program's wording. */
 export const optionTitle = (o: Pick<EventOption, "code" | "name" | "season">, seasonKind: "calendar" | "start-year") => eventTitleInSeason(o, o.season, seasonKind);
 
@@ -299,7 +294,7 @@ export function EventOptionRow({
       </span>
       {o.noGameConfig && (
         <Badge variant="outline" className="shrink-0 text-[10px]">
-          {noGameBadge(o)}
+          {NO_GAME_CONFIG_LABEL}
         </Badge>
       )}
       {status && (

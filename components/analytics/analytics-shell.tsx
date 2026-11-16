@@ -4,7 +4,9 @@ import { Suspense } from "react";
 import { AnalyticsTabs } from "@/components/layout/analytics-tabs";
 import { AnalyticsFilterBar } from "@/components/analytics/filter-bar";
 import { AnalyticsFilterProvider } from "@/lib/analytics/filter-context";
-import { AnalyticsDataProvider } from "@/lib/analytics/data-context";
+import { AnalyticsDataProvider, useAnalyticsData } from "@/lib/analytics/data-context";
+import { upcomingGameFor, upcomingGameNote } from "@/lib/analytics/event-defaults";
+import { useAnalyticsFilters } from "@/lib/analytics/filter-context";
 
 /**
  * Everything the Analytics layout shares across subpages (P10): the filter
@@ -25,11 +27,26 @@ export function AnalyticsShell({ children }: { children: React.ReactNode }) {
           <div className="mb-4">
             <AnalyticsFilterBar />
           </div>
-          <div>{children}</div>
+          <AnalyticsBody>{children}</AnalyticsBody>
         </AnalyticsDataProvider>
       </AnalyticsFilterProvider>
     </Suspense>
   );
+}
+
+/** The page, or - while a not-yet-announced game is selected - one line where its stats would be (it has no entries, and never borrows another game's). */
+function AnalyticsBody({ children }: { children: React.ReactNode }) {
+  const { filters } = useAnalyticsFilters();
+  const data = useAnalyticsData();
+  const upcoming = upcomingGameFor(data.upcomingGames, filters.gameId);
+  if (upcoming) {
+    return (
+      <div className="glass-card p-12 text-center text-sm text-[var(--muted-foreground)]" role="status">
+        {upcomingGameNote(upcoming.name)}
+      </div>
+    );
+  }
+  return <div>{children}</div>;
 }
 
 function ShellFallback() {

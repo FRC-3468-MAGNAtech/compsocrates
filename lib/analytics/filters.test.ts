@@ -54,7 +54,7 @@ describe("parseFilters", () => {
       practiceMode: "trial",
       practiceSource: "live",
       accuracy: 85,
-      archived: false,
+      archived: true,
     });
     expect(parse("events=all").events).toEqual({ kind: "all" });
   });
@@ -78,6 +78,14 @@ describe("parseFilters", () => {
 });
 
 describe("serializeFilters", () => {
+  it("shows archived events by default; archived=0 turns it off and is the only thing written", () => {
+    expect(parse("").archived).toBe(true);
+    expect(parse("archived=0").archived).toBe(false);
+    expect(parse("archived=1").archived).toBe(true);
+    expect(filtersToQuery({ ...DEFAULT_FILTERS, archived: false })).toBe("?archived=0");
+    expect(filtersToQuery(DEFAULT_FILTERS)).toBe("");
+  });
+
   it("writes nothing for the default view", () => {
     expect(filtersToQuery(DEFAULT_FILTERS)).toBe("");
     expect(isDefaultFilters(DEFAULT_FILTERS)).toBe(true);
@@ -91,7 +99,7 @@ describe("serializeFilters", () => {
       practiceMode: "competitive",
       practiceSource: "practice",
       accuracy: 90,
-      archived: true,
+      archived: false,
     };
     expect(parseFilters(serializeFilters(filters))).toEqual(filters);
   });

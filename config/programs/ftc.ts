@@ -34,8 +34,6 @@ export const FTC_PROGRAM: ProgramConfig = {
     seasonKind: "start-year",
     hasEpa: false,
     keyShape: "season-code",
-    // the next season's game: its events are listed now and labelled until the game is released and configured
-    upcomingGames: [{ apiSeason: 2027, name: "BIOCORE" }],
     codeLabel: "Event Code",
     eventCopy: {
       invalidKeyReason: "That isn't an FTC event key (it should be the season, a hyphen and the event code, like 2025-USCALAB).",

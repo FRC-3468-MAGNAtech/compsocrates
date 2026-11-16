@@ -1,6 +1,6 @@
 import { renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { EventOptionRow, NO_GAME_CONFIG_LABEL, nextRowIndex, noGameBadge, optionTitle } from "@/components/analytics/event-multiselect";
+import { EventOptionRow, NO_GAME_CONFIG_LABEL, nextRowIndex, optionTitle } from "@/components/analytics/event-multiselect";
 import { OptionCheck } from "@/components/ui/select";
 import type { EventOption } from "@/lib/analytics/data-context";
 
@@ -49,11 +49,6 @@ describe("Analytics event list: names and years", () => {
     expect(optionTitle(option({ code: "2026lake", name: "Lakeview Regional", season: 2026 }), "calendar")).toBe("Lakeview Regional 2026");
     expect(optionTitle(option({ code: "USLAALQ", name: "USLAALQ", season: 2025 }), "start-year")).toBe("USLAALQ");
     expect(optionTitle(option({ code: "USLAALQ", name: "Louisiana Qualifier", season: undefined }), "start-year")).toBe("Louisiana Qualifier");
-  });
-  it("the badge names the program's coming game when it has one", () => {
-    expect(noGameBadge({ upcomingGame: "Next Game" })).toBe("Next Game: not announced yet");
-    expect(noGameBadge({})).toBe(NO_GAME_CONFIG_LABEL);
-    expect(row(false, { noGameConfig: true, upcomingGame: "Next Game" })).toContain("Next Game: not announced yet");
   });
 });
 

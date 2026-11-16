@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { usePathname, useSearchParams } from "@/lib/program/navigation";
 import { useProgramConfig } from "@/lib/program/context";
 import { useForms } from "@/lib/forms/forms-context";
+import { upcomingGamesOf } from "@/lib/analytics/event-defaults";
 import {
   DEFAULT_FILTERS,
   filtersToQuery,
@@ -48,11 +49,15 @@ export function AnalyticsFilterProvider({ children }: { children: React.ReactNod
 
   // The games are the active program's (the forms context), and Practice mode exists only where practice is connected: a hand-edited link cannot turn it on.
   const { seasons, defaultSeasonId } = useForms();
-  const { practice: practiceConnected } = useProgramConfig().connection.features;
+  const programConfig = useProgramConfig();
+  const { practice: practiceConnected } = programConfig.connection.features;
+  // A not-yet-announced game is a valid Game filter value too (a place for its events, with a notice instead of stats); the default stays the current game.
+  const otherGames = programConfig.event.otherGames;
   const filters = useMemo(() => {
-    const parsed = parseFilters(new URLSearchParams(queryString), seasons.map((s) => s.id), defaultSeasonId);
+    const ids = [...seasons.map((s) => s.id), ...upcomingGamesOf(otherGames).map((g) => g.id)];
+    const parsed = parseFilters(new URLSearchParams(queryString), ids, defaultSeasonId);
     return practiceConnected ? parsed : { ...parsed, practice: false };
-  }, [queryString, seasons, defaultSeasonId, practiceConnected]);
+  }, [queryString, seasons, otherGames, defaultSeasonId, practiceConnected]);
 
   const setFilters = useCallback(
     (patch: Partial<AnalyticsFilters>, mode: "push" | "replace" = "push") => {

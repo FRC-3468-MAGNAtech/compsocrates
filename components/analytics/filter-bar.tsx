@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EventMultiSelect } from "@/components/analytics/event-multiselect";
 import { useAnalyticsData, useAnalyticsEntries, useSingleEvent } from "@/lib/analytics/data-context";
-import { gameNotConfiguredNote, hasGameConfig, pickedWithoutGameConfig } from "@/lib/analytics/event-defaults";
+import { GAME_NOT_CONFIGURED_NOTE, pickedWithoutGameConfig, upcomingGameFor } from "@/lib/analytics/event-defaults";
 import { useAnalyticsFilters } from "@/lib/analytics/filter-context";
 import { isFormAnalyticsRoute } from "@/lib/analytics/form-analytics";
 import {
@@ -65,8 +65,9 @@ export function AnalyticsFilterBar() {
   const programConfig = useProgramConfig();
   const { practice: practiceConnected, accuracy: accuracyConnected } = programConfig.connection.features;
   const seasonKind = programConfig.event.seasonKind;
-  // Games the program has named but not released: listed greyed out under the Game select, so a coming season is visible but never pickable.
-  const comingGames = (programConfig.event.upcomingGames ?? []).filter((g) => !hasGameConfig(games, g.apiSeason));
+  // A not-yet-announced game is listed above the real ones (the default stays the current game) and shows a notice where the stats would be.
+  const upcoming = upcomingGameFor(data.upcomingGames, filters.gameId);
+  const gameChoices = [...data.upcomingGames.map((g) => ({ id: g.id, name: g.name })), ...games.map((g) => ({ id: g.id, name: g.name }))];
 
   return (
     <div className="glass-card flex flex-col gap-3 p-4">
@@ -74,17 +75,12 @@ export function AnalyticsFilterBar() {
         <Control label="Game">
           <Select value={filters.gameId} onValueChange={(v) => setFilters({ gameId: v, events: { kind: "active" } })}>
             <SelectTrigger className="w-44">
-              <SelectValue>{games.find((g) => g.id === filters.gameId)?.name ?? filters.gameId}</SelectValue>
+              <SelectValue>{gameChoices.find((g) => g.id === filters.gameId)?.name ?? filters.gameId}</SelectValue>
             </SelectTrigger>
             <SelectContent>
-              {games.map((g) => (
+              {gameChoices.map((g) => (
                 <SelectItem key={g.id} value={g.id}>
                   {g.name}
-                </SelectItem>
-              ))}
-              {comingGames.map((g) => (
-                <SelectItem key={`coming-${g.apiSeason}`} value={`coming-${g.apiSeason}`} disabled>
-                  {g.name} (not announced yet)
                 </SelectItem>
               ))}
             </SelectContent>
@@ -171,11 +167,11 @@ export function AnalyticsFilterBar() {
 
       {unconfigured.length > 0 && (
         <p role="status" className="rounded-xl border border-[var(--glass-border)] bg-white/5 px-3 py-2 text-sm text-[var(--muted-foreground)]">
-          {gameNotConfiguredNote(data.eventOptions.find((o) => unconfigured.some((c) => c.toUpperCase() === o.code.toUpperCase()))?.upcomingGame)}
+          {GAME_NOT_CONFIGURED_NOTE}
         </p>
       )}
 
-      {!formRoute && (
+      {!formRoute && !upcoming && (
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--muted-foreground)]">
         <span aria-live="polite" className="tabular-nums">
           {loaded ? (
