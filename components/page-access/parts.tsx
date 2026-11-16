@@ -4,66 +4,16 @@ import { Check, Lock, ShieldCheck, X } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { explainAccess, memberPageState, accessiblePages, type AccessExplanation, type AccessUser, type MemberPageState, type PageAccessConfig } from "@/lib/page-access/access";
 import { visibleNav } from "@/lib/page-access/nav";
 import { PAGES, RESTRICTED_PAGES } from "@/lib/page-access/pages";
 import type { PageAccessRequest } from "@/lib/page-access/store";
 import { NAV_PAGES } from "@/lib/nav";
-import { ROLES, getRole } from "@/lib/roles";
+import { getRole } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 
 // P26: the pieces of the Admin Panel's Page Access screen, as plain props (the connected panel wires them to Firestore; the
 // browser-test fixture to memory). What a person can open is always decided by lib/page-access/access.ts, never here.
-
-/** Solid backing for the sticky first column (a sticky cell over scrolling cells must not be see-through). */
-const STICKY = "sticky left-0 z-10 glass-overlay !rounded-none !shadow-none";
-
-/** Rows are the restricted pages, columns the roles; a ticked box means that role (primary or secondary) can open the page. */
-export function RoleMatrix({ config, onToggle, disabled }: { config: PageAccessConfig; onToggle: (role: (typeof ROLES)[number]["id"], pageId: string, on: boolean) => void; disabled?: boolean }) {
-  return (
-    <div className="glass-card overflow-x-auto p-0" data-testid="role-matrix">
-      <table className="w-full min-w-[56rem] border-collapse text-left text-sm">
-        <thead className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">
-          <tr>
-            <th scope="col" className={cn(STICKY, "min-w-[11rem] px-3 py-3 font-medium")}>
-              Page
-            </th>
-            {ROLES.map((r) => (
-              <th key={r.id} scope="col" className="px-2 py-3 text-center font-medium">
-                <span className={cn("inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] normal-case", r.className)}>{r.label}</span>
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-[var(--glass-border)]">
-          {RESTRICTED_PAGES.map((page) => (
-            <tr key={page.id} data-page={page.id}>
-              <th scope="row" className={cn(STICKY, "px-3 py-2.5 text-left font-medium")}>
-                {page.title}
-              </th>
-              {ROLES.map((r) => {
-                const checked = (config.roleGrants[r.id] ?? []).includes(page.id);
-                return (
-                  <td key={r.id} className="px-2 py-1.5 text-center">
-                    <Checkbox
-                      checked={checked}
-                      disabled={disabled}
-                      onCheckedChange={(v) => onToggle(r.id, page.id, v === true)}
-                      aria-label={`${r.label} can open ${page.title}`}
-                      data-testid={`matrix-${r.id}-${page.id}`}
-                      className="mx-auto h-7 w-7"
-                    />
-                  </td>
-                );
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
 
 const SOURCE_TEXT: Record<AccessExplanation["source"], (e: AccessExplanation) => string> = {
   admin: () => "Admin: always",
@@ -73,6 +23,7 @@ const SOURCE_TEXT: Record<AccessExplanation["source"], (e: AccessExplanation) =>
   denied: (e) => (e.viaRoles.length > 0 ? `Closed by an override (their role ${e.viaRoles.map((r) => getRole(r).label).join(", ")} would open it)` : "Closed by an override"),
   none: () => "No role or grant opens it",
   "admin-only": () => "Admins only",
+  restricted: () => "Closed to this member's roles (an admin closed this open page for them)",
 };
 
 const STATE_LABEL: Record<MemberPageState, string> = { default: "Follow roles", grant: "Grant", deny: "Deny" };

@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import { KeyRound } from "lucide-react";
-import { MemberAccessEditor, PreviewAsMember, RequestsList, RoleMatrix } from "@/components/page-access/parts";
+import { MemberAccessEditor, PreviewAsMember, RequestsList } from "@/components/page-access/parts";
+import { RoleMatrix } from "@/components/page-access/role-matrix";
+import { useAccessPageGroups } from "@/components/page-access/use-page-groups";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -10,8 +12,8 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
 import { useProgram } from "@/lib/program/context";
-import { setMemberPageState, setRoleGrant, type MemberPageState, type PageAccessConfig } from "@/lib/page-access/access";
-import { decidePageAccessRequest, updatePageAccess, usePageAccess, usePageAccessRequests, type PageAccessRequest } from "@/lib/page-access/store";
+import { setMemberPageState, setOpenRestriction, setRoleGrant, type MemberPageState, type PageAccessConfig } from "@/lib/page-access/access";
+import { decidePageAccessRequest, describeSaveFailure, updatePageAccess, usePageAccess, usePageAccessRequests, type PageAccessRequest } from "@/lib/page-access/store";
 import { getRole, type RoleId } from "@/lib/roles";
 import type { TeamMember } from "@/lib/team-members";
 import { useTeamMembers } from "@/lib/team-members";
@@ -45,6 +47,7 @@ export function PageAccessPanelView({
   members,
   requests,
   onToggleRole,
+  onToggleOpenRole,
   onSetMemberPage,
   onDecide,
   busyId,
@@ -56,6 +59,8 @@ export function PageAccessPanelView({
   members: TeamMember[];
   requests: PageAccessRequest[];
   onToggleRole: (role: RoleId, pageId: string, on: boolean) => void;
+  /** Close (`restricted` true) or re-open an open page for a role. */
+  onToggleOpenRole: (role: RoleId, pageId: string, restricted: boolean) => void;
   onSetMemberPage: (member: TeamMember, pageId: string, state: MemberPageState) => void;
   onDecide: (request: PageAccessRequest, approve: boolean) => void;
   busyId?: string | null;
@@ -65,6 +70,7 @@ export function PageAccessPanelView({
 }) {
   const [tab, setTab] = useState<Tab>(initialTab);
   const [memberUid, setMemberUid] = useState<string | null>(initialMemberUid ?? null);
+  const groups = useAccessPageGroups();
   const pending = requests.filter((r) => r.status === "pending").length;
   const sorted = [...members].sort((a, b) => a.name.localeCompare(b.name));
   const member = sorted.find((m) => m.uid === memberUid) ?? null;
@@ -76,7 +82,7 @@ export function PageAccessPanelView({
           <KeyRound className="h-4 w-4" aria-hidden /> Page access
         </h2>
         <p className="text-sm text-[var(--muted-foreground)]">
-          Choose who can open each restricted page. Admins and the owner can always open everything; the Admin Panel is admin-only. Dashboard, Match Scout Form, Analytics (except Scout Status), Practice Scouting, My Scouting, People, Changelog, Credits, Account Settings and Match List are open to every role.
+          Choose who can open each page. Admins and the owner can always open everything; the Admin Panel is admin-only. Pages that are open to everyone by default start fully ticked for every role, and you can still untick a role. A few pages (the Dashboard and the personal pages) are always available and can&apos;t be closed.
         </p>
       </GlassPanel>
 
@@ -109,30 +115,35 @@ export function PageAccessPanelView({
 
       {tab === "roles" && (
         <div className="flex flex-col gap-2">
-          <p className="text-xs text-[var(--muted-foreground)]">A member can open a page when their primary or a secondary role is ticked. Changes save as you tick.</p>
-          <RoleMatrix config={config} onToggle={onToggleRole} />
+          <p className="text-xs text-[var(--muted-foreground)]">A member can open a page when their primary or a secondary role is ticked. Changes save as you tick. Admins always keep Page Access and the Admin Panel.</p>
+          <RoleMatrix config={config} groups={groups} onToggle={onToggleRole} onToggleOpen={onToggleOpenRole} />
         </div>
       )}
 
       {tab === "members" && (
         <div className="flex flex-col gap-4">
-          <div className="max-w-sm">
-            <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-[var(--muted-foreground)]" htmlFor="pa-member">
-              Member
-            </label>
-            <Select value={memberUid ?? ""} onValueChange={setMemberUid}>
-              <SelectTrigger id="pa-member" data-testid="pa-member-select">
-                <SelectValue placeholder="Pick a member">{member ? `${member.name} · ${getRole(member.primaryRole).label}` : undefined}</SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {sorted.map((m) => (
-                  <SelectItem key={m.uid} value={m.uid}>
-                    {m.name} · {getRole(m.primaryRole).label}
-                    {m.isOwner ? " (owner)" : m.isAdmin ? " (admin)" : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="w-full max-w-sm">
+              <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-[var(--muted-foreground)]" htmlFor="pa-member">
+                Member
+              </label>
+              <Select
+                value={memberUid ?? ""}
+                onValueChange={setMemberUid}
+              >
+                <SelectTrigger id="pa-member" data-testid="pa-member-select">
+                  <SelectValue placeholder="Pick a member">{member ? `${member.name} · ${getRole(member.primaryRole).label}` : undefined}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {sorted.map((m) => (
+                    <SelectItem key={m.uid} value={m.uid}>
+                      {m.name} · {getRole(m.primaryRole).label}
+                      {m.isOwner ? " (owner)" : m.isAdmin ? " (admin)" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           {member ? (
             <MemberAccessBody member={member} config={config} onSet={(pageId, state) => onSetMemberPage(member, pageId, state)} />
@@ -158,8 +169,9 @@ function usePageAccessEditing() {
     setError(null);
     try {
       await updatePageAccess(actor, apply, change, program);
-    } catch {
-      setError("Couldn't save that change. You may be offline, or no longer allowed to edit page access.");
+    } catch (err) {
+      // A restriction is the one write the older rules reject (the new `openRestrictions` field): say so plainly instead of failing silently.
+      setError(describeSaveFailure(change.kind, err));
     }
   };
   return {
@@ -167,6 +179,7 @@ function usePageAccessEditing() {
     actor,
     program,
     toggleRole: (role: RoleId, pageId: string, on: boolean) => run((c) => setRoleGrant(c, role, pageId, on), { kind: "role", role, pageId, on }),
+    toggleOpenRole: (role: RoleId, pageId: string, restricted: boolean) => run((c) => setOpenRestriction(c, role, pageId, restricted), { kind: "open-restriction", role, pageId, restricted }),
     setMemberPage: (member: TeamMember, pageId: string, state: MemberPageState) => run((c) => setMemberPageState(c, member.uid, pageId, state), { kind: "member", targetUid: member.uid, targetName: member.name, pageId, state }),
   };
 }
@@ -201,6 +214,7 @@ export function PageAccessPanel() {
       members={members}
       requests={requests}
       onToggleRole={(r, p, on) => void edit.toggleRole(r, p, on)}
+      onToggleOpenRole={(r, p, restricted) => void edit.toggleOpenRole(r, p, restricted)}
       onSetMemberPage={(m, p, s) => void edit.setMemberPage(m, p, s)}
       onDecide={(r, a) => void decide(r, a)}
       busyId={busyId}

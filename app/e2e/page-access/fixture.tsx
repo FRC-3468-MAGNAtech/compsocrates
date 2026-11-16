@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { NoAccessScreen, type RequestStatus } from "@/components/page-access/no-access-screen";
 import { PageAccessPanelView } from "@/components/page-access/page-access-panel";
-import { defaultPageAccessConfig, grantMemberPage, setMemberPageState, setRoleGrant, type PageAccessConfig } from "@/lib/page-access/access";
+import { defaultPageAccessConfig, grantMemberPage, setMemberPageState, setOpenRestriction, setRoleGrant, type PageAccessConfig } from "@/lib/page-access/access";
 import type { PageAccessRequest } from "@/lib/page-access/store";
 import type { TeamMember } from "@/lib/team-members";
 
@@ -46,6 +46,10 @@ function PanelFixture({ tab, memberUid, noRequests }: { tab: "requests" | "roles
       onToggleRole={(role, pageId, on) => {
         log({ type: "role", role, pageId, on });
         setConfig((c) => setRoleGrant(c, role, pageId, on));
+      }}
+      onToggleOpenRole={(role, pageId, restricted) => {
+        log({ type: "open-role", role, pageId, restricted });
+        setConfig((c) => setOpenRestriction(c, role, pageId, restricted));
       }}
       onSetMemberPage={(m, pageId, state) => {
         log({ type: "member", uid: m.uid, pageId, state });
