@@ -15,15 +15,18 @@ import { useForms } from "@/lib/forms/forms-context";
 import { usePathname, useSearchParams } from "@/lib/program/navigation";
 import { useProgramConfig } from "@/lib/program/context";
 import { filterByGame, readGameParam } from "@/lib/scout-stats/game-filter";
+import { deriveMyScoutingFilterOptions, effectiveGame, keepValid, storedEventKey, storedEventKeys, type FilterEntry, type FilterSession } from "@/lib/scout-stats/my-scouting-filters";
 import { useActiveEvents } from "@/lib/active-event";
 import { orderPrimaryFirst } from "@/lib/active-events";
 import { useAssignments } from "@/lib/assignments";
 import type { EventInfo } from "@/lib/events/types";
+import { canonicalEventKey } from "@/lib/events/event-key";
+import { useEventNames } from "@/lib/events/use-event-names";
 import { eventTitle } from "@/lib/events/names";
 import { matchSortValue } from "@/lib/analytics/game-schema";
 import { getPercentColor } from "@/lib/accuracy/engine";
 import { computeScoutStats } from "@/lib/scout-stats/engine";
-import { useRealEventOptions, useScoutStatsSources } from "@/lib/scout-stats/use-scout-stats";
+import { useScoutStatsSources } from "@/lib/scout-stats/use-scout-stats";
 import type { RankingBasisId, RealEventCalculationScope, ScoutCategory } from "@/lib/scout-stats/types";
 import type { RoleId } from "@/lib/roles";
 
@@ -71,8 +74,7 @@ function MyScoutingContent() {
   const { user, profile } = useAuth();
   const teamId = profile?.teamId ?? null;
   // Cross-event page: its stats read every selected event, archived ones included (archiving only affects event pickers).
-  const { allEvents: activeEvents, storedPrimaryCode: primaryCode, events: pickerEvents, primaryCode: pickerPrimaryCode } = useActiveEvents();
-  const orderedActiveEvents = useMemo(() => orderPrimaryFirst({ events: activeEvents, primaryCode }), [activeEvents, primaryCode]);
+  const { events: pickerEvents, primaryCode: pickerPrimaryCode, archivedCodes } = useActiveEvents();
   // The upcoming-assignments panels are per event (Assignments is an event picker), so they skip archived events.
   const assignmentEvents = useMemo(() => orderPrimaryFirst({ events: pickerEvents, primaryCode: pickerPrimaryCode }), [pickerEvents, pickerPrimaryCode]);
 
@@ -83,7 +85,6 @@ function MyScoutingContent() {
   const searchParams = useSearchParams();
   const queryString = searchParams.toString();
   const seasonIds = useMemo(() => seasons.map((s) => s.id), [seasons]);
-  const seasonId = readGameParam(searchParams.get("game"), seasonIds, defaultSeasonId);
   const fallbackSeasonId = eventRules.unspecifiedGameId && seasonIds.includes(eventRules.unspecifiedGameId) ? eventRules.unspecifiedGameId : defaultSeasonId;
   const setSeasonId = useCallback(
     (next: string) => {
@@ -93,14 +94,57 @@ function MyScoutingContent() {
     },
     [pathname, queryString]
   );
-  const gameName = seasons.find((s) => s.id === seasonId)?.name ?? "";
 
-  const [roleFilter, setRoleFilter] = useState<RoleId[]>([]);
-  const [eventFilter, setEventFilter] = useState<string[]>([]);
+  const [roleSelected, setRoleFilter] = useState<RoleId[]>([]);
+  const [eventSelected, setEventFilter] = useState<string[]>([]);
   const [rankingBasis, setRankingBasis] = useState<RankingBasisId>("preserve");
-  const [realEventScope, setRealEventScope] = useState<RealEventCalculationScope>({ eventCode: null, variant: "plain" });
+  const [scopeSelected, setRealEventScope] = useState<RealEventCalculationScope>({ eventCode: null, variant: "plain" });
 
   const rawSources = useScoutStatsSources(teamId);
+
+  // Every filter offers only what applies to the signed-in person, derived from their WHOLE dataset (never the filtered subset): the read stays team-wide.
+  const uid = user?.uid ?? "";
+  const keyShape = eventRules.keyShape;
+  const ownEventKeys = useMemo(() => {
+    const raw = [
+      ...rawSources.entries.filter((e) => e.uid === uid && (e.source === "event" || e.source === "live")).map((e) => e.eventCode),
+      ...rawSources.attendance.filter((a) => a.uids.includes(uid)).map((a) => a.eventCode),
+    ];
+    return [...new Set(raw.flatMap((k) => [k, canonicalEventKey(keyShape, k)]))];
+  }, [rawSources.entries, rawSources.attendance, uid, keyShape]);
+  const eventNames = useEventNames(ownEventKeys);
+  const filterOptions = useMemo(
+    () =>
+      deriveMyScoutingFilterOptions({
+        uid,
+        entries: rawSources.entries as FilterEntry[],
+        sessions: rawSources.sessions as unknown as FilterSession[],
+        profile,
+        attendance: rawSources.attendance,
+        keyShape,
+        seasons,
+        defaultSeasonId,
+        fallbackSeasonId,
+        archivedEventCodes: archivedCodes,
+        eventName: (key) => eventNames[key]?.name,
+      }),
+    [uid, rawSources.entries, rawSources.sessions, rawSources.attendance, profile, keyShape, seasons, defaultSeasonId, fallbackSeasonId, archivedCodes, eventNames]
+  );
+  // A selection that is no longer one of the options (stale URL value, data that changed) reads as "All": derived, never an error or a blank page.
+  const seasonId = effectiveGame(readGameParam(searchParams.get("game"), seasonIds, defaultSeasonId), filterOptions.games, defaultSeasonId);
+  const gameName = seasons.find((s) => s.id === seasonId)?.name ?? "";
+  const roleFilter = useMemo(() => keepValid(roleSelected, filterOptions.showRole ? filterOptions.roles.map((r) => r.id) : []), [roleSelected, filterOptions]);
+  const eventValid = useMemo(() => (filterOptions.showEvent ? filterOptions.events.map((e) => e.key) : []), [filterOptions]);
+  const eventChosen = useMemo(() => keepValid(eventSelected, eventValid), [eventSelected, eventValid]);
+  // The stats engine compares stored spellings of an event key, so the chosen canonical keys are translated back for it.
+  const eventFilter = useMemo(() => storedEventKeys(eventChosen, filterOptions.events), [eventChosen, filterOptions.events]);
+  const scopeKey = scopeSelected.eventCode !== null && eventValid.includes(scopeSelected.eventCode) ? scopeSelected.eventCode : null;
+  const realEventScope = useMemo<RealEventCalculationScope>(
+    () => ({ eventCode: scopeKey === null ? null : storedEventKey(scopeKey, filterOptions.events), variant: scopeSelected.variant }),
+    [scopeKey, scopeSelected.variant, filterOptions.events]
+  );
+  const shownScope = useMemo<RealEventCalculationScope>(() => ({ eventCode: scopeKey, variant: scopeSelected.variant }), [scopeKey, scopeSelected.variant]);
+  const eventOptions = useMemo(() => filterOptions.events.map((e) => ({ eventCode: e.key, eventName: e.displayLabel })), [filterOptions.events]);
   // Entries and sessions of the selected game; one without a `game` field counts as the program's unspecified game (FRC: REEFSCAPE, as old CS did).
   const sources = useMemo(() => {
     const options = { seasonId, seasonIds, fallbackSeasonId };
@@ -110,14 +154,11 @@ function MyScoutingContent() {
       sessions: filterByGame(rawSources.sessions, (s) => (s as { game?: unknown }).game, options),
     };
   }, [rawSources, seasonId, seasonIds, fallbackSeasonId]);
-  const eventOptions = useRealEventOptions(sources.entries, orderedActiveEvents);
-
   // Derived (not effect-corrected — see the matching comment in
   // app/(app)/scout-accuracy/page.tsx) so turning a filter back on restores
   // the user's last ranking-basis choice instead of forgetting it.
   const roleActive = roleFilter.length > 0;
-  const eventActive = eventFilter.length > 0;
-  const effectiveRankingBasis: RankingBasisId =
+  const eventActive = eventFilter.length > 0;  const effectiveRankingBasis: RankingBasisId =
     (rankingBasis === "role" && !roleActive) ||
     (rankingBasis === "event" && !eventActive) ||
     (rankingBasis === "both" && !(roleActive && eventActive))
@@ -181,7 +222,7 @@ function MyScoutingContent() {
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <GameSelect id="my-scouting-game" value={seasonId} onChange={setSeasonId} seasons={seasons} />
+        <GameSelect id="my-scouting-game" value={seasonId} onChange={setSeasonId} seasons={filterOptions.games} />
       </div>
 
       {rawSources.sessionsError && (
@@ -203,18 +244,21 @@ function MyScoutingContent() {
               {seasonId ? `No ${gameName} entries yet` : "No entries yet"}
             </GlassPanel>
           )}
-          <FiltersBar
-            category="real-event"
-            roleFilter={roleFilter}
-            onRoleFilterChange={setRoleFilter}
-            eventOptions={eventOptions}
-            eventFilter={eventFilter}
-            onEventFilterChange={setEventFilter}
-            rankingBasis={effectiveRankingBasis}
-            onRankingBasisChange={setRankingBasis}
-            realEventScope={realEventScope}
-            onRealEventScopeChange={setRealEventScope}
-          />
+          {!filterOptions.noData && (
+            <FiltersBar
+              category="real-event"
+              personal={{ roles: filterOptions.roles, showRole: filterOptions.showRole, showEvent: filterOptions.showEvent }}
+              roleFilter={roleFilter}
+              onRoleFilterChange={setRoleFilter}
+              eventOptions={eventOptions}
+              eventFilter={eventChosen}
+              onEventFilterChange={setEventFilter}
+              rankingBasis={effectiveRankingBasis}
+              onRankingBasisChange={setRankingBasis}
+              realEventScope={shownScope}
+              onRealEventScopeChange={setRealEventScope}
+            />
+          )}
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             {CATEGORIES.map((category, i) => {

@@ -49,7 +49,13 @@ export function FiltersBar({
   onRankingBasisChange,
   realEventScope,
   onRealEventScopeChange,
+  personal,
 }: {
+  /**
+   * "Only what applies to me" (My Scouting): the roles to offer, and whether the role and event filters show at all (a filter with fewer than two
+   * real options is hidden). The ranking basis select hides while it has only "Preserve original ranks". Absent, every role shows (Scout Accuracy).
+   */
+  personal?: { roles: readonly { id: RoleId; label: string }[]; showRole: boolean; showEvent: boolean };
   category: ScoutCategory;
   roleFilter: RoleId[];
   onRoleFilterChange: (next: RoleId[]) => void;
@@ -72,17 +78,20 @@ export function FiltersBar({
 
   return (
     <GlassPanel className="flex flex-col gap-4">
-      <div className="flex flex-col gap-2">
-        <Label>Role filter</Label>
-        <div className="flex flex-wrap gap-2">
-          {ROLES.map((r) => (
-            <ChipToggle key={r.id} active={roleFilter.includes(r.id)} onClick={() => onRoleFilterChange(toggle(roleFilter, r.id))}>
-              {r.label}
-            </ChipToggle>
-          ))}
+      {(!personal || personal.showRole) && (
+        <div className="flex flex-col gap-2">
+          <Label>Role filter</Label>
+          <div className="flex flex-wrap gap-2">
+            {(personal ? personal.roles : ROLES).map((r) => (
+              <ChipToggle key={r.id} active={roleFilter.includes(r.id)} onClick={() => onRoleFilterChange(toggle(roleFilter, r.id))}>
+                {r.label}
+              </ChipToggle>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
+      {(!personal || personal.showEvent) && (
       <div className="flex flex-col gap-2">
         <Label>Event filter</Label>
         {eventOptions.length === 0 ? (
@@ -103,8 +112,10 @@ export function FiltersBar({
           </div>
         )}
       </div>
+      )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {(!personal || availableBases.length > 1) && (
         <div>
           <Label htmlFor="ranking-basis">Ranking basis</Label>
           <Select value={rankingBasis} onValueChange={(v) => onRankingBasisChange(v as RankingBasisId)}>
@@ -120,6 +131,7 @@ export function FiltersBar({
             </SelectContent>
           </Select>
         </div>
+        )}
 
         {category === "real-event" && (
           <div>
