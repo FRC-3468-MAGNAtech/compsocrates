@@ -17,6 +17,8 @@ import { useAuth } from "@/lib/auth";
 import { usePermissions } from "@/lib/permissions";
 import { useActiveEvents } from "@/lib/active-event";
 import { orderPrimaryFirst } from "@/lib/active-events";
+import { assignmentEventGroups } from "@/lib/events/archive";
+import { Switch } from "@/components/ui/switch";
 import type { EventInfo } from "@/lib/events/types";
 import { useTeamMembers } from "@/lib/team-members";
 import { useEventAttendance, setEventAttendance } from "@/lib/event-attendance";
@@ -57,21 +59,24 @@ export default function AssignmentsPage() {
   const { can } = usePermissions();
   const canEdit = can("editAssignments");
   const teamId = profile?.teamId ?? null;
-  const { events: activeEvents, primaryCode } = useActiveEvents();
-  // Active events (primary first) lead the picker; the rest of the season's events follow.
+  const { events: activeEvents, primaryCode, archivedEvents } = useActiveEvents();
+  // Active events (primary first) lead the picker; the rest of the season's events follow. Archived events join only while the switch is on.
   const activeOptions = useMemo(() => orderPrimaryFirst({ events: activeEvents, primaryCode }), [activeEvents, primaryCode]);
+  const [showArchived, setShowArchived] = useState(false);
 
   const [eventOverride, setEventOverride] = useState<string | null>(null);
   const eventCode = eventOverride ?? primaryCode ?? null;
-  const activeSelected = activeOptions.find((e) => e.code === eventCode) ?? null;
+  // An archived event opened through the switch keeps its own season (its matches and names are that season's).
+  const activeSelected = activeOptions.find((e) => e.code === eventCode) ?? archivedEvents.find((e) => e.code === eventCode) ?? null;
   const forms = useForms();
   const season = activeSelected?.season ?? forms.defaultApiSeason;
 
   const eventsQuery = useEventQuery(scopedKey(program, `assignments-events:${season}`), () => getEvents({ season }, program));
-  const otherEvents: EventInfo[] = useMemo(
-    () => (eventsQuery.data ?? []).filter((e) => !activeOptions.some((a) => a.code === e.code)),
-    [eventsQuery.data, activeOptions]
+  const groups = useMemo(
+    () => assignmentEventGroups<EventInfo>({ current: activeOptions, archived: archivedEvents, other: eventsQuery.data ?? [], showArchived }),
+    [activeOptions, archivedEvents, eventsQuery.data, showArchived]
   );
+  const otherEvents: EventInfo[] = groups.other;
   const selectedEventHint = activeSelected?.name ?? eventsQuery.data?.find((e) => e.code === eventCode)?.name;
   const resolvedSelectedName = useEventName(eventCode ?? "", { name: selectedEventHint });
   const selectedEventName = eventCode ? resolvedSelectedName.displayName : "Pick an event";
@@ -121,7 +126,8 @@ export default function AssignmentsPage() {
     if (!teamId || !eventCode) return;
     setSavingAttendance(true);
     try {
-      await setEventAttendance(teamId, eventCode, effectiveAttendingUids);
+      // The program goes along so a namespaced program writes its own attendance document (it used to fall through to the FRC path).
+      await setEventAttendance(teamId, eventCode, effectiveAttendingUids, program);
       setAttendingUids(null);
     } finally {
       setSavingAttendance(false);
@@ -229,6 +235,16 @@ export default function AssignmentsPage() {
                   Other events
                 </div>
               )}
+              {groups.archived.length > 0 && (
+                <div className="mx-2 my-1 border-t border-[var(--glass-border)] px-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
+                  Archived events
+                </div>
+              )}
+              {groups.archived.map((e) => (
+                <SelectItem key={e.code} value={e.code}>
+                  {eventTitle(e)}
+                </SelectItem>
+              ))}
               {otherEvents.map((e) => (
                 <SelectItem key={e.code} value={e.code}>
                   {eventTitle(e)}
@@ -236,6 +252,12 @@ export default function AssignmentsPage() {
               ))}
             </SelectContent>
           </Select>
+          {archivedEvents.length > 0 && (
+            <div className="mt-2 flex min-h-11 items-center gap-3">
+              <Switch id="assignments-show-archived" checked={showArchived} onCheckedChange={setShowArchived} />
+              <Label htmlFor="assignments-show-archived">Show archived events</Label>
+            </div>
+          )}
         </div>
       </div>
 

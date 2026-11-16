@@ -4,7 +4,7 @@ import { DEFAULT_FILTERS, type AnalyticsFilters } from "@/lib/analytics/filters"
 import { selectAnalyticsEntries } from "@/lib/analytics/entries";
 import type { ScoutEntry } from "@/lib/scout-entries";
 import type { EventInfo } from "@/lib/events/types";
-import { archiveCodes, previousSeasonEvents, readArchivedEvents, restoreCode, splitArchived, visibleEventsState } from "./archive";
+import { archiveCodes, assignmentEventGroups, previousSeasonEvents, readArchivedEvents, restoreCode, splitArchived, visibleEventsState } from "./archive";
 
 const ev = (code: string, season = 2026): EventInfo => ({ code, season, name: code, dateStart: "", dateEnd: "", city: null, stateProv: null, country: null, venue: null, website: null, timezone: null, status: "upcoming" });
 const state = (codes: string[], primaryCode: string | null = codes[0] ?? null) => ({ events: codes.map((c) => ev(c)), primaryCode });
@@ -95,5 +95,29 @@ describe("archived events in Analytics", () => {
     expect(pick(filters({}))).toEqual(["1"]); // default scope: the (non-archived) active events
     expect(pick(filters({ events: { kind: "custom", codes: ["old"] } }))).toEqual(["2"]); // explicitly opened
     expect(pick(filters({ events: { kind: "all" } })).sort()).toEqual(["1", "2"]);
+  });
+});
+
+describe("assignmentEventGroups (the Assignments picker with 'Show archived events')", () => {
+  const ev = (code: string) => ({ code });
+  const input = { current: [ev("2026arli")], archived: [ev("2025lake"), ev("2026old")], other: [ev("2026arli"), ev("2026old"), ev("2026new")] };
+
+  it("off (default): archived events are not offered, not even under Other events", () => {
+    const g = assignmentEventGroups({ ...input, showArchived: false });
+    expect(g.archived).toEqual([]);
+    expect(g.other.map((e) => e.code)).toEqual(["2026new"]);
+    expect(g.current.map((e) => e.code)).toEqual(["2026arli"]);
+  });
+
+  it("on: archived events get their own group, in order, and appear once", () => {
+    const g = assignmentEventGroups({ ...input, showArchived: true });
+    expect(g.archived.map((e) => e.code)).toEqual(["2025lake", "2026old"]);
+    expect(g.other.map((e) => e.code)).toEqual(["2026new"]);
+  });
+
+  it("an event that is both current and archived is listed once, as current", () => {
+    const g = assignmentEventGroups({ current: [ev("a")], archived: [ev("a"), ev("b")], other: [], showArchived: true });
+    expect(g.current.map((e) => e.code)).toEqual(["a"]);
+    expect(g.archived.map((e) => e.code)).toEqual(["b"]);
   });
 });

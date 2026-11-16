@@ -354,6 +354,13 @@ describe("event attendance (teams.eventAttendees)", () => {
     expect(patch.eventAttendees).not.toHaveProperty("2026lake");
   });
 
+  it("saving an archived (older-season) event's list touches only that event's key", () => {
+    const existing = { "2025lake": ["Grace Hopper", "uid-gone"], [EVENT]: ["uid-ada"] };
+    const patch = attendeesPatch(existing, "2025lake", ["uid-ada"], members);
+    expect(patch).toEqual({ eventAttendees: { "2025lake": ["uid-ada", "uid-gone"] } });
+    expect(patch.eventAttendees).not.toHaveProperty(EVENT);
+  });
+
   it("deselecting a member removes both their uid and their name", () => {
     const patch = attendeesPatch({ [EVENT]: ["uid-ada", "Grace Hopper"] }, EVENT, ["uid-ada"], members);
     expect(patch.eventAttendees[EVENT]).toEqual(["uid-ada"]);

@@ -42,6 +42,19 @@ export function visibleEventsState(state: ActiveEventsState, archived: readonly 
   return { events: current, primaryCode };
 }
 
+/**
+ * The Assignments event picker's groups. Archived events are offered only while "Show archived events" is on (so an admin can open an old event and
+ * correct its attendance list), in their own group; they never also appear under "Other events", on or off. Nothing here changes what data is read.
+ */
+export function assignmentEventGroups<T extends { code: string }>(input: { current: readonly T[]; archived: readonly T[]; other: readonly T[]; showArchived: boolean }): { current: T[]; archived: T[]; other: T[] } {
+  const seen = new Set(input.current.map((e) => e.code));
+  const archivedCodes = new Set(input.archived.map((e) => e.code));
+  const archived = input.showArchived ? input.archived.filter((e) => !seen.has(e.code)) : [];
+  for (const e of archived) seen.add(e.code);
+  const other = input.other.filter((e) => !seen.has(e.code) && !archivedCodes.has(e.code));
+  return { current: [...input.current], archived, other };
+}
+
 /** The events "Archive all previous seasons" would archive: current (not archived) events from a season before `currentSeason`. */
 export function previousSeasonEvents<T extends Pick<EventInfo, "code" | "season">>(events: readonly T[], archived: readonly string[], currentSeason: number): T[] {
   const set = new Set(archived);
