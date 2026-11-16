@@ -194,10 +194,26 @@ service cloud.firestore {
               'helper-form', 'scout-status', 'scout-accuracy', 'assignments', 'event-selection', 'team-management'];
     }
 
+    // Session 6: the optional `openRestrictions` map (role id -> list of OPEN page ids that role is closed out of). Rules never gated open pages, so this is a
+    // client-side control; the rules only keep the doc well-formed: a map, role ids as the only keys, each value a list of at most 12. Which page ids a list may
+    // hold (open, not always-on) can't be checked without looping, so the client's parse and save path enforce that.
+    function openRestrictionListOk(m, role) {
+      return !(role in m) || (m[role] is list && m[role].size() <= 12);
+    }
+
+    function validOpenRestrictions(m) {
+      return m is map
+        && m.keys().hasOnly(['match-scout', 'pit-scout', 'pit-team', 'drive-team', 'lead-scout', 'lead-strategist', 'team-coach', 'media', 'judge-awards'])
+        && openRestrictionListOk(m, 'match-scout') && openRestrictionListOk(m, 'pit-scout') && openRestrictionListOk(m, 'pit-team')
+        && openRestrictionListOk(m, 'drive-team') && openRestrictionListOk(m, 'lead-scout') && openRestrictionListOk(m, 'lead-strategist')
+        && openRestrictionListOk(m, 'team-coach') && openRestrictionListOk(m, 'media') && openRestrictionListOk(m, 'judge-awards');
+    }
+
     function validPageAccessDoc(d) {
-      return d.keys().hasOnly(['roleGrants', 'pageRoles', 'memberOverrides', 'updatedBy', 'updatedAt'])
+      return d.keys().hasOnly(['roleGrants', 'pageRoles', 'memberOverrides', 'openRestrictions', 'updatedBy', 'updatedAt'])
         && d.keys().hasAll(['roleGrants', 'pageRoles', 'memberOverrides', 'updatedBy', 'updatedAt'])
         && d.roleGrants is map && d.pageRoles is map && d.memberOverrides is map
+        && (!('openRestrictions' in d) || validOpenRestrictions(d.openRestrictions))
         && d.updatedBy == request.auth.uid
         && d.updatedAt == request.time;
     }
@@ -1223,10 +1239,24 @@ service cloud.firestore {
                 'helper-form', 'scout-status', 'scout-accuracy', 'assignments', 'event-selection', 'team-management'];
       }
 
+      // Session 6: the same optional `openRestrictions` check as the root `validOpenRestrictions` (client-side control; the rules keep the doc well-formed).
+      function ftc_openRestrictionListOk(m, role) {
+        return !(role in m) || (m[role] is list && m[role].size() <= 12);
+      }
+
+      function ftc_validOpenRestrictions(m) {
+        return m is map
+          && m.keys().hasOnly(['match-scout', 'pit-scout', 'pit-team', 'drive-team', 'lead-scout', 'lead-strategist', 'team-coach', 'media', 'judge-awards'])
+          && ftc_openRestrictionListOk(m, 'match-scout') && ftc_openRestrictionListOk(m, 'pit-scout') && ftc_openRestrictionListOk(m, 'pit-team')
+          && ftc_openRestrictionListOk(m, 'drive-team') && ftc_openRestrictionListOk(m, 'lead-scout') && ftc_openRestrictionListOk(m, 'lead-strategist')
+          && ftc_openRestrictionListOk(m, 'team-coach') && ftc_openRestrictionListOk(m, 'media') && ftc_openRestrictionListOk(m, 'judge-awards');
+      }
+
       function ftc_validPageAccessDoc(d) {
-        return d.keys().hasOnly(['roleGrants', 'pageRoles', 'memberOverrides', 'updatedBy', 'updatedAt'])
+        return d.keys().hasOnly(['roleGrants', 'pageRoles', 'memberOverrides', 'openRestrictions', 'updatedBy', 'updatedAt'])
           && d.keys().hasAll(['roleGrants', 'pageRoles', 'memberOverrides', 'updatedBy', 'updatedAt'])
           && d.roleGrants is map && d.pageRoles is map && d.memberOverrides is map
+          && (!('openRestrictions' in d) || ftc_validOpenRestrictions(d.openRestrictions))
           && d.updatedBy == request.auth.uid
           && d.updatedAt == request.time;
       }

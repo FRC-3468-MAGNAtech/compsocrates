@@ -1,4 +1,4 @@
-import { PAGES, RESTRICTED_PAGES, getPage, type PageDef } from "@/lib/page-access/pages";
+import { NEVER_RESTRICTED_ROLES, PAGES, RESTRICTABLE_OPEN_PAGES, RESTRICTED_PAGES, getPage, isRestrictableOpenPage, type PageDef } from "@/lib/page-access/pages";
 import { ROLES, type RoleId } from "@/lib/roles";
 
 // P26: who can open a page. The ONE function behind the navigation, the route guard and the Admin Panel's preview;
@@ -10,6 +10,11 @@ export type PageAccessConfig = {
   roleGrants: Partial<Record<RoleId, string[]>>;
   /** Per member: extra pages they can open (`grant`) and pages that are closed to them whatever their role says (`deny`). */
   memberOverrides: Record<string, MemberOverride>;
+  /**
+   * Session 6, additive: per role, the OPEN pages that role is closed out of ("open to everyone by default" is the rule until an admin unticks a role).
+   * Absent or empty means no restriction, which behaves exactly as before. Client-side only: rules never gated open pages.
+   */
+  openRestrictions?: Partial<Record<RoleId, string[]>>;
 };
 
 export type MemberOverride = { grant: string[]; deny: string[] };
@@ -30,7 +35,30 @@ export function defaultPageAccessConfig(): PageAccessConfig {
   return { roleGrants: defaultRoleGrants(), memberOverrides: {} };
 }
 
-const asIds = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+function asIds(v: unknown): string[] {
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+}
+
+/** Role ids that may carry an open-page restriction (never an admin or owner id). */
+const RESTRICTABLE_ROLE_IDS = ROLE_IDS.filter((r) => !NEVER_RESTRICTED_ROLES.includes(r));
+
+/** The most pages one role can have restricted (the number of restrictable open pages): the cap on what a doc may hold. */
+export const MAX_OPEN_RESTRICTIONS_PER_ROLE = RESTRICTABLE_OPEN_PAGES.length;
+
+/**
+ * Cleans any `openRestrictions` value (stored or about to be saved): role ids as keys (never an admin or owner id), string-array values, page ids that are
+ * restrictable OPEN pages only (never an always-on page or the Admin Panel), de-duplicated and capped. Empty roles are dropped. Never throws.
+ */
+export function sanitizeOpenRestrictions(raw: unknown): Partial<Record<RoleId, string[]>> {
+  const out: Partial<Record<RoleId, string[]>> = {};
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+  const stored = raw as Record<string, unknown>;
+  for (const role of RESTRICTABLE_ROLE_IDS) {
+    const ids = [...new Set(asIds(stored[role]))].filter(isRestrictableOpenPage).slice(0, MAX_OPEN_RESTRICTIONS_PER_ROLE);
+    if (ids.length > 0) out[role] = ids;
+  }
+  return out;
+}
 
 /**
  * Reads whatever is stored (or nothing) into a complete config. A missing doc is the defaults. A role missing from a
@@ -42,6 +70,8 @@ export function parsePageAccess(raw: unknown): PageAccessConfig {
   const r = raw as Record<string, unknown>;
   const storedGrants = r.roleGrants && typeof r.roleGrants === "object" ? (r.roleGrants as Record<string, unknown>) : {};
   const restrictedIds = new Set(RESTRICTED_PAGES.map((p) => p.id));
+  // A member grant can also re-open a restricted OPEN page for one person (Session 6); a deny stays for restricted pages only.
+  const grantableIds = new Set([...restrictedIds, ...RESTRICTABLE_OPEN_PAGES.map((p) => p.id)]);
   const roleGrants = {} as Record<RoleId, string[]>;
   for (const role of ROLE_IDS) {
     roleGrants[role] = role in storedGrants ? [...new Set(asIds(storedGrants[role]))].filter((id) => restrictedIds.has(id)) : defaults[role];
@@ -50,11 +80,12 @@ export function parsePageAccess(raw: unknown): PageAccessConfig {
   const storedOverrides = r.memberOverrides && typeof r.memberOverrides === "object" ? (r.memberOverrides as Record<string, unknown>) : {};
   for (const [uid, value] of Object.entries(storedOverrides)) {
     const o = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
-    const grant = [...new Set(asIds(o.grant))].filter((id) => restrictedIds.has(id));
+    const grant = [...new Set(asIds(o.grant))].filter((id) => grantableIds.has(id));
     const deny = [...new Set(asIds(o.deny))].filter((id) => restrictedIds.has(id));
     if (grant.length > 0 || deny.length > 0) memberOverrides[uid] = { grant, deny };
   }
-  return { roleGrants, memberOverrides };
+  const openRestrictions = sanitizeOpenRestrictions(r.openRestrictions);
+  return Object.keys(openRestrictions).length > 0 ? { roleGrants, memberOverrides, openRestrictions } : { roleGrants, memberOverrides };
 }
 
 /** The roles of a person, primary first. */
@@ -73,7 +104,9 @@ export type AccessSource =
   /** No role and no grant. */
   | "none"
   /** Admin-only page, and this isn't an admin. */
-  | "admin-only";
+  | "admin-only"
+  /** An open page that every one of the person's roles has been closed out of (Session 6), and no individual grant re-opens it. */
+  | "restricted";
 
 export type AccessExplanation = { allowed: boolean; source: AccessSource; /** The roles that grant it (source "role"/"denied" when a role would have). */ viaRoles: RoleId[] };
 
@@ -82,7 +115,12 @@ export function explainAccess(user: AccessUser, pageId: string, config: PageAcce
   const page = getPage(pageId);
   if (!page) return { allowed: false, source: "none", viaRoles: [] };
   if (user.isAdmin || user.isOwner) return { allowed: true, source: "admin", viaRoles: [] };
-  if (page.access === "open") return { allowed: true, source: "open", viaRoles: [] };
+  if (page.access === "open") {
+    const closed = isRestrictableOpenPage(pageId) && rolesOf(user).every((role) => config?.openRestrictions?.[role]?.includes(pageId));
+    if (!closed) return { allowed: true, source: "open", viaRoles: [] };
+    if (config?.memberOverrides[user.uid]?.grant.includes(pageId)) return { allowed: true, source: "grant", viaRoles: [] };
+    return { allowed: false, source: "restricted", viaRoles: [] };
+  }
   if (page.access === "admin") return { allowed: false, source: "admin-only", viaRoles: [] };
 
   const cfg = config ?? defaultPageAccessConfig();
@@ -114,6 +152,25 @@ export function setRoleGrant(config: PageAccessConfig, role: RoleId, pageId: str
   return { ...config, roleGrants: { ...config.roleGrants, [role]: next } };
 }
 
+/** Closes an open page to one role (`restricted` true) or re-opens it. Refuses what can never be closed: an always-on page, the Admin Panel, a restricted page, an admin or owner id. */
+export function setOpenRestriction(config: PageAccessConfig, role: RoleId, pageId: string, restricted: boolean): PageAccessConfig {
+  if (!isRestrictableOpenPage(pageId) || NEVER_RESTRICTED_ROLES.includes(role) || !ROLE_IDS.includes(role)) return config;
+  const current = config.openRestrictions?.[role] ?? [];
+  const next = restricted ? [...new Set([...current, pageId])] : current.filter((id) => id !== pageId);
+  const openRestrictions = { ...config.openRestrictions };
+  if (next.length > 0) openRestrictions[role] = next;
+  else delete openRestrictions[role];
+  const base: PageAccessConfig = { roleGrants: config.roleGrants, memberOverrides: config.memberOverrides };
+  return Object.keys(openRestrictions).length > 0 ? { ...base, openRestrictions } : base;
+}
+
+/** How many pages beyond the always-on ones (and the Admin Panel) a role opens. 0 means the role reaches only the always-on pages: the screen warns, but allows it. */
+export function rolePageCount(config: PageAccessConfig, role: RoleId): number {
+  const restricted = RESTRICTED_PAGES.filter((p) => (config.roleGrants[role] ?? []).includes(p.id)).length;
+  const open = RESTRICTABLE_OPEN_PAGES.filter((p) => !config.openRestrictions?.[role]?.includes(p.id)).length;
+  return restricted + open;
+}
+
 export type MemberPageState = "default" | "grant" | "deny";
 
 /** What a member's override says about one page. */
@@ -127,7 +184,9 @@ export function memberPageState(config: PageAccessConfig, uid: string, pageId: s
 /** Sets a member's override for one page: follow their roles (default), grant it, or deny it. An override that ends up empty is dropped. */
 export function setMemberPageState(config: PageAccessConfig, uid: string, pageId: string, state: MemberPageState): PageAccessConfig {
   const page = getPage(pageId);
-  if (!page || page.access !== "restricted") return config;
+  if (!page) return config;
+  // A restrictable OPEN page takes a grant (or "follow roles") only: there is no deny on an open page.
+  if (page.access !== "restricted" && !(isRestrictableOpenPage(pageId) && state !== "deny")) return config;
   const current = config.memberOverrides[uid] ?? { grant: [], deny: [] };
   const grant = current.grant.filter((id) => id !== pageId);
   const deny = current.deny.filter((id) => id !== pageId);
@@ -160,6 +219,7 @@ export function samePageAccess(a: PageAccessConfig, b: PageAccessConfig): boolea
       o: Object.keys(c.memberOverrides)
         .sort()
         .map((uid) => [uid, [...c.memberOverrides[uid].grant].sort(), [...c.memberOverrides[uid].deny].sort()]),
+      r: ROLE_IDS.map((r) => [...(c.openRestrictions?.[r] ?? [])].sort()),
     });
   return norm(a) === norm(b);
 }

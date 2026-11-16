@@ -17,6 +17,7 @@ import {
   pageRolesOf,
   parsePageAccess,
   samePageAccess,
+  sanitizeOpenRestrictions,
   type AccessUser,
   type PageAccessConfig,
 } from "@/lib/page-access/access";
@@ -33,12 +34,34 @@ export const requestDocId = (uid: string, pageId: string) => `${uid}_${pageId}`;
 
 /** The stored shape (what the rules read): the config plus the `pageRoles` mirror, who wrote it and when. */
 export function pageAccessDocData(config: PageAccessConfig, uid: string) {
-  return { roleGrants: config.roleGrants, pageRoles: pageRolesOf(config), memberOverrides: config.memberOverrides, updatedBy: uid, updatedAt: serverTimestamp() };
+  // Session 6: `openRestrictions` is written ONLY when something is restricted (and always cleaned here: the save path's guard), so every save that does not
+  // use the new field is byte-for-byte what it was and still passes the rules that existed before the field.
+  const openRestrictions = sanitizeOpenRestrictions(config.openRestrictions);
+  return {
+    roleGrants: config.roleGrants,
+    pageRoles: pageRolesOf(config),
+    memberOverrides: config.memberOverrides,
+    ...(Object.keys(openRestrictions).length > 0 ? { openRestrictions } : {}),
+    updatedBy: uid,
+    updatedAt: serverTimestamp(),
+  };
 }
 
 /** A short, audit-friendly description of what a config grants beyond the defaults (the log shows this, not the whole doc). */
 function summarize(config: PageAccessConfig) {
-  return { roleGrants: config.roleGrants, memberOverrides: config.memberOverrides };
+  const openRestrictions = sanitizeOpenRestrictions(config.openRestrictions);
+  return { roleGrants: config.roleGrants, memberOverrides: config.memberOverrides, ...(Object.keys(openRestrictions).length > 0 ? { openRestrictions } : {}) };
+}
+
+/** True for a Firestore permission-denied failure (for a restriction save: the rules that allow the new field are not deployed yet). */
+export const isPermissionDenied = (err: unknown): boolean => typeof err === "object" && err !== null && (err as { code?: unknown }).code === "permission-denied";
+
+/** What the screen says when a save fails. A restriction rejected by the rules is the one case with its own words: never a silent failure. */
+export function describeSaveFailure(changeKind: unknown, err: unknown): string {
+  if (changeKind === "open-restriction" && isPermissionDenied(err)) {
+    return "Couldn't save that restriction: the database rules don't allow it yet. The updated page-access rules have to be deployed first, then try again.";
+  }
+  return "Couldn't save that change. You may be offline, or no longer allowed to edit page access.";
 }
 
 type Actor = { teamId: string; uid: string; name: string };

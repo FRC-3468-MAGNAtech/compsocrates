@@ -596,6 +596,18 @@ describe("page access: settings/pageAccess, requests, and roles read from CS fie
   });
   const ref = (db: Db) => doc(db, "teams", TEAM1, "settings", "pageAccess");
 
+  // Session 6: the optional `openRestrictions` map. A client-side control; the rules only keep the doc well-formed.
+  it("openRestrictions: an admin can save it, an unknown key still fails, a non-admin still fails, a malformed map fails", async () => {
+    await assertSucceeds(setDoc(ref(as(ADMIN)), accessDoc(ADMIN, { openRestrictions: { "match-scout": ["match-list"], "team-coach": [] } })));
+    await assertSucceeds(setDoc(ref(as(ADMIN)), accessDoc(ADMIN)));
+    await assertFails(setDoc(ref(as(ADMIN)), accessDoc(ADMIN, { extra: 1 })));
+    await assertFails(setDoc(ref(as(SCOUT)), accessDoc(SCOUT, { openRestrictions: { "match-scout": ["match-list"] } })));
+    await assertFails(setDoc(ref(as(ADMIN)), accessDoc(ADMIN, { openRestrictions: ["match-list"] })));
+    await assertFails(setDoc(ref(as(ADMIN)), accessDoc(ADMIN, { openRestrictions: { admin: ["match-list"] } })));
+    await assertFails(setDoc(ref(as(ADMIN)), accessDoc(ADMIN, { openRestrictions: { "match-scout": "match-list" } })));
+    await assertFails(setDoc(ref(as(ADMIN)), accessDoc(ADMIN, { openRestrictions: { "match-scout": Array.from({ length: 13 }, (_, i) => `p${i}`) } })));
+  });
+
   it("is read by the team and written (valid shape, as themselves) only by an admin of the team", async () => {
     await assertSucceeds(setDoc(ref(as(ADMIN)), accessDoc(ADMIN)));
     await assertSucceeds(setDoc(ref(as(COACH)), accessDoc(COACH))); // role "coach" is an admin (D6)

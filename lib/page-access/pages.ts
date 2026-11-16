@@ -66,6 +66,27 @@ export const PAGES: PageDef[] = [
 
 export const RESTRICTED_PAGES: PageDef[] = PAGES.filter((p) => p.access === "restricted");
 
+/**
+ * Session 6: open pages that can NEVER be closed to a role, with the one-line reason the Page Access screen shows. The Dashboard is every account's landing
+ * page; the others are the personal pages an account with no team needs (docs/MEMBERSHIP_PLAN.md section 3), so they are not part of a team's page access.
+ */
+export const ALWAYS_ON_PAGES: Readonly<Record<string, string>> = {
+  dashboard: "Everyone's landing page, so it can't be closed.",
+  "practice-scouting": "Always available: a personal page, not part of the team's page access.",
+  changelog: "Always available: a personal page, not part of the team's page access.",
+  credits: "Always available: a personal page, not part of the team's page access.",
+  "account-settings": "Always available: a personal page, not part of the team's page access.",
+};
+export const isAlwaysOnPage = (id: string): boolean => id in ALWAYS_ON_PAGES;
+
+/** Open pages an admin may close to a role (stored as `openRestrictions`). */
+export const RESTRICTABLE_OPEN_PAGES: PageDef[] = PAGES.filter((p) => p.access === "open" && !isAlwaysOnPage(p.id));
+const RESTRICTABLE_IDS = new Set(RESTRICTABLE_OPEN_PAGES.map((p) => p.id));
+export const isRestrictableOpenPage = (id: string): boolean => RESTRICTABLE_IDS.has(id);
+
+/** Role ids that can never be restricted, whatever is stored (admins and owners are flags today; this keeps it true if either ever becomes a role id). */
+export const NEVER_RESTRICTED_ROLES: readonly string[] = ["admin", "owner"];
+
 const BY_ID = new Map(PAGES.map((p) => [p.id, p]));
 
 export const getPage = (id: string): PageDef | null => BY_ID.get(id) ?? null;

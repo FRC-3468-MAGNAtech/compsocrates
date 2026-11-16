@@ -352,6 +352,27 @@ describe("reading the account's own data", () => {
     await assertSucceeds(getDoc(doc(as(SCOUT), P("teams"), T1, "settings", "pageAccess")));
     await assertFails(getDoc(doc(as(OTHER), P("teams"), T1, "settings", "pageAccess")));
   });
+
+  // Session 6: the optional `openRestrictions` map. A client-side control; the rules only keep the doc well-formed.
+  describe("openRestrictions on the page-access doc", () => {
+    const accessDoc = (uid: string, over: Record<string, unknown> = {}) => ({ roleGrants: {}, pageRoles: {}, memberOverrides: {}, updatedBy: uid, updatedAt: serverTimestamp(), ...over });
+    const ref = (db: ReturnType<typeof as>) => doc(db, P("teams"), T1, "settings", "pageAccess");
+    it("an admin can save the field; a doc without it still saves", async () => {
+      await assertSucceeds(setDoc(ref(as(ADMIN)), accessDoc(ADMIN, { openRestrictions: { "match-scout": ["match-list"] } })));
+      await assertSucceeds(setDoc(ref(as(ADMIN)), accessDoc(ADMIN)));
+    });
+    it("an unknown top-level key still fails, and so do a non-map, an unknown role key and an over-long list", async () => {
+      await assertFails(setDoc(ref(as(ADMIN)), accessDoc(ADMIN, { extra: 1 })));
+      await assertFails(setDoc(ref(as(ADMIN)), accessDoc(ADMIN, { openRestrictions: ["match-list"] })));
+      await assertFails(setDoc(ref(as(ADMIN)), accessDoc(ADMIN, { openRestrictions: { admin: ["match-list"] } })));
+      await assertFails(setDoc(ref(as(ADMIN)), accessDoc(ADMIN, { openRestrictions: { "match-scout": "match-list" } })));
+      await assertFails(setDoc(ref(as(ADMIN)), accessDoc(ADMIN, { openRestrictions: { "match-scout": Array.from({ length: 13 }, (_, i) => `p${i}`) } })));
+    });
+    it("a non-admin still cannot write it", async () => {
+      await assertFails(setDoc(ref(as(SCOUT)), accessDoc(SCOUT, { openRestrictions: { "match-scout": ["match-list"] } })));
+      await assertFails(setDoc(ref(as(SCOUT)), accessDoc(SCOUT)));
+    });
+  });
 });
 
 // Last: these change the shared team doc that the reads above check.
