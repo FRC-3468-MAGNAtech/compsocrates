@@ -3,6 +3,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { ChevronDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { EntryTimes } from "@/components/changelog/entry-times";
 import { RichText } from "@/components/ui/rich-text";
 import { PROGRAMS } from "@/config/programs";
 import { CHANGE_TYPES, formatEntryDate, type ChangeType } from "@/lib/changelog";
@@ -57,6 +58,7 @@ export function EntryCard({
             <span className="text-xs text-[var(--muted-foreground)]">{formatEntryDate(entry.date)}</span>
           </div>
           <h2 className="text-base font-semibold leading-snug">{entry.title}</h2>
+          <EntryTimes postedAtMs={entry.postedAtMs} editedAtMs={entry.editedAtMs} />
           {!expanded && (
             <div className="flex flex-wrap gap-1.5 pt-0.5">
               {groups.map((g) => (

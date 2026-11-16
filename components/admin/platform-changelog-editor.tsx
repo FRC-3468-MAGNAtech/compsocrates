@@ -3,7 +3,9 @@
 import { useState } from "react";
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import { EntryCard } from "@/components/changelog/entry-card";
+import { EntryDateField, EntryTimeFields, ItemSelectionBar, RecordEditToggle } from "@/components/admin/platform-changelog-fields";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input, Label } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -24,6 +26,8 @@ import {
   type PlatformEntry,
   type PlatformItem,
 } from "@/lib/platform-changelog/model";
+import { deleteSelected, moveSelected, pruneSelection, toggleCategory, toggleKey } from "@/lib/platform-changelog/selection";
+import { fillFromImport, msToLocalInput, timePatchFromInputs, type TimePatch } from "@/lib/platform-changelog/times";
 import { cn } from "@/lib/utils";
 
 const label = (id: ProgramId) => PROGRAMS[id].brand.label;
@@ -97,18 +101,54 @@ export function PlatformChangelogEditor({
   const [preview, setPreview] = useState(false);
   const [previewAs, setPreviewAs] = useState<string>(ALL);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // Session 9: the date lock, the time inputs (the owner's local time), "Don't record this edit", and multi-select with undo until Save.
+  const [dateUnlocked, setDateUnlocked] = useState(false);
+  const [posted, setPosted] = useState(() => msToLocalInput(entry?.postedAtMs));
+  const [edited, setEdited] = useState(() => msToLocalInput(entry?.editedAtMs));
+  const [opened] = useState(() => ({ posted: msToLocalInput(entry?.postedAtMs), edited: msToLocalInput(entry?.editedAtMs) }));
+  const [timeError, setTimeError] = useState<string | undefined>();
+  const [dontRecord, setDontRecord] = useState(entry?.legacy ?? false);
+  const [selected, setSelected] = useState<ReadonlySet<number>>(new Set());
+  const [undoStack, setUndoStack] = useState<Row[][]>([]);
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const importTimes = entry ? fillFromImport(entry) : null;
 
   const status = entry?.status ?? "draft";
   const input = (): EntryInput => ({ title, version, date, programs, items: rows.map(({ category, text, programs: p }) => ({ category, text, ...(p ? { programs: p } : {}) })) });
 
   const setRow = (key: number, patch: Partial<PlatformItem>) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  const remember = () => setUndoStack((u) => [...u.slice(-19), rows]);
+  const removeRow = (key: number) => {
+    remember();
+    setRows((rs) => rs.filter((r) => r.key !== key));
+    setSelected((sel) => pruneSelection(rows.filter((r) => r.key !== key), sel));
+  };
+  const bulkMove = (category: ChangeType) => {
+    if (selected.size === 0) return;
+    remember();
+    setRows((rs) => moveSelected(rs, selected, category));
+  };
+  const bulkDelete = () => {
+    remember();
+    const left = deleteSelected(rows, selected);
+    setRows(left.length > 0 ? left : [{ key: nextKey++, category: rows[0]?.category ?? "new", text: "" }]);
+    setSelected(new Set());
+    setConfirmBulkDelete(false);
+  };
+  const undo = () => {
+    const prev = undoStack[undoStack.length - 1];
+    if (!prev) return;
+    setUndoStack((u) => u.slice(0, -1));
+    setRows(prev);
+    setSelected((sel) => pruneSelection(prev, sel));
+  };
   const move = (index: number, delta: -1 | 1) => setRows((rs) => moveItem(rs, index, delta));
   const addRow = () => setRows((rs) => (rs.length >= MAX_ITEMS ? rs : [...rs, { key: nextKey++, category: rs[rs.length - 1]?.category ?? "new", text: "" }]));
 
   const previewEntry = (): PlatformEntry => {
     const parsed = parseEntryInput(input());
     const v = parsed.ok ? parsed.value : { ...input(), items: input().items.filter((i) => i.text.trim() !== "") };
-    return { id: "preview", ...v, status, legacy: entry?.legacy ?? false, createdBy: "", createdAtMs: null, updatedAtMs: null, publishedAtMs: null, rev };
+    return { id: "preview", ...v, status, legacy: entry?.legacy ?? false, createdBy: "", createdAtMs: null, updatedAtMs: null, publishedAtMs: null, postedAtMs: entry?.postedAtMs ?? null, editedAtMs: entry?.editedAtMs ?? null, rev };
   };
 
   /** One save: validates (the server checks again), sends, and handles a conflict by fetching what is stored. */
@@ -117,6 +157,13 @@ export function PlatformChangelogEditor({
     const parsed = parseEntryInput(input());
     setErrors(parsed.ok ? {} : parsed.errors);
     if (write !== "unpublish" && !parsed.ok) return;
+    let extras: { times?: TimePatch; recordEdit: boolean; dateUnlocked: boolean } | null = null;
+    if (entry && write !== "unpublish") {
+      const tp = timePatchFromInputs(opened, { posted, edited }, Date.now(), { postedAt: entry.postedAtMs ?? null, editedAt: entry.editedAtMs ?? null });
+      setTimeError(tp.ok ? undefined : tp.error);
+      if (!tp.ok) return;
+      extras = { ...(Object.keys(tp.patch).length > 0 ? { times: tp.patch } : {}), recordEdit: !dontRecord, dateUnlocked: dateUnlocked && date !== entry.date };
+    }
     setBusy(true);
     try {
       const result = !entry
@@ -126,7 +173,7 @@ export function PlatformChangelogEditor({
         : write === "unpublish"
           ? await ownerWrite({ action: "unpublish", id: entry.id, expectedRev: rev })
           : parsed.ok
-            ? await ownerWrite({ action: "update", id: entry.id, expectedRev: rev, entry: parsed.value, ...(write === "publish" ? { status: "published" as const } : {}) })
+            ? await ownerWrite({ action: "update", id: entry.id, expectedRev: rev, entry: parsed.value, ...(write === "publish" ? { status: "published" as const } : {}), ...(extras ?? {}) })
             : null;
       if (!result) return;
       if (result.ok) {
@@ -153,6 +200,10 @@ export function PlatformChangelogEditor({
     setPrograms(i.programs);
     setRows(toRows(i.items));
     setRev(latest.rev);
+    setPosted(msToLocalInput(latest.postedAtMs));
+    setEdited(msToLocalInput(latest.editedAtMs));
+    setUndoStack([]);
+    setSelected(new Set());
     setLatest(null);
     setMessage(null);
     setErrors({});
@@ -197,11 +248,7 @@ export function PlatformChangelogEditor({
                 <Input id="pcl-version" value={version} maxLength={MAX_VERSION} placeholder="CompSocrates v2.0.0" onChange={(e) => setVersion(e.target.value)} aria-invalid={!!errors.version} />
                 <FieldError>{errors.version}</FieldError>
               </div>
-              <div>
-                <Label htmlFor="pcl-date">Date</Label>
-                <Input id="pcl-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} aria-invalid={!!errors.date} />
-                <FieldError>{errors.date}</FieldError>
-              </div>
+              <EntryDateField value={date} onChange={setDate} error={errors.date} legacy={entry?.legacy ?? false} unlocked={dateUnlocked} onUnlock={() => setDateUnlocked(true)} />
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_12rem]">
               <div>
@@ -216,16 +263,40 @@ export function PlatformChangelogEditor({
               </div>
             </div>
 
+            {entry && (
+              <div className="flex flex-col gap-2">
+                <EntryTimeFields posted={posted} edited={edited} onPosted={setPosted} onEdited={setEdited} error={timeError} />
+                {importTimes && (
+                  <div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setPosted(msToLocalInput(importTimes.postedAt));
+                        setEdited(msToLocalInput(importTimes.editedAt));
+                      }}
+                    >
+                      Fill from import
+                    </Button>
+                    <span className="ml-2 text-xs text-[var(--muted-foreground)]">Fills the two fields from the old note&apos;s times. It only fills the form: press Save to keep them.</span>
+                  </div>
+                )}
+              </div>
+            )}
+
             <fieldset className="flex flex-col gap-3">
               <legend className="mb-1.5 text-xs font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
                 Items ({rows.length}/{MAX_ITEMS})
               </legend>
+              <ItemSelectionBar rows={rows} selected={selected} undoCount={undoStack.length} onToggleCategory={(c) => setSelected((sel) => toggleCategory(rows, sel, c))} onMove={bulkMove} onDelete={() => setConfirmBulkDelete(true)} onUndo={undo} />
               <div className="flex max-h-[min(46vh,420px)] flex-col gap-4 overflow-y-auto overscroll-contain pr-1" data-testid="item-list">
                 {rows.map((row, i) => {
                   const rowError = errors.itemRows?.[i];
                   return (
                     <div key={row.key} className="flex flex-col gap-1.5 rounded-2xl border border-[var(--glass-border)] bg-white/4 p-3">
-                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[9rem_12rem_1fr]">
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[auto_9rem_12rem_1fr] sm:items-center">
+                        <Checkbox checked={selected.has(row.key)} onCheckedChange={() => setSelected((sel) => toggleKey(sel, row.key))} aria-label={`Select item ${i + 1}`} />
                         <Select value={row.category} onValueChange={(v) => setRow(row.key, { category: v as ChangeType })}>
                           <SelectTrigger aria-label={`Item ${i + 1} category`}>
                             <SelectValue>{CHANGE_TYPES.find((t) => t.id === row.category)?.label}</SelectValue>
@@ -269,7 +340,7 @@ export function PlatformChangelogEditor({
                           <Button type="button" variant="ghost" size="icon" className="h-11 w-11" aria-label={`Move item ${i + 1} down`} disabled={i === rows.length - 1} onClick={() => move(i, 1)}>
                             <ArrowDown className="h-4 w-4" />
                           </Button>
-                          <Button type="button" variant="ghost" size="icon" className="h-11 w-11 hover:text-red-300" aria-label={`Delete item ${i + 1}`} disabled={rows.length === 1} onClick={() => setRows((rs) => rs.filter((r) => r.key !== row.key))}>
+                          <Button type="button" variant="ghost" size="icon" className="h-11 w-11 hover:text-red-300" aria-label={`Delete item ${i + 1}`} disabled={rows.length === 1} onClick={() => removeRow(row.key)}>
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
@@ -330,6 +401,8 @@ export function PlatformChangelogEditor({
               </div>
             )}
 
+            {entry && status === "published" && <RecordEditToggle checked={dontRecord} onChange={setDontRecord} />}
+
             <div className={cn("flex flex-wrap items-center gap-2", entry ? "justify-between" : "justify-end")}>
               {entry && (
                 <Button type="button" variant="danger" onClick={() => setConfirmDelete(true)} disabled={busy}>
@@ -361,6 +434,21 @@ export function PlatformChangelogEditor({
                 )}
               </div>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={confirmBulkDelete} onOpenChange={setConfirmBulkDelete}>
+        <DialogContent>
+          <DialogTitle className="pr-8">Delete {selected.size} selected {selected.size === 1 ? "item" : "items"}?</DialogTitle>
+          <DialogDescription>They are removed from this entry when you press Save. Until then, Undo brings them back.</DialogDescription>
+          <div className="mt-6 flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setConfirmBulkDelete(false)}>
+              Cancel
+            </Button>
+            <Button variant="danger" onClick={bulkDelete}>
+              Delete selected
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
