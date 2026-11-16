@@ -42,23 +42,31 @@ export function AchievementsPanel() {
   const [editing, setEditing] = useState<{ def: AchievementDefinition; builtin: boolean; isNew: boolean } | null>(null);
   const [deleting, setDeleting] = useState<AchievementDefinition | null>(null);
 
-  const load = useCallback(async () => {
+  const [nonce, setNonce] = useState(0);
+  /** Reads the latest settings again ("Try again", "Load latest"). */
+  const load = useCallback(() => {
     setLoadError(null);
-    try {
-      const res = await authedApi<{ config?: unknown; canEdit?: boolean }>(`/api/achievements/config?program=${encodeURIComponent(program)}`);
-      const config = parseAchievementConfig(res.config);
-      setSaved(config);
-      setDraft(config);
-      setCanEdit(res.canEdit === true);
-      setConflict(false);
-      setSaveError(null);
-    } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "Couldn't load the achievement settings.");
-    }
-  }, [program]);
+    setNonce((n) => n + 1);
+  }, []);
   useEffect(() => {
-    void load();
-  }, [load]);
+    let cancelled = false;
+    authedApi<{ config?: unknown; canEdit?: boolean }>(`/api/achievements/config?program=${encodeURIComponent(program)}`)
+      .then((res) => {
+        if (cancelled) return;
+        const config = parseAchievementConfig(res.config);
+        setSaved(config);
+        setDraft(config);
+        setCanEdit(res.canEdit === true);
+        setConflict(false);
+        setSaveError(null);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setLoadError(err instanceof Error ? err.message : "Couldn't load the achievement settings.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [program, nonce]);
 
   const rows = useMemo(() => effectiveAchievements(draft, achievementMetrics), [draft, achievementMetrics]);
   const dirty = saved ? isDirty(saved, draft) : false;
@@ -90,7 +98,7 @@ export function AchievementsPanel() {
     return (
       <GlassPanel role="alert" data-testid="achievements-panel-error" className="flex flex-col items-start gap-3 text-sm">
         <p className="text-red-400">{loadError}</p>
-        <Button variant="outline" onClick={() => void load()}>
+        <Button variant="outline" onClick={load}>
           Try again
         </Button>
       </GlassPanel>
@@ -118,7 +126,7 @@ export function AchievementsPanel() {
         {conflict && (
           <div role="alert" data-testid="achievements-conflict" className="flex flex-wrap items-center gap-3 rounded-2xl border border-amber-400/40 bg-amber-500/10 p-3 text-sm">
             <span>Someone else saved changes while you were editing. Your edits were not saved.</span>
-            <Button variant="outline" className="min-h-11" onClick={() => void load()}>
+            <Button variant="outline" className="min-h-11" onClick={load}>
               Load latest
             </Button>
           </div>
