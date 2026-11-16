@@ -50,3 +50,17 @@ export function validateCreate(form: { teamNumber: string; teamName: string }): 
   if (teamName.length > NAME_MAX) errors.teamName = `Keep the team name under ${NAME_MAX} characters.`;
   return { number, teamName, errors };
 }
+
+/** What the Create tab shows when public team creation is switched off and the program has no application to go on to (one string for every program). */
+export const TEAM_CREATION_CLOSED_TEXT =
+  "Applications to create a team aren't open yet. If your team already has an account, ask your team admin for its join code and use Join a team.";
+
+/**
+ * The Create tab's state, the same rule for every program: unknown while the setting loads; open only when `appSettings/global.teamCreationEnabled` is
+ * explicitly true; otherwise an application when the program has one (`ProgramFeatures.applications`), else a plain "not open yet" notice.
+ */
+export function creationMode(teamCreationEnabled: boolean | null, applicationsAvailable: boolean): "open" | "apply" | "closed" | "loading" {
+  if (teamCreationEnabled === null) return "loading";
+  if (teamCreationEnabled) return "open";
+  return applicationsAvailable ? "apply" : "closed";
+}

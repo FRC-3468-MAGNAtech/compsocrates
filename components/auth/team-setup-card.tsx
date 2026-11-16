@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { DEFAULT_ROLE_ID, getRole, ROLES, type RoleId } from "@/lib/roles";
-import { validateCreate, validateJoin } from "@/lib/team-setup";
+import { TEAM_CREATION_CLOSED_TEXT, validateCreate, validateJoin } from "@/lib/team-setup";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -25,9 +25,10 @@ export type TeamSetupCardProps = {
   greeting?: string;
   /**
    * "open": anyone may create a team. "apply": creating needs an application (the Create tab becomes "Apply to create a team" and goes on to it).
-   * "loading": not known yet (the Create tab waits).
+   * "closed": creating is switched off and there is no application to go on to (the Create tab shows a notice, nothing else). "loading": not known yet
+   * (the Create tab waits). `creationMode` (lib/team-setup.ts) picks one from `appSettings/global.teamCreationEnabled`.
    */
-  creation: "open" | "apply" | "loading";
+  creation: "open" | "apply" | "closed" | "loading";
   /** The name sent with a join request or a new team: the account's own name (shown in, and editable on, the join form). */
   defaultName: string;
   /** A line above the form (for example, why the last request was closed). */
@@ -145,6 +146,10 @@ export function TeamSetupCard({ programLabel, greeting, creation, defaultName, n
             {busy ? "Sending…" : "Send request"}
           </Button>
         </form>
+      ) : creation === "closed" ? (
+        <p role="status" className="glass-card rounded-xl p-3.5 text-sm text-[var(--muted-foreground)]" data-testid="creation-closed">
+          {TEAM_CREATION_CLOSED_TEXT}
+        </p>
       ) : applying ? (
         <form onSubmit={submitCreate} className="flex flex-col gap-3" noValidate>
           <p className="glass-card rounded-xl p-3.5 text-sm text-[var(--muted-foreground)]" data-testid="apply-explainer">

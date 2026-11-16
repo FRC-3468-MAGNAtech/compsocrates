@@ -32,6 +32,15 @@ describe("TeamSetupCard (the one setup screen of both programs)", () => {
     expect(html(<TeamSetupCard {...props({ creation: "open" })} />)).toContain("Create a team");
   });
 
+  it("creation closed with no application: the same notice for every program, with the Join tab untouched", () => {
+    const a = html(<TeamSetupCard {...props({ programLabel: "AAA", creation: "closed" })} />).replaceAll("AAA", "<label>");
+    const b = html(<TeamSetupCard {...props({ programLabel: "BBB", creation: "closed" })} />).replaceAll("BBB", "<label>");
+    expect(a).toBe(b);
+    expect(a).toContain("Create a team");
+    expect(a).toContain("Join a team");
+    expect(a).toContain("Team join code");
+  });
+
   it("without a program name the heading just says your team", () => {
     expect(html(<TeamSetupCard {...props({ programLabel: undefined })} />)).toContain("Set up your team");
   });

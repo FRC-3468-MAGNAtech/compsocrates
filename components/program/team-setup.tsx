@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { ApiError } from "@/lib/api-client";
 import { useProgramConfig } from "@/lib/program/context";
 import { useProgramData } from "@/lib/program/data";
 import { TeamSetupCard } from "@/components/auth/team-setup-card";
+import { fetchTeamCreationEnabled } from "@/lib/team-enrollment";
+import { creationMode } from "@/lib/team-setup";
 import { Button } from "@/components/ui/button";
 
 const isDenied = (err: unknown) => (err as { code?: string } | null)?.code === "permission-denied";
@@ -21,6 +23,18 @@ export function TeamSetup() {
   const data = useProgramData();
   const { user } = useAuth();
   const [sentTo, setSentTo] = useState<string | null>(null);
+  // The same switch FRC's setup screen reads (appSettings/global.teamCreationEnabled, through the public config route): off, the Create tab says applications
+  // are not open yet. The program's Firestore rules enforce it too (team create).
+  const [creationEnabled, setCreationEnabled] = useState<boolean | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void fetchTeamCreationEnabled().then((enabled) => {
+      if (!cancelled) setCreationEnabled(enabled);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   if (!data || !user) return null;
   const { enrollment } = data;
@@ -42,7 +56,7 @@ export function TeamSetup() {
     <TeamSetupCard
       programLabel={label}
       greeting={user.displayName ? `Hi, ${user.displayName}` : undefined}
-      creation="open"
+      creation={creationMode(creationEnabled, config.connection.features.applications)}
       defaultName={user.displayName ?? (user.email ?? "").split("@")[0] ?? ""}
       onJoin={async ({ code, name }) => {
         try {
@@ -54,6 +68,7 @@ export function TeamSetup() {
         setSentTo(code);
       }}
       onCreate={async ({ teamNumber, teamName, role, name }) => {
+        if (creationEnabled !== true) throw new Error("Applications to create a team aren't open yet.");
         try {
           // A team needs a name: a blank one is "Team <number>". No location is asked for here.
           await enrollment.createTeam({ uid: user.uid, email: user.email ?? "", name, teamNumber, teamName: teamName || `Team ${teamNumber}`, location: "", role });

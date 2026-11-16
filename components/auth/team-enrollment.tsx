@@ -17,6 +17,7 @@ import { cancelJoinRequest, fetchTeamLabel, useMyJoinRequests } from "@/lib/join
 import { isFallbackCodeLabel, type JoinRequest } from "@/data/cs/join-requests";
 import { DEFAULT_ROLE_ID, getRole, ROLES, type RoleId } from "@/lib/roles";
 import { TeamSetupCard } from "@/components/auth/team-setup-card";
+import { creationMode } from "@/lib/team-setup";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { ApplicationStatusCard } from "@/components/applications/application-status-card";
 import { useMyApplications } from "@/lib/applications-client";
@@ -379,7 +380,7 @@ export function TeamEnrollmentScreen({
     <TeamSetupCard
       programLabel={programLabel}
       greeting={greeting}
-      creation={enrollment.teamCreationEnabled === null ? "loading" : enrollment.teamCreationEnabled ? "open" : "apply"}
+      creation={creationMode(enrollment.teamCreationEnabled, true)}
       defaultName={user?.displayName ?? (user?.email ?? "").split("@")[0] ?? ""}
       notice={notice ?? (lastClosed ? (lastClosed.status === "denied" ? "Your last join request was denied. Check the code with your team admin and try again." : "You canceled your last join request.") : null)}
       onJoin={handleJoin}

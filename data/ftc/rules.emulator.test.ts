@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { assertFails, assertSucceeds, initializeTestEnvironment, type RulesTestEnvironment } from "@firebase/rules-unit-testing";
 import { addDoc, collection, deleteDoc, deleteField, doc, getDoc, getDocs, limit, query, runTransaction, serverTimestamp, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
 import { ftcDocToPickList, ftcPickListDoc, ftcPickListId } from "@/data/ftc/pick-list";
@@ -45,6 +45,19 @@ const ADMIN = "ftc-admin-1";
 const PIT = "ftc-pit-1";
 
 const P = (name: string) => programPath("ftc", name);
+
+/**
+ * The platform owner's switch, root `appSettings/global` (clients never read or write it; the rules read it with get()). `"no-document"` deletes the document, `"no-field"`
+ * leaves it without the field, anything else is the value of `teamCreationEnabled`.
+ */
+async function setCreationSwitch(value: boolean | string | "no-document" | "no-field") {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    const ref = doc(ctx.firestore(), "appSettings", "global");
+    if (value === "no-document") await deleteDoc(ref);
+    else if (value === "no-field") await setDoc(ref, { adminsSeeAllProfiles: true });
+    else await setDoc(ref, { teamCreationEnabled: value });
+  });
+}
 
 beforeAll(async () => {
   testEnv = await initializeTestEnvironment({
@@ -622,6 +635,8 @@ describe("credits", () => {
 
 describe("starting or joining a team (enrollment)", () => {
   const NEWBIE = "ftc-newbie-1";
+  // Beta release: starting a team needs the owner's switch ON. Every test below that is not about the switch runs with it on.
+  beforeEach(() => setCreationSwitch(true));
   const newTeam = (uid: string, code: string, over: Partial<{ teamNumber: number; teamName: string }> = {}) =>
     ftcNewTeamDocs(code, { uid, email: `${uid}@example.org`, name: "Sam", teamNumber: 4242, teamName: "Robo Owls", location: "Austin", ...over }, serverTimestamp());
   const createBatch = (uid: string, code: string, mutate?: (docs: ReturnType<typeof newTeam>) => void) => {
@@ -699,6 +714,71 @@ describe("starting or joining a team (enrollment)", () => {
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
       expect((await getDoc(doc(ctx.firestore(), "users", NEWBIE))).exists()).toBe(false);
       expect((await getDoc(doc(ctx.firestore(), "teams", "NEWTEAM2"))).exists()).toBe(false);
+    });
+  });
+
+  describe("the team creation switch (appSettings/global.teamCreationEnabled)", () => {
+    it("is denied when the document is missing, when the field is missing, when false, and for any value but true", async () => {
+      for (const [i, value] of (["no-document", "no-field", false, "true", 1] as const).entries()) {
+        await setCreationSwitch(value);
+        await assertFails(createBatch(`ftc-sw-a${i}`, `KKKKKKA${i + 2}`));
+        // nothing was written: neither half of the batch exists
+        await testEnv.withSecurityRulesDisabled(async (ctx) => {
+          expect((await getDoc(doc(ctx.firestore(), P("teams"), `KKKKKKA${i + 2}`))).exists()).toBe(false);
+          expect((await getDoc(doc(ctx.firestore(), P("users"), `ftc-sw-a${i}`))).exists()).toBe(false);
+        });
+      }
+    });
+
+    it("is allowed only when it is exactly true, for a signed-in account with no profile", async () => {
+      await setCreationSwitch(true);
+      await assertSucceeds(createBatch("ftc-sw-b1", "KKKKKKB2"));
+    });
+
+    it("also refuses each half of the batch on its own when the switch is off (the profile cannot ride alone, the team cannot be written alone)", async () => {
+      await setCreationSwitch(false);
+      const db = as("ftc-sw-c1");
+      const docs = newTeam("ftc-sw-c1", "KKKKKKC2");
+      await assertFails(setDoc(doc(db, P("teams"), "KKKKKKC2"), docs.team));
+      await assertFails(setDoc(doc(db, P("users"), "ftc-sw-c1"), docs.user));
+    });
+
+    it("a signed-out visitor is refused whatever the switch says", async () => {
+      await setCreationSwitch(true);
+      const db = testEnv.unauthenticatedContext().firestore();
+      const docs = newTeam("ftc-sw-d1", "KKKKKKD2");
+      const batch = writeBatch(db);
+      batch.set(doc(db, P("teams"), "KKKKKKD2"), docs.team);
+      batch.set(doc(db, P("users"), "ftc-sw-d1"), docs.user);
+      await assertFails(batch.commit());
+    });
+
+    it("existing members are unaffected with the switch off: they read their team and profile and edit their own profile", async () => {
+      await setCreationSwitch(false);
+      await assertSucceeds(getDoc(doc(as(SCOUT), P("teams"), T1)));
+      await assertSucceeds(getDoc(doc(as(SCOUT), P("users"), SCOUT)));
+      await assertSucceeds(updateDoc(doc(as(SCOUT), P("users"), SCOUT), { name: "Ada L" }));
+      await assertSucceeds(updateDoc(doc(as(ADMIN), P("teams"), T1), ftcActiveEventsFields({ events: [], primaryCode: null })));
+    });
+
+    it("a person with a profile still cannot start another team with the switch on", async () => {
+      await setCreationSwitch(true);
+      await assertFails(createBatch(SCOUT, "KKKKKKE2"));
+    });
+
+    it("the join request path is unaffected whatever the switch says", async () => {
+      for (const value of ["no-document", false, true] as const) {
+        await setCreationSwitch(value);
+        const uid = `ftc-sw-j-${String(value)}`;
+        const db = as(uid);
+        await assertSucceeds(setDoc(doc(db, P("teams"), T1, "joinRequests", uid), ftcJoinRequestDoc({ uid, name: "Joe" }, serverTimestamp())));
+        await assertSucceeds(deleteDoc(doc(db, P("teams"), T1, "joinRequests", uid)));
+      }
+    });
+
+    it("the root (FRC) rules do not read the switch: they are unchanged (CS-OPEN, a signed-in user may still create a root team document)", async () => {
+      await setCreationSwitch(false);
+      await assertSucceeds(setDoc(doc(as("ftc-sw-root-1"), "teams", "ROOTSWITCH"), { teamName: "Root", teamNumber: "1" }));
     });
   });
 
@@ -856,6 +936,14 @@ describe("approving and denying a join request (team admin of the same team)", (
     expect(request.data()).toMatchObject({ status: "denied", decidedBy: ADMIN });
     const profile = await assertSucceeds(getDoc(doc(as(uid), P("users"), uid)));
     expect(profile.exists()).toBe(false);
+  });
+
+  it("approving works with the team creation switch off (the switch gates only starting a team)", async () => {
+    await setCreationSwitch(false);
+    const uid = await seedRequest();
+    await assertSucceeds(approve(ADMIN, uid));
+    const profile = await assertSucceeds(getDoc(doc(as(uid), P("users"), uid)));
+    expect(profile.data()).toMatchObject({ teamId: T1, isAdmin: false, isOwner: false, primaryRole: "match-scout" });
   });
 
   it("refuses a denial by a non-admin, an admin of another team, and the applicant", async () => {

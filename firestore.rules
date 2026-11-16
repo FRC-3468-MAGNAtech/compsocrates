@@ -1059,6 +1059,15 @@ service cloud.firestore {
         return request.auth != null;
       }
 
+      // Beta release: a client may start a NEW team here only while the platform owner has public team creation switched on, `appSettings/global.teamCreationEnabled`
+      // (the same switch the root team-creation route and the setup screens read). A missing document, a missing field or any value other than true means closed.
+      // It gates the team create and the profile create that rides in the same batch; join requests, join approval and every other rule are unchanged. The root
+      // (FRC) rules do NOT read this switch.
+      function ftc_teamCreationOpen() {
+        return exists(/databases/$(database)/documents/appSettings/global)
+          && get(/databases/$(database)/documents/appSettings/global).data.get('teamCreationEnabled', false) == true;
+      }
+
       function ftc_myProfile() {
         return get(/databases/$(database)/documents/programs/ftc/users/$(request.auth.uid)).data;
       }
@@ -1284,6 +1293,7 @@ service cloud.firestore {
         // number, see data/ftc/enrollment.ts), the owner is the caller, and the same batch must write the caller's own profile on this
         // team (checked with getAfter), so a team never exists without its admin. Everything else stays server-only or admin-only.
         allow create: if ftc_isSignedIn()
+          && ftc_teamCreationOpen()
           && teamId.matches('^[A-HJ-NP-Z2-9]{8}$')
           && !exists(/databases/$(database)/documents/programs/ftc/users/$(request.auth.uid))
           && request.resource.data.keys().hasOnly(['number', 'name', 'fieldTeams', 'fieldTeamIdList', 'fieldTeamNumbers', 'location', 'ownerUid', 'joinCode',
@@ -1410,6 +1420,7 @@ service cloud.firestore {
         // must not exist before the batch, and its owner must be the caller). That is the only way to get admin rights from a client:
         // an existing team can never be claimed, and joining someone else's team needs an approval a later session adds.
         allow create: if ftc_isSignedIn() && request.auth.uid == uid
+          && ftc_teamCreationOpen()
           && request.resource.data.teamId is string
           && !exists(/databases/$(database)/documents/programs/ftc/teams/$(request.resource.data.teamId))
           && getAfter(/databases/$(database)/documents/programs/ftc/teams/$(request.resource.data.teamId)).data.ownerUid == request.auth.uid

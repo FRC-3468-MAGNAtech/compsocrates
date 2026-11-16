@@ -43,3 +43,20 @@ describe("validateJoin / validateCreate (the one setup form of both programs)", 
     expect(validateCreate({ teamNumber: "1", teamName: "x".repeat(81) }).errors.teamName).toMatch(/under 80/);
   });
 });
+
+import { creationMode, TEAM_CREATION_CLOSED_TEXT } from "@/lib/team-setup";
+
+describe("creationMode (the Create tab's state, one rule for every program)", () => {
+  it("is unknown while loading, open only on an explicit true, and otherwise an application or a closed notice", () => {
+    expect(creationMode(null, true)).toBe("loading");
+    expect(creationMode(null, false)).toBe("loading");
+    expect(creationMode(true, true)).toBe("open");
+    expect(creationMode(true, false)).toBe("open");
+    expect(creationMode(false, true)).toBe("apply");
+    expect(creationMode(false, false)).toBe("closed");
+  });
+  it("the closed notice says applications are not open yet and points at the join code", () => {
+    expect(TEAM_CREATION_CLOSED_TEXT).toContain("aren't open yet");
+    expect(TEAM_CREATION_CLOSED_TEXT).toContain("join code");
+  });
+});
