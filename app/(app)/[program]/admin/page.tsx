@@ -30,6 +30,8 @@ import type { AdminTabId } from "@/config/programs/types";
 import { usePendingApplicationCount } from "@/lib/applications-client";
 import { SidebarPanel } from "@/components/admin/sidebar-panel";
 import { AdminsSeeProfilesSetting } from "@/components/admin/admins-see-profiles-setting";
+import { PlatformChangelogPanel } from "@/components/admin/platform-changelog-panel";
+import { PlatformCreditsPanel } from "@/components/admin/platform-credits-panel";
 
 type AdminTab = AdminTabId;
 
@@ -56,6 +58,9 @@ const TAB_LABELS: Record<AdminTab, string> = {
   applications: "Team Applications",
   templates: "Template Review",
   recovery: "Recovery",
+  // Session 7: the ONE changelog and the ONE set of credits for the whole site; the same two tabs in every program
+  "platform-changelog": "Changelog",
+  "platform-credits": "Credits",
   // Which environment variables the server cannot find (names only); admin-only
   "setup-check": "Setup Check",
 };
@@ -169,6 +174,8 @@ export default function AdminPanelPage() {
       {tab === "applications" && isPlatformOwner && <ApplicationsPanel />}
       {tab === "templates" && isPlatformOwner && <ReviewPanelHost />}
       {tab === "recovery" && isPlatformOwner && <RecoveryPanel />}
+      {tab === "platform-changelog" && isPlatformOwner && <PlatformChangelogPanel />}
+      {tab === "platform-credits" && isPlatformOwner && <PlatformCreditsPanel />}
       {tab === "setup-check" && <SetupCheckPanel />}
     </div>
   );

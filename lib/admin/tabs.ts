@@ -3,7 +3,7 @@ import type { AdminTabId, ProgramAdmin } from "@/config/programs/types";
 // The one resolver of the Admin Panel's tab list: the program's own list (`ProgramConfig.admin.tabs`), then who is looking. Pure.
 
 /** Tabs only a platform owner sees. */
-export const PLATFORM_TABS: readonly AdminTabId[] = ["applications", "templates", "recovery"];
+export const PLATFORM_TABS: readonly AdminTabId[] = ["applications", "templates", "recovery", "platform-changelog", "platform-credits"];
 
 export type AdminViewer = { isPlatformOwner: boolean; canManageForms: boolean };
 

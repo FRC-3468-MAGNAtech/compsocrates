@@ -4,7 +4,8 @@ import { ADMIN_TAB_IDS } from "@/config/programs/types";
 import { activeAdminTab, resolveAdminTabs } from "@/lib/admin/tabs";
 
 // FRC's Admin Panel tab list as it was before the per-program config (the order of the page's label table).
-const FRC_BEFORE = ["match-library", "forms", "page-access", "sidebar", "submissions", "entries", "sessions", "match-scout-ids", "practice-session-ids", "rescore", "audit-log", "backups", "applications", "templates", "recovery", "setup-check"];
+const FRC_BEFORE = ["match-library", "forms", "page-access", "sidebar", "submissions", "entries", "sessions", "match-scout-ids", "practice-session-ids", "rescore", "audit-log", "backups", "applications", "templates", "recovery", "platform-changelog", "platform-credits", "setup-check"];
+const PLATFORM = ["applications", "templates", "recovery", "platform-changelog", "platform-credits"];
 const owner = { isPlatformOwner: true, canManageForms: true };
 const plainAdmin = { isPlatformOwner: false, canManageForms: true };
 
@@ -12,7 +13,7 @@ describe("admin tab resolver", () => {
   it("FRC is unchanged: every tab in the old order for an owner, platform tabs hidden for an admin, Forms by permission", () => {
     expect([...ADMIN_TAB_IDS]).toEqual(FRC_BEFORE);
     expect(resolveAdminTabs(PROGRAMS.frc.admin, owner)).toEqual(FRC_BEFORE);
-    expect(resolveAdminTabs(PROGRAMS.frc.admin, plainAdmin)).toEqual(FRC_BEFORE.filter((t) => !["applications", "templates", "recovery"].includes(t)));
+    expect(resolveAdminTabs(PROGRAMS.frc.admin, plainAdmin)).toEqual(FRC_BEFORE.filter((t) => !PLATFORM.includes(t)));
     expect(resolveAdminTabs(PROGRAMS.frc.admin, { isPlatformOwner: false, canManageForms: false })).not.toContain("forms");
     expect(PROGRAMS.frc.admin.platformSettings).toBe(true);
   });
@@ -40,6 +41,17 @@ describe("admin tab resolver", () => {
     const shown = resolveAdminTabs(PROGRAMS.ftc.admin, owner);
     for (const hidden of ["templates", "applications", "recovery", "entries", "match-scout-ids", "practice-session-ids", "setup-check"]) expect(shown, hidden).not.toContain(hidden);
     expect(PROGRAMS.ftc.admin.platformSettings).toBe(false);
+  });
+
+  it("Session 7: the owner's Changelog and Credits tabs are in BOTH programs' lists, in the same order, shown to the platform owner only", () => {
+    for (const id of ["frc", "ftc"] as const) {
+      const shown = resolveAdminTabs(PROGRAMS[id].admin, owner);
+      expect(shown, id).toContain("platform-changelog");
+      expect(shown.indexOf("platform-credits"), id).toBe(shown.indexOf("platform-changelog") + 1); // adjacent, Changelog first, in each program
+      const plain = resolveAdminTabs(PROGRAMS[id].admin, plainAdmin);
+      expect(plain).not.toContain("platform-changelog");
+      expect(plain).not.toContain("platform-credits");
+    }
   });
 
   it("opens the first shown tab when the wanted one is not shown", () => {
