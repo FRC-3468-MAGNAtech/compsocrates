@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { isTbaEventKey } from "@/config/event";
 import { FRC_PROGRAM } from "@/config/programs/frc";
 import { FTC_PROGRAM } from "@/config/programs/ftc";
-import { buildEventKey, eventPagePath, parseEventKey, seasonLabel } from "@/lib/events/event-key";
+import { buildEventKey, canonicalEventKey, eventPagePath, parseEventKey, seasonLabel, seasonOfEventKey } from "@/lib/events/event-key";
 import { lookupSeasonForKey } from "@/lib/events/name-store";
 
 describe("event key shapes", () => {
@@ -63,5 +63,24 @@ describe("seasonLabel", () => {
   });
   it("shows a calendar season as the year", () => {
     expect(seasonLabel("calendar", 2026)).toBe("2026");
+  });
+});
+
+describe("canonicalEventKey / seasonOfEventKey", () => {
+  it("a tba key goes through the alias table and lower case", () => {
+    expect(canonicalEventKey("tba", " 2026LABR ")).toBe("2026lake");
+    expect(canonicalEventKey("tba", "2026arli")).toBe("2026arli");
+  });
+
+  it("a season-code key is rebuilt with an upper-case code, and a stray key is kept trimmed", () => {
+    expect(canonicalEventKey("season-code", "2025-uscalab")).toBe("2025-USCALAB");
+    expect(canonicalEventKey("season-code", " app-testing ")).toBe("app-testing");
+  });
+
+  it("reads the season of each shape, null for a key without one", () => {
+    expect(seasonOfEventKey("tba", "2026labr")).toBe(2026);
+    expect(seasonOfEventKey("season-code", "2025-uscalab")).toBe(2025);
+    expect(seasonOfEventKey("tba", "app-testing")).toBeNull();
+    expect(seasonOfEventKey("season-code", "2026lake")).toBeNull();
   });
 });

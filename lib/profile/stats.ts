@@ -1,4 +1,5 @@
 import type { EventAttendance } from "@/lib/event-attendance";
+import { canonicalEventKey, seasonOfEventKey, type EventKeyShape } from "@/lib/events/event-key";
 import type { LibraryMatch } from "@/lib/match-library";
 import type { PracticeSession } from "@/lib/practice-sessions";
 import { computeBadges, type BadgeResult } from "@/lib/profile/badges";
@@ -29,7 +30,7 @@ export type ProfileStats = {
   sessionCount: number;
   streak: number;
   longestStreak: number;
-  /** Events this member is on the attendance list of, with the Real Event entries they scouted there. */
+  /** Events of the shown season this member is on the attendance list of, with the event and live entries they scouted there (practice excluded). */
   events: EventEntries[];
   /** The latest session or entry activity (ms), or null when there's none. */
   lastActiveMs: number | null;
@@ -44,6 +45,11 @@ export type ProfileStatsInput = {
   libraryMatchesById: Map<string, LibraryMatch>;
   attendance: EventAttendance[];
   now?: Date;
+  /**
+   * The season the Events card shows and the program's event-key shape (both from `ProgramConfig`: `event.keyShape`, and the season from
+   * `currentSeasonFor(event.seasonKind, ...)`). Without it nothing is filtered or normalized (fixtures only: the profile always passes it).
+   */
+  eventScope?: { season: number; keyShape: EventKeyShape };
 };
 
 const isRealEntry = (e: ScoutEntry) => e.source === "event" || e.source === "live";
@@ -78,11 +84,16 @@ export function computeProfileStats(input: ProfileStatsInput): ProfileStats {
   const longest = longestStreak(practiceDates);
 
   const ownEntries = entries.filter((e) => e.uid === uid && isRealEntry(e) && !e.excluded);
+  // Both sides go through the same key canonicalizer, so an alias or a letter-case difference cannot hide an event's entries.
+  const scope = input.eventScope;
+  const canon = (key: string) => (scope ? canonicalEventKey(scope.keyShape, key) : key);
   const entriesByEvent = new Map<string, number>();
-  for (const e of ownEntries) entriesByEvent.set(e.eventCode, (entriesByEvent.get(e.eventCode) ?? 0) + 1);
-  const events: EventEntries[] = attendance
-    .filter((a) => a.uids.includes(uid))
-    .map((a) => ({ eventCode: a.eventCode, entries: entriesByEvent.get(a.eventCode) ?? 0 }))
+  for (const e of ownEntries) entriesByEvent.set(canon(e.eventCode), (entriesByEvent.get(canon(e.eventCode)) ?? 0) + 1);
+  // Attended = the member is on that event's attendance list. Entries never add an event the member is not listed for.
+  const attendedKeys = [...new Set(attendance.filter((a) => a.uids.includes(uid)).map((a) => canon(a.eventCode)))];
+  const events: EventEntries[] = attendedKeys
+    .filter((key) => !scope || seasonOfEventKey(scope.keyShape, key) === scope.season)
+    .map((key) => ({ eventCode: key, entries: entriesByEvent.get(key) ?? 0 }))
     .sort((a, b) => b.entries - a.entries || a.eventCode.localeCompare(b.eventCode));
 
   const activity = [...sessions.filter((s) => s.uid === uid).map((s) => s.finishedAt ?? s.startedAt), ...entries.filter((e) => e.uid === uid).map((e) => e.submittedAt)]
@@ -96,7 +107,8 @@ export function computeProfileStats(input: ProfileStatsInput): ProfileStats {
     bestSessionAccuracy: nonExcludedAccuracies.length > 0 ? Math.max(...nonExcludedAccuracies) : null,
     hasExcellentStatus: categories.some((c) => c.detail?.status?.id === "excellent"),
     longestStreakDays: longest,
-    eventsAttended: events.length,
+    // Achievements stay all-time: the card shows one season, but an earned badge is not taken back by a new season.
+    eventsAttended: attendedKeys.length,
     hasPerfectAlliance: ownEntries.some((e) => e.accuracy?.status === "complete" && e.accuracy.value !== null && Math.round(e.accuracy.value * 100) >= 100),
   });
 

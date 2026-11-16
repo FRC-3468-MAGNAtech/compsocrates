@@ -5,6 +5,8 @@
 //   "season-code"  `{season}-{CODE}`, `2025-USCALAB`: an event code alone is reused every season, so the key carries the season. The
 //                  hyphen means it can never match a "tba" key (`^\d{4}[a-z0-9]+$`), and the code is stored upper case.
 
+import { normalizeEventKey } from "@/config/event";
+
 export type EventKeyShape = "tba" | "season-code";
 
 export type ParsedEventKey = { season: number; code: string };
@@ -26,6 +28,23 @@ export function parseEventKey(shape: EventKeyShape, key: string): ParsedEventKey
 /** The key for an event: a "tba" key is the event code as is; a "season-code" key is `{season}-{CODE}` with the code upper-cased. */
 export function buildEventKey(shape: EventKeyShape, event: { code: string; season: number }): string {
   return shape === "tba" ? event.code : `${event.season}-${String(event.code).trim().toUpperCase()}`;
+}
+
+/**
+ * One spelling per event, for matching stored data against stored data (attendance keys against entry event codes). A "tba" key goes through
+ * the alias table (`normalizeEventKey`: lower case, legacy aliases like `2026labr` -> `2026lake`); a "season-code" key is rebuilt as
+ * `{season}-{CODE}`. Anything that is not of the shape is kept trimmed so it can still be compared. Never used to rewrite stored data.
+ */
+export function canonicalEventKey(shape: EventKeyShape, key: string): string {
+  const trimmed = String(key ?? "").trim();
+  if (shape === "tba") return normalizeEventKey(trimmed);
+  const parsed = parseEventKey(shape, trimmed);
+  return parsed ? buildEventKey(shape, parsed) : trimmed;
+}
+
+/** The season a stored event key belongs to (after canonicalizing), or null when the key has no season (`app-testing`, junk). */
+export function seasonOfEventKey(shape: EventKeyShape, key: string): number | null {
+  return parseEventKey(shape, canonicalEventKey(shape, key))?.season ?? null;
 }
 
 /** The program-relative path of an event's page. */

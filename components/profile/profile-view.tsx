@@ -13,7 +13,9 @@ import { usePermissions } from "@/lib/permissions";
 import { useAdminsSeeAllProfiles } from "@/lib/profile/admins-see-all";
 import type { ProfileDoc } from "@/lib/profile/model";
 import { clearProfileText, useProfile } from "@/lib/profile/service";
-import { useProgram } from "@/lib/program/context";
+import { EVENT_CONFIG } from "@/config/event";
+import { currentSeasonFor } from "@/lib/events/event-status";
+import { useProgram, useProgramConfig } from "@/lib/program/context";
 import { computeProfileStats, eventTargetProgress } from "@/lib/profile/stats";
 import { useScoutStatsSources } from "@/lib/scout-stats/use-scout-stats";
 import { useScoutTargets } from "@/lib/scout-status/store";
@@ -86,6 +88,7 @@ export function ProfileView({ uid }: { uid: string }) {
 function ProfileFull({ member, profile, teamId, isSelf, canModerate }: { member: TeamMember; profile: ProfileDoc | null; teamId: string | null; isSelf: boolean; canModerate: boolean }) {
   const { user, profile: me } = useAuth();
   const program = useProgram();
+  const { event: eventRules } = useProgramConfig();
   const sources = useScoutStatsSources(teamId);
   // Names and the target event come from every selected event, archived ones included (a cross-event view).
   const { allEvents: activeEvents, storedPrimaryCode: primaryCode } = useActiveEvents();
@@ -97,9 +100,19 @@ function ProfileFull({ member, profile, teamId, isSelf, canModerate }: { member:
   const stats = useMemo(
     () =>
       sources.loaded
-        ? computeProfileStats({ uid: member.uid, members: sources.members, sessions: sources.sessions, entries: sources.entries, libraryMatchesById: sources.libraryMatchesById, attendance: sources.attendance, now: new Date(nowMs) })
+        ? computeProfileStats({
+            uid: member.uid,
+            members: sources.members,
+            sessions: sources.sessions,
+            entries: sources.entries,
+            libraryMatchesById: sources.libraryMatchesById,
+            attendance: sources.attendance,
+            now: new Date(nowMs),
+            // The Events card shows the program's current season (calendar year or start year, from its config), keys compared in one spelling.
+            eventScope: { season: currentSeasonFor(eventRules.seasonKind, nowMs, EVENT_CONFIG.season), keyShape: eventRules.keyShape },
+          })
         : null,
-    [sources.loaded, sources.members, sources.sessions, sources.entries, sources.libraryMatchesById, sources.attendance, member.uid, nowMs]
+    [sources.loaded, sources.members, sources.sessions, sources.entries, sources.libraryMatchesById, sources.attendance, member.uid, nowMs, eventRules.seasonKind, eventRules.keyShape]
   );
 
   // Events outside the active list (older data) are named through the shared chain too, never shown as a bare key.
