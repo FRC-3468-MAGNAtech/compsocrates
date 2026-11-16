@@ -31,7 +31,8 @@ function makeStore(fetchSeason: (season: number) => Promise<ActionResult<EventIn
 describe("lookupSeasonForKey", () => {
   it("returns the year of a real TBA key (aliases resolved) and null otherwise", () => {
     expect(lookupSeasonForKey("2026lake")).toBe(2026);
-    expect(lookupSeasonForKey("2025lake")).toBe(2026); // alias of 2026lake
+    expect(lookupSeasonForKey("2026labr")).toBe(2026); // alias of 2026lake
+    expect(lookupSeasonForKey("2025lake")).toBe(2025); // the real 2025 Bayou Regional, not an alias
     expect(lookupSeasonForKey("app-testing")).toBeNull();
     expect(lookupSeasonForKey("week0")).toBeNull();
     expect(lookupSeasonForKey("")).toBeNull();

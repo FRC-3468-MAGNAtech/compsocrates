@@ -78,7 +78,7 @@ describe("match keys", () => {
       expect(csAssignmentMatchRef({ matchKey: key }), key).toEqual({ matchType: type, matchNumber: n });
       expect(csAssignmentMatchRef({ matchLabel: appMatchToCsLabel(type, n) }), appMatchToCsLabel(type, n)).toEqual({ matchType: type, matchNumber: n });
     }
-    expect(appMatchToCsKey("2025LAKE", "Qualification", 4)).toBe("2026lake_qm4");
+    expect(appMatchToCsKey("2026LABR", "Qualification", 4)).toBe("2026lake_qm4");
     expect(normalizeCsMatchId(appMatchToCsKey(EVENT, "Qualification", 12))).toBe("q12");
     expect(appMatchToCsLabel("Playoff", 15)).toBe("Finals 2");
   });
@@ -146,7 +146,7 @@ describe("slot derivation", () => {
   });
 
   it("a row from a legacy alias event still reads (event filtering is the caller's)", () => {
-    expect(csRowsToSlots([row("a", csMatch("2025lake_qm3", 5, "u1", { eventKey: "2025lake" }))])).toHaveLength(1);
+    expect(csRowsToSlots([row("a", csMatch("2026labr_qm3", 5, "u1", { eventKey: "2026labr" }))])).toHaveLength(1);
   });
 
   it("buildScheduleLookup treats an excluded alliance as empty", () => {
@@ -303,7 +303,7 @@ describe("team (pit / team strategy) assignments", () => {
   });
 
   it("drops rows without a team, scout or event; reads a string team number and an aliased event", () => {
-    const docs = csTeamRowsToDocs("pit", [pit("a", 0, "u1"), pit("b", 3, ""), row("c", { teamId: "T", teamNumber: "2403B", scoutId: "u1", eventKey: "2025lake" })], "T");
+    const docs = csTeamRowsToDocs("pit", [pit("a", 0, "u1"), pit("b", 3, ""), row("c", { teamId: "T", teamNumber: "2403B", scoutId: "u1", eventKey: "2026labr" })], "T");
     expect(docs).toHaveLength(1);
     expect(docs[0].eventCode).toBe("2026lake");
     expect(docs[0].current?.teams[0].teamNumber).toBe(2403);
@@ -343,7 +343,7 @@ describe("event attendance (teams.eventAttendees)", () => {
   });
 
   it("reads a legacy alias key under the canonical event", () => {
-    expect(attendeeUidsForEvent({ "2025lake": ["uid-ada"] }, "2026lake", members)).toEqual(["uid-ada"]);
+    expect(attendeeUidsForEvent({ "2026labr": ["uid-ada"] }, "2026lake", members)).toEqual(["uid-ada"]);
   });
 
   it("writes uids, replaces member names by uid, keeps unknown entries, leaves other events alone", () => {
@@ -360,15 +360,15 @@ describe("event attendance (teams.eventAttendees)", () => {
   });
 
   it("writes under the canonical key and reports the alias key to drop", () => {
-    const existing = { "2025lake": ["uid-ada"] };
-    expect(attendeesPatch(existing, "2025LAKE", ["uid-grace"], members).eventAttendees).toEqual({ "2026lake": ["uid-grace"] });
-    expect(staleAttendeeKeys(existing, "2026lake")).toEqual(["2025lake"]);
+    const existing = { "2026labr": ["uid-ada"] };
+    expect(attendeesPatch(existing, "2026LABR", ["uid-grace"], members).eventAttendees).toEqual({ "2026lake": ["uid-grace"] });
+    expect(staleAttendeeKeys(existing, "2026lake")).toEqual(["2026labr"]);
     expect(staleAttendeeKeys({ "2026lake": [] }, "2026lake")).toEqual([]);
     expect(staleAttendeeKeys(null, "2026lake")).toEqual([]);
   });
 
   it("lists recorded events as app attendance records", () => {
-    const records = attendanceRecordsFromTeam("MAG2403", { [EVENT]: ["Ada Lovelace"], "2026lake": [], "2025lake": ["uid-grace"] }, members);
+    const records = attendanceRecordsFromTeam("MAG2403", { [EVENT]: ["Ada Lovelace"], "2026lake": [], "2026labr": ["uid-grace"] }, members);
     expect(records).toEqual([
       { id: `MAG2403_${EVENT}`, teamId: "MAG2403", eventCode: EVENT, uids: ["uid-ada"], updatedAt: null },
       { id: "MAG2403_2026lake", teamId: "MAG2403", eventCode: "2026lake", uids: ["uid-grace"], updatedAt: null },
@@ -381,7 +381,7 @@ describe("manualTeamList", () => {
   it("reads numbers, strings and csv text", () => {
     expect(manualTeamList({ [EVENT]: [254, "971", "frc118"] }, EVENT)).toEqual([254, 971, 118]);
     expect(manualTeamList({ [EVENT]: "254, 971;254" }, EVENT)).toEqual([254, 971]);
-    expect(manualTeamList({ "2025lake": [1] }, "2026lake")).toEqual([1]);
+    expect(manualTeamList({ "2026labr": [1] }, "2026lake")).toEqual([1]);
     expect(manualTeamList({}, EVENT)).toEqual([]);
     // CS fixtures sometimes hold an object; it reads as no list rather than throwing
     expect(manualTeamList({ [EVENT]: { red: [1, 2, 3] } }, EVENT)).toEqual([]);

@@ -212,13 +212,21 @@ describe("All Events", () => {
 });
 
 describe("a picked event whose key has a legacy alias", () => {
-  // The older Bayou key is stored and read as the current one, so entries scouted there under the older game sit under the current key.
+  // A mistyped key is stored and read as the real one, so entries stored under it sit under the real key; the two are one event.
   it("finds the entries stored under the key it resolves to, from either spelling", () => {
-    const stored = entry("1", normalizeEventKey("2025lake"), { formId: frcOlder.id });
+    const stored = entry("1", normalizeEventKey("2026labr"), { formId: frcOlder.id });
     const picked = (code: string): AnalyticsFilters => ({ ...DEFAULT_FILTERS, gameId: frcOlder.id, events: { kind: "custom", codes: [code] } });
-    expect(run([stored], picked("2025lake"))).toEqual(["1"]);
+    expect(run([stored], picked("2026labr"))).toEqual(["1"]);
     expect(run([stored], picked("2026lake"))).toEqual(["1"]);
     expect(run([stored], picked("2026arli"))).toEqual([]);
-    expect(eventCodeIn(["2025lake"], stored.eventCode)).toBe(true);
+    expect(eventCodeIn(["2026labr"], stored.eventCode)).toBe(true);
+  });
+
+  it("the 2025 Bayou Regional is its own event: picking it does not select the 2026 one's entries, and vice versa", () => {
+    const e2025 = entry("1", "2025lake", { formId: frcOlder.id });
+    const e2026 = entry("2", "2026lake", { formId: frcOlder.id });
+    const picked = (code: string): AnalyticsFilters => ({ ...DEFAULT_FILTERS, gameId: frcOlder.id, events: { kind: "custom", codes: [code] } });
+    expect(run([e2025, e2026], picked("2025lake"))).toEqual(["1"]);
+    expect(run([e2025, e2026], picked("2026lake"))).toEqual(["2"]);
   });
 });

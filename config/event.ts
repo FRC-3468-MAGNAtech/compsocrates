@@ -43,9 +43,9 @@ export const EVENT_CONFIG: EventConfig = {
     statbotics: { baseUrl: "https://api.statbotics.io/v3" },
   },
   eventKeyAliases: {
-    // Legacy Bayou key used during 2025 data seeding.
-    "2025lake": "2026lake",
     // Mistyped Bayou key used in early 2026 configs.
+    // (`2025lake` is NOT an alias: it is the real 2025 Bayou Regional, a different event from `2026lake`. It used to be folded into 2026, which made it
+    // unselectable in Event Select and showed 2025 entries under a 2026 name.)
     "2026labr": "2026lake",
   },
   firstCodeOverrides: {

@@ -89,7 +89,7 @@ export function reefscapeDoc(overrides: CsRecord = {}): CsRecord {
     scoutName: "Grace Hopper",
     scoutId: "uid-grace",
     teamId: "MAG2403",
-    eventKey: "2025lake",
+    eventKey: "2026labr",
     matchId: "sf5",
     matchType: "finals",
     matchNumber: "5",

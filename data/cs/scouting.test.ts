@@ -116,7 +116,7 @@ describe("csDocToScoutEntry: identity mapping", () => {
     expect(e.game).toBe("REEFSCAPE");
     expect(e.formId).toBe("reefscape");
     expect(e.eventCode).toBe("2026lake");
-    expect(e.legacy?.eventKey).toBe("2025lake");
+    expect(e.legacy?.eventKey).toBe("2026labr");
     expect(e.teamNumber).toBe(254);
     expect(e.matchType).toBe("Playoff");
     expect(e.matchNumber).toBe(5);
@@ -344,10 +344,10 @@ describe("round trip: csDoc -> entry -> csDoc", () => {
       matchType: "finals",
       matchNumber: "2",
       teamNumber: " 1234",
-      eventKey: "2025lake",
+      eventKey: "2026labr",
     } as CsRecord;
     const entry = entryOf(canonical);
-    expect(entry.legacy).toMatchObject({ matchId: "qf2m1", teamNumber: " 1234", eventKey: "2025lake" });
+    expect(entry.legacy).toMatchObject({ matchId: "qf2m1", teamNumber: " 1234", eventKey: "2026labr" });
     expect(scoutEntryToCsDoc(entry, undefined, { now: NOW })).toEqual(canonical);
   });
 

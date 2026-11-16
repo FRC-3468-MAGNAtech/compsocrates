@@ -7,9 +7,9 @@ const slot = (matchNumber: number, teamNumber: number, scoutUid: string | null):
 
 describe("scoutedTeamsFor", () => {
   it("counts this match's event entries, resolving legacy event aliases", () => {
-    const set = scoutedTeamsFor([entry(), entry({ teamNumber: 1 }), entry({ eventCode: "2025lake", teamNumber: 7 }), entry({ matchNumber: 6, teamNumber: 2 }), entry({ matchType: "Practice", teamNumber: 3 }), entry({ source: "practice", teamNumber: 4 })], "2026arli", "Qualification", 5);
+    const set = scoutedTeamsFor([entry(), entry({ teamNumber: 1 }), entry({ eventCode: "2026labr", teamNumber: 7 }), entry({ matchNumber: 6, teamNumber: 2 }), entry({ matchType: "Practice", teamNumber: 3 }), entry({ source: "practice", teamNumber: 4 })], "2026arli", "Qualification", 5);
     expect([...set].sort((a, b) => a - b)).toEqual([1, 254]);
-    expect([...scoutedTeamsFor([entry({ eventCode: "2025lake", teamNumber: 7 })], "2026lake", "Qualification", 5)]).toEqual([7]);
+    expect([...scoutedTeamsFor([entry({ eventCode: "2026labr", teamNumber: 7 })], "2026lake", "Qualification", 5)]).toEqual([7]);
   });
 });
 

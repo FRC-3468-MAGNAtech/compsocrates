@@ -55,7 +55,7 @@ const strategy: CsRecord = {
   scoutId: "uid-grace",
   teamId: "TEAM1",
   teamNumber: "1678",
-  eventKey: "2025lake",
+  eventKey: "2026labr",
   game: "REBUILT",
   preferredStartingPosition: "depot-side",
   bestAt: "shooting",
@@ -197,8 +197,8 @@ describe("reading", () => {
   it("resolves the legacy event alias and keeps the raw spelling", () => {
     const e = csDocToFormEntry("team-strategy", "s1", strategy);
     expect(e.eventCode).toBe("2026lake");
-    expect(e.legacy?.eventKey).toBe("2025lake");
-    expect(eventCodesMatch(e.eventCode, "2025lake")).toBe(true);
+    expect(e.legacy?.eventKey).toBe("2026labr");
+    expect(eventCodesMatch(e.eventCode, "2026labr")).toBe(true);
     expect(eventCodesMatch("2026arli", "2026lake")).toBe(false);
     expect(eventCodesMatch("", "2026lake")).toBe(false);
     expect(eventCodesMatch("anything", "")).toBe(true);
@@ -299,7 +299,7 @@ describe("round trip (doc -> entry -> doc)", () => {
 
   it("a raw alias event and the CS match strings survive an unchanged rewrite", () => {
     const entry = csDocToFormEntry("team-strategy", "s1", strategy);
-    expect(formEntryToCsDoc(entry, strategy).eventKey).toBe("2025lake");
+    expect(formEntryToCsDoc(entry, strategy).eventKey).toBe("2026labr");
     const l = csDocToFormEntry("lead-scout", "l1", { ...lead, matchKey: "2026arli_qm12", matchId: "q12" });
     const out = formEntryToCsDoc(l, lead);
     expect(out.matchKey).toBe("2026arli_qm12");
@@ -346,7 +346,7 @@ describe("writing", () => {
   });
 
   it("a new entry gets CS's shape: game, times, lead markers, uid field per collection", () => {
-    const base: Omit<FormEntry, "formType"> = { id: "", teamId: "T", uid: "u1", scoutName: "N", formId: "x", formVersion: 1, eventCode: "2025lake", matchKey: null, alliance: null, teamNumber: 254, values: { robotWeight: "100", climbLevel1: true }, stickyNotes: [], flags: [], excluded: false, createdAtMs: 10, updatedAtMs: 10 };
+    const base: Omit<FormEntry, "formType"> = { id: "", teamId: "T", uid: "u1", scoutName: "N", formId: "x", formVersion: 1, eventCode: "2026labr", matchKey: null, alliance: null, teamNumber: 254, values: { robotWeight: "100", climbLevel1: true }, stickyNotes: [], flags: [], excluded: false, createdAtMs: 10, updatedAtMs: 10 };
     const pitDoc = formEntryToCsDoc({ ...base, formType: "pit-scout" });
     expect(pitDoc).toEqual({ teamId: "T", submittedBy: "u1", scoutName: "N", eventKey: "2026lake", game: "REBUILT", teamNumber: "254", robotWeight: "100", climbLevel1: true, createdAt: 10, submittedAt: 10 });
     const leadDoc = formEntryToCsDoc({ ...base, formType: "lead-scout", teamNumber: null, matchKey: "Q5", alliance: "blue", values: { robot1_teamNumber: "1", robot2_teamNumber: 2, overallAlliance_skillLevel: 3 } });
@@ -424,7 +424,7 @@ describe("completions", () => {
       { collection: "scouting" as const, doc: { eventKey: "2026arli", matchId: "q3" } },
       { collection: "scouting" as const, doc: { eventKey: "2026arli", matchId: "q4", entryType: "sub-in-request" } },
       { collection: "scouting" as const, doc: { eventKey: "2026arli", matchId: "q9", practiceSessionId: "s1" } },
-      { collection: "leadScouting" as const, doc: { eventKey: "2025lake", matchId: "sf7" } },
+      { collection: "leadScouting" as const, doc: { eventKey: "2026labr", matchId: "sf7" } },
       { collection: "matchStrategyPlans" as const, doc: { eventKey: "2026lake", matchKey: "2026lake_f1m2" } },
       { collection: "driveScouting" as const, doc: { eventKey: "2026arli", matchKey: "q12" } },
       { collection: "driveScouting" as const, doc: { matchKey: "q13" } },
@@ -433,7 +433,7 @@ describe("completions", () => {
     const arli = csCompletedMatchKeys(rows, "2026arli");
     expect([...arli.keys].sort()).toEqual(["Q12", "Q3"]);
     expect(arli.byCollection.driveScouting.has("Q12")).toBe(true);
-    const lake = csCompletedMatchKeys(rows, "2025lake");
+    const lake = csCompletedMatchKeys(rows, "2026labr");
     expect([...lake.keys].sort()).toEqual(["F15", "F7"]);
     expect(lake.byCollection.leadScouting.has("F7")).toBe(true);
   });

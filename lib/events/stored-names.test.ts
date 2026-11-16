@@ -27,7 +27,7 @@ describe("collectStoredEventNames", () => {
     expect(
       collectStoredEventNames(
         { "2026LAKE": "The team's Bayou" },
-        [{ eventKey: "2025lake", eventName: "Bayou Regional" }, { eventKey: "2026lake", eventName: "Later" }]
+        [{ eventKey: "2026labr", eventName: "Bayou Regional" }, { eventKey: "2026lake", eventName: "Later" }]
       )
     ).toEqual({ "2026lake": "The team's Bayou" });
   });
@@ -42,7 +42,7 @@ describe("collectStoredEventNames", () => {
   });
 
   it("rejects a name equal to the key as typed before aliasing", () => {
-    expect(collectStoredEventNames([{ eventKey: "2025lake", eventName: "2025lake" }])).toEqual({});
+    expect(collectStoredEventNames([{ eventKey: "2026labr", eventName: "2026labr" }])).toEqual({});
   });
 
   it("accepts null and undefined sources", () => {
@@ -53,7 +53,7 @@ describe("collectStoredEventNames", () => {
 describe("collectEventKeys", () => {
   it("collects distinct normalized keys from eventKey and eventCode, in first-seen order", () => {
     expect(
-      collectEventKeys([{ eventKey: "2026LAKE" }, { eventCode: "2026arli" }, { eventKey: "2025lake" }, { eventKey: "" }, {}], undefined, [{ eventCode: "2026arli" }])
+      collectEventKeys([{ eventKey: "2026LAKE" }, { eventCode: "2026arli" }, { eventKey: "2026labr" }, { eventKey: "" }, {}], undefined, [{ eventCode: "2026arli" }])
     ).toEqual(["2026lake", "2026arli"]);
   });
 });

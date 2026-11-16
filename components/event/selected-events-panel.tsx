@@ -25,11 +25,20 @@ export const STATUS_BADGE: Record<EventLifecycleStatus, { label: string; variant
   completed: { label: "Completed", variant: "outline" },
 };
 
-export function formatDateRange(start: string, end: string) {
+/**
+ * "Mar 10 – Mar 13" from an event's date-only strings. They are calendar dates at the venue, so they are read and printed as dates (UTC), never as an
+ * instant in the viewer's zone: `new Date("2027-03-10")` is UTC midnight, which a viewer west of UTC would see as Mar 9.
+ */
+export function formatDateRange(start: string, end: string, locale?: string) {
   const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
-  const s = new Date(start).toLocaleDateString(undefined, opts);
-  const e = new Date(end).toLocaleDateString(undefined, opts);
-  return start === end ? s : `${s} – ${e}`;
+  const show = (value: string) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+    if (!m) return new Date(value).toLocaleDateString(locale, opts);
+    return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))).toLocaleDateString(locale, { ...opts, timeZone: "UTC" });
+  };
+  const s = show(start);
+  const e = show(end);
+  return s === e ? s : `${s} – ${e}`;
 }
 
 // Where the condensed bar pins, mirroring the app shell: below the sticky

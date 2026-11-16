@@ -19,7 +19,6 @@ describe("EVENT_CONFIG", () => {
 
 describe("event key aliases", () => {
   it("resolves legacy and mistyped keys to the current key", () => {
-    expect(normalizeEventKey("2025lake")).toBe("2026lake");
     expect(normalizeEventKey("2026labr")).toBe("2026lake");
     expect(normalizeEventKey("  2026LABR ")).toBe("2026lake");
   });
@@ -31,13 +30,19 @@ describe("event key aliases", () => {
   });
 
   it("expands a canonical key to every stored spelling", () => {
-    expect(expandEventKeyAliases("2026lake").sort()).toEqual(["2025lake", "2026labr", "2026lake"]);
-    expect(expandEventKeyAliases("2025lake").sort()).toEqual(["2025lake", "2026labr", "2026lake"]);
+    expect(expandEventKeyAliases("2026lake").sort()).toEqual(["2026labr", "2026lake"]);
+    expect(expandEventKeyAliases("2026labr").sort()).toEqual(["2026labr", "2026lake"]);
     expect(expandEventKeyAliases("2026arli")).toEqual(["2026arli"]);
   });
 
   it("dedupes after alias resolution, keeping order and dropping empties", () => {
-    expect(dedupeEventKeys(["2025lake", "2026arli", "2026labr", "", "2026lake"])).toEqual(["2026lake", "2026arli"]);
+    expect(dedupeEventKeys(["2026labr", "2026arli", "", "2026lake"])).toEqual(["2026lake", "2026arli"]);
+  });
+
+  it("keeps the 2025 Bayou Regional a different event from the 2026 one (it is not an alias)", () => {
+    expect(normalizeEventKey("2025lake")).toBe("2025lake");
+    expect(dedupeEventKeys(["2025lake", "2026lake"])).toEqual(["2025lake", "2026lake"]);
+    expect(expandEventKeyAliases("2025lake")).toEqual(["2025lake"]);
   });
 });
 

@@ -38,7 +38,7 @@ describe("csTeamToTeamDoc", () => {
   });
 
   it("aliases are normalized and de-duplicated; junk is dropped", () => {
-    expect(readSelectedEvents(["2025lake", "2026LAKE", "2026labr", "", 5, "2026arli"])).toEqual(["2026lake", "2026arli"]);
+    expect(readSelectedEvents(["2026labr", "2026LAKE", "2026labr", "", 5, "2026arli"])).toEqual(["2026lake", "2026arli"]);
     expect(readSelectedEvents(undefined)).toEqual([]);
     expect(csTeamToTeamDoc("X", { selectedEvents: [] })).toMatchObject({ activeEventCode: null, activeEvent: null, activeEvents: [] });
   });
@@ -70,7 +70,7 @@ describe("selectedEventsPatch", () => {
   const ev = placeholderEventForKey;
 
   it("writes only selectedEvents: primary first, normalized, de-duplicated", () => {
-    const patch = selectedEventsPatch({ events: [ev("2026arli"), ev("2025lake"), ev("2026lake"), ev("2026txhou")], primaryCode: "2026txhou" });
+    const patch = selectedEventsPatch({ events: [ev("2026arli"), ev("2026labr"), ev("2026lake"), ev("2026txhou")], primaryCode: "2026txhou" });
     expect(patch).toEqual({ selectedEvents: ["2026txhou", "2026arli", "2026lake"] });
     expect(Object.keys(patch)).toEqual(["selectedEvents"]);
   });
@@ -119,8 +119,8 @@ describe("selectedEventNames (additive field)", () => {
   });
 
   it("keys the name by the normalized (alias-resolved) key, like selectedEvents", () => {
-    const named = { ...ev("2025lake"), name: "Bayou Regional" };
-    expect(selectedEventNamesPatch({ events: [named], primaryCode: "2025lake" })).toEqual({ selectedEventNames: { "2026lake": "Bayou Regional" } });
+    const named = { ...ev("2026labr"), name: "Bayou Regional" };
+    expect(selectedEventNamesPatch({ events: [named], primaryCode: "2026labr" })).toEqual({ selectedEventNames: { "2026lake": "Bayou Regional" } });
   });
 
   it("round trip: written names read back, and selectedEventsPatch stays unchanged", () => {

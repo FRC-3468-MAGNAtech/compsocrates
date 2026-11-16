@@ -361,9 +361,9 @@ describe("1. scouting reads (getEntries, the query behind useTeamScoutEntries)",
     const forEvent = await scoutEntries.getEntriesForEvent(team, "2026arli");
     expect(forEvent.map((e) => e.id).sort()).toEqual(["rebuilt", "zero"]);
     expect(forEvent.every((e) => e.source === "event")).toBe(true);
-    // the reefscape row is stored with the legacy alias `2025lake`: asking for either spelling of the event finds it
-    expect((await scoutEntries.getEntriesForEvent(team, "2025lake")).map((e) => e.id)).toContain("reefscape");
-    expect((await scoutEntries.getEntriesForEvent(team, normalizeEventKey("2025lake"))).map((e) => e.id)).toContain("reefscape");
+    // the reefscape row is stored with the legacy alias `2026labr`: asking for either spelling of the event finds it
+    expect((await scoutEntries.getEntriesForEvent(team, "2026labr")).map((e) => e.id)).toContain("reefscape");
+    expect((await scoutEntries.getEntriesForEvent(team, normalizeEventKey("2026labr"))).map((e) => e.id)).toContain("reefscape");
 
     const live = await new Promise<string[]>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error("subscribeEntries timed out")), 8000);
@@ -695,8 +695,8 @@ describe("3. users and teams", () => {
       teamName: "MAGNAtech",
       teamNumber: "2403",
       verifiedOwnerId: admin1,
-      selectedEvents: ["2026arli", "2025lake"],
-      eventAttendees: { "2025lake": ["Grace Hopper", "Guest Person"], "2026arli": [ada] },
+      selectedEvents: ["2026arli", "2026labr"],
+      eventAttendees: { "2026labr": ["Grace Hopper", "Guest Person"], "2026arli": [ada] },
       tbaApiKeyEncrypted: "ENCRYPTED-TBA",
       manualTeamListsByEvent: { "2026arli": [254, 971] },
       formAccessOverrides: { "pit-scout": [ada] },
@@ -720,7 +720,7 @@ describe("3. users and teams", () => {
       name: "MAGNAtech",
       joinCode: team,
       ownerUid: admin1,
-      selectedEvents: ["2026arli", normalizeEventKey("2025lake")],
+      selectedEvents: ["2026arli", normalizeEventKey("2026labr")],
       eventAttendees: teamDoc.eventAttendees,
       manualTeamListsByEvent: teamDoc.manualTeamListsByEvent,
       formAccessOverrides: teamDoc.formAccessOverrides,
@@ -754,19 +754,19 @@ describe("3. users and teams", () => {
   it("setEventAttendance merges one event's list (uids written, names resolved, unknown entries kept, legacy alias key folded) and nothing else", async () => {
     const { team, admin1, ada, grace } = await seedTeam();
     const before = (await raw(`teams/${team}`))!;
-    const canonical = normalizeEventKey("2025lake");
+    const canonical = normalizeEventKey("2026labr");
 
     await as(ada);
-    await denied(eventAttendance.setEventAttendance(team, "2025lake", [ada]));
+    await denied(eventAttendance.setEventAttendance(team, "2026labr", [ada]));
     expect(await raw(`teams/${team}`)).toEqual(before);
 
     await as(admin1);
-    await eventAttendance.setEventAttendance(team, "2025lake", [grace, ada]);
+    await eventAttendance.setEventAttendance(team, "2026labr", [grace, ada]);
     const after = (await raw(`teams/${team}`))!;
     const attendees = rec(after.eventAttendees);
     // "Grace Hopper" (a display name) is replaced by her uid, "Guest Person" is neither a uid nor a member name so it stays
     expect(attendees[canonical]).toEqual([grace, ada, "Guest Person"]);
-    if (canonical !== "2025lake") expect(attendees).not.toHaveProperty("2025lake");
+    if (canonical !== "2026labr") expect(attendees).not.toHaveProperty("2026labr");
     expect(attendees["2026arli"]).toEqual(canonical === "2026arli" ? [grace, ada, "Guest Person"] : [ada]);
     expect({ ...after, eventAttendees: undefined }).toEqual({ ...before, eventAttendees: undefined });
 
@@ -843,11 +843,11 @@ const FORM_CASES: FormCase[] = [
   {
     type: "team-strategy",
     collection: "strategyScouting",
-    seedDoc: (team, uid) => ({ scoutName: "Grace", scoutId: uid, teamId: team, teamNumber: "1678", eventKey: "2025lake", game: "REBUILT", preferredStartingPosition: "depot-side", bestAt: "shooting", clearsBump: true, notes: "Fast", createdAt: 1_775_000_000_000, submittedAt: 1_775_000_000_000, priorityRank: 3 }),
+    seedDoc: (team, uid) => ({ scoutName: "Grace", scoutId: uid, teamId: team, teamNumber: "1678", eventKey: "2026labr", game: "REBUILT", preferredStartingPosition: "depot-side", bestAt: "shooting", clearsBump: true, notes: "Fast", createdAt: 1_775_000_000_000, submittedAt: 1_775_000_000_000, priorityRank: 3 }),
     input: { ...baseInput, formId: "team-strategy-v1", formType: "team-strategy", teamNumber: 254, values: { preferredStartingPosition: "middle", bestAt: "shooting", clearsBump: true, notes: "n" } },
     stored: (team, uid) => ({ teamId: team, scoutId: uid, scoutName: "Ada", eventKey: "2026arli", game: "REBUILT", teamNumber: "254", preferredStartingPosition: "middle", bestAt: "shooting", clearsBump: true, notes: "n", createdAt: NOW, submittedAt: NOW }),
     edit: { key: "bestAt", value: "passing", apply: (d) => (d.bestAt = "passing") },
-    survivors: [["priorityRank", 3], ["eventKey", "2025lake"], ["teamNumber", "1678"]],
+    survivors: [["priorityRank", 3], ["eventKey", "2026labr"], ["teamNumber", "1678"]],
   },
   {
     type: "lead-scout",

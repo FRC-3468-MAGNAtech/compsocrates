@@ -104,7 +104,7 @@ describe("csPracticeMatchesToLibrary", () => {
   });
 
   it("normalizes an aliased event key", () => {
-    expect(csPracticeMatchesToLibrary([{ id: "a", data: csMatchDoc({ eventKey: "2025lake", matchKey: "2025lake_qm1", matchNumber: 1 }) }])[0].eventCode).toBe("2026lake");
+    expect(csPracticeMatchesToLibrary([{ id: "a", data: csMatchDoc({ eventKey: "2026labr", matchKey: "2026labr_qm1", matchNumber: 1 }) }])[0].eventCode).toBe("2026lake");
   });
 
   it("seasonIdForGame maps CS games to season ids", () => {
