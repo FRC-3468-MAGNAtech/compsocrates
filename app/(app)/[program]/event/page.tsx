@@ -70,7 +70,8 @@ export default function EventSelectionPage() {
   // Events are sorted by GAME, not by year: one entry per game the program has events for (its scouted games plus the others its config names), newest first.
   const games = useMemo(() => eventGamesOf(allSeasons, eventRules.otherGames), [allSeasons, eventRules.otherGames]);
   const gameName = (s: number) => gameNameOfSeason(games, s) ?? String(s);
-  const [season, setSeason] = useState(defaultApiSeason);
+  // Event Select opens on the NEWEST game (the one whose events are being registered); Analytics opens on the current game instead.
+  const [season, setSeason] = useState(games[0]?.apiSeason ?? defaultApiSeason);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<EventStatusFilter>("all");
   const [sort, setSort] = useState<EventSort>("status");

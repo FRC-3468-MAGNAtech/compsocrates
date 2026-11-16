@@ -1,3 +1,4 @@
+import { resolveEventTimeZone } from "@/lib/events/event-timezone";
 import { EVENT_CONFIG } from "@/config/event";
 import { getEventStatus } from "@/lib/events/event-status";
 import type { EventInfo, EventMatch, EventRanking, EventTeam, MatchType } from "@/lib/events/types";
@@ -65,7 +66,8 @@ export type TbaRankingsPayload = { rankings?: TbaRankingRaw[] | null } | null;
 // --- Events, teams, rankings ------------------------------------------------
 
 export function toEventInfo(raw: TbaEventRaw, season?: number): EventInfo {
-  const timezone = raw.timezone ?? null;
+  // The zone the API gave, or the one the event's location says (never left to the viewer's own zone).
+  const timezone = resolveEventTimeZone({ timezone: raw.timezone, country: raw.country, stateProv: raw.state_prov, city: raw.city });
   return {
     code: raw.key,
     season: season ?? raw.year ?? Number(raw.key.slice(0, 4)),

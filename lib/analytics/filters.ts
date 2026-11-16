@@ -1,3 +1,4 @@
+import { normalizeEventKey } from "@/config/event";
 import { DEFAULT_GAME_ID, GAMES } from "@/lib/analytics/game-schema";
 
 // Pure model + URL (de)serialization for the Analytics filter bar (P10). The
@@ -66,8 +67,11 @@ type ParamReader = { get(name: string): string | null };
 const MODES: PracticeModeFilter[] = ["all", "trial", "competitive"];
 const SOURCES: PracticeSourceFilter[] = ["all", "practice", "live"];
 
-/** Same event code, whatever the case? One program stores lower-case keys (`2026lake`), another upper-case (`2025-USCALAB`), and a hand-typed link may use either. */
-export const sameEventCode = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase();
+/**
+ * Same event? The app's own event-key rule (`normalizeEventKey`): case-insensitive, and a legacy key resolves to the key the stored data was read under
+ * (the older Bayou key is stored and read as the current one). A picked 2025 event therefore still finds the entries stored under its alias.
+ */
+export const sameEventCode = (a: string, b: string): boolean => normalizeEventKey(a) === normalizeEventKey(b);
 
 /** Is `code` one of `codes`, ignoring case? Every event filter compares through this. */
 export const eventCodeIn = (codes: readonly string[], code: string): boolean => codes.some((c) => sameEventCode(c, code));

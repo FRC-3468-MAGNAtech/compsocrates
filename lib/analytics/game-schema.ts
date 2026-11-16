@@ -403,6 +403,27 @@ export const GAMES: Record<string, GameSchema> = Object.fromEntries(Object.entri
 export const DEFAULT_GAME_ID = DEFAULT_FORM_ID;
 
 /**
+ * Match Analytics with All events: a match number repeats at every event, so an Event column follows the Match column (the real-event schema is never
+ * mutated; this is a copy, like `withPracticeColumns`).
+ */
+export function withEventColumn(schema: GameSchema): GameSchema {
+  const eventColumn: AnalyticsColumn = {
+    key: "event",
+    phase: "Information",
+    category: "Information",
+    label: "Event",
+    type: "text",
+    sortable: true,
+    width: 130,
+    getValue: (e) => e.eventCode,
+  };
+  const insertAt = schema.columns.findIndex((c) => c.key === "match") + 1;
+  const columns = [...schema.columns];
+  columns.splice(insertAt, 0, eventColumn);
+  return { ...schema, columns };
+}
+
+/**
  * P9: Match Analytics' "Practice Scouted Matches" toggle inserts a Session
  * ID column and a source/mode badge right after the sticky Scout column —
  * the real-event schema is never mutated, so the normal (unchecked) view's

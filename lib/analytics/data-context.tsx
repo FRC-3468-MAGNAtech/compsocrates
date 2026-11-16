@@ -5,10 +5,11 @@ import { useActiveEvents } from "@/lib/active-event";
 import { useAuth } from "@/lib/auth";
 import { orderPrimaryFirst } from "@/lib/active-events";
 import { eventsOfGameSeason } from "@/lib/analytics/event-options";
-import { hasGameConfig, librarySeasons, offeredUnderGame, pickDefaultEvent, upcomingGameFor, upcomingGamesOf, type AllEventsScope, type UpcomingGame } from "@/lib/analytics/event-defaults";
+import { hasGameConfig, librarySeasons, offeredUnderGame, pickDefaultEvent, upcomingGameFor, upcomingGamesOf, type UpcomingGame } from "@/lib/analytics/event-defaults";
 import { isInScope, joinEntries, selectAnalyticsEntries, type AnalyticsEntry, type EntrySelection, type SelectOptions } from "@/lib/analytics/entries";
 import { useAnalyticsFilters } from "@/lib/analytics/filter-context";
-import { resolveSingleEventCode, type AnalyticsFilters } from "@/lib/analytics/filters";
+import { resolveSingleEventCode, sameEventCode, type AnalyticsFilters } from "@/lib/analytics/filters";
+import { normalizeEventKey } from "@/config/event";
 import { buildAllTeamStats, type TeamStats } from "@/lib/analytics/team-stats";
 import { useTeamNames } from "@/lib/analytics/use-event-data";
 import { getEvents } from "@/lib/events/actions";
@@ -69,8 +70,8 @@ type AnalyticsDataValue = {
   eventOptions: EventOption[];
   /** The standard selection (accuracy filter applied, excluded dropped) for the current URL filters — computed once and shared. */
   selection: EntrySelection;
-  /** Where "All Events" stops (selected game's season, archived left out unless shown): shared with every page that re-selects entries. */
-  allScope: AllEventsScope;
+  /** The team's archived event codes (never the default event). */
+  archivedCodes: ReadonlySet<string>;
   /** Every entry joined to its session's accuracy (once per data change): what the pages' own selections filter. */
   joined: AnalyticsEntry[];
   /** The team has archived at least one event (the "Show archived events" switch only appears then). */
@@ -146,22 +147,14 @@ export function AnalyticsDataProvider({ children }: { children: React.ReactNode 
 
   const sessionsById = useMemo(() => new Map<string, PracticeSession>(sessions.map((s) => [s.id, s])), [sessions]);
 
-  // "All Events" = every event of the selected game's season (archived ones only while "Show archived events" is on), cut from the data already loaded.
-  const allScope = useMemo<AllEventsScope>(
-    () => ({
-      gameSeason,
-      seasonOf: seasonOfEvent,
-      excluded: filters.archived ? new Set<string>() : new Set(archivedCodes),
-    }),
-    [gameSeason, seasonOfEvent, filters.archived, archivedCodes]
-  );
+  const archivedSet = useMemo(() => new Set(archivedCodes), [archivedCodes]);
 
   // Joined to the sessions once per DATA change; a filter change (event, game, accuracy) then only filters instead of rebuilding every entry.
   const joined = useMemo(() => joinEntries(allEntries, sessionsById), [allEntries, sessionsById]);
 
   const selection = useMemo(
-    () => selectAnalyticsEntries({ entries: allEntries, joined, sessionsById, filters, activeEventCodes, gameFormIds, allScope }),
-    [allEntries, joined, sessionsById, filters, activeEventCodes, gameFormIds, allScope]
+    () => selectAnalyticsEntries({ entries: allEntries, joined, sessionsById, filters, activeEventCodes, gameFormIds }),
+    [allEntries, joined, sessionsById, filters, activeEventCodes, gameFormIds]
   );
   const { schema } = useSchemaForEntries(selection.scope, filters.gameId);
 
@@ -189,33 +182,35 @@ export function AnalyticsDataProvider({ children }: { children: React.ReactNode 
   const eventOptions = useMemo(() => {
     const options = new Map<string, EventOption>();
     const nameOf = eventNameOf;
-    const archivedSet = new Set(archivedCodes.map((c) => c.toUpperCase()));
-    const explicit = new Set(filters.events.kind === "custom" ? filters.events.codes.map((c) => c.toUpperCase()) : []);
+    // Events are keyed by the app's own event key (`normalizeEventKey`): a legacy key and the key it is stored under are one event, listed once.
+    const archivedKeys = new Set([...archivedSet].map((c) => normalizeEventKey(c)));
+    const explicit = new Set(filters.events.kind === "custom" ? filters.events.codes.map((c) => normalizeEventKey(c)) : []);
     // An archived event is listed only while "Show archived events" is on, or when it is the explicit pick (so the select can still show it checked).
-    const hidden = (code: string) => !filters.archived && archivedSet.has(code.toUpperCase()) && !explicit.has(code.toUpperCase());
-    const add = (code: string, name: string, active: boolean, noGameConfig = false) => {
-      // Keyed by the upper-cased code: the URL upper-cases picked codes, so the same event must not be listed twice.
-      if (hidden(code) || options.has(code.toUpperCase())) return;
+    const hidden = (code: string) => !filters.archived && archivedKeys.has(normalizeEventKey(code)) && !explicit.has(normalizeEventKey(code));
+    const add = (code: string, name: string, active: boolean, noGameConfig = false, hasData = false) => {
+      const key = normalizeEventKey(code);
+      if (hidden(code) || options.has(key)) return;
       // An event of another game's season is not offered under this game, practice or not (an event nobody picked and whose season is not known stays).
+      // An event WITH entries under this game always is: the entries carry the game's form, whatever season its key says.
       const season = seasonOfEvent(code);
-      if (!noGameConfig && !explicit.has(code.toUpperCase()) && !offeredUnderGame(season, gameSeason)) return;
+      if (!noGameConfig && !hasData && !explicit.has(key) && !offeredUnderGame(season, gameSeason)) return;
       const event = eventDirectory.get(code) ?? null;
-      options.set(code.toUpperCase(), { code, name, event, season: event?.season ?? season, active, count: 0, noGameConfig, archived: archivedSet.has(code.toUpperCase()) });
+      options.set(key, { code, name, event, season: event?.season ?? season, active, count: 0, noGameConfig, archived: archivedKeys.has(key) });
     };
 
     if (filters.practice) {
       for (const m of libraryMatches) if (m.seasonId === filters.gameId) add(m.eventCode, nameOf(m.eventCode), false);
     } else {
       // Only the selected events of this game's season: a 2027 event has no entries under a 2025 game. Events with data are added below.
-      for (const e of eventsOfGameSeason(activeEvents, gameSeason)) add(e.code, nameOf(e.code), !archivedSet.has(e.code.toUpperCase()));
+      for (const e of eventsOfGameSeason(activeEvents, gameSeason)) add(e.code, nameOf(e.code), !archivedKeys.has(normalizeEventKey(e.code)));
       // A team event whose season has no game config yet (the next, unannounced game) stays listed so it is not mysteriously missing, marked and never active.
       for (const e of activeEvents) if (unclaimed(e.season)) add(e.code, nameOf(e.code), false, true);
     }
     // Events with data under the current Game/Practice settings, whatever the Event filter says.
     const scopeAnyEvent = allEntries.filter((e) => isInScope(e, { ...filters, events: { kind: "all" } }, null, gameFormIds));
     for (const e of scopeAnyEvent) {
-      add(e.eventCode, nameOf(e.eventCode), activeEventCodes.includes(e.eventCode) && !filters.practice && !archivedSet.has(e.eventCode.toUpperCase()));
-      const option = options.get(e.eventCode.toUpperCase());
+      add(e.eventCode, nameOf(e.eventCode), activeEventCodes.some((c) => sameEventCode(c, e.eventCode)) && !filters.practice && !archivedKeys.has(normalizeEventKey(e.eventCode)), false, true);
+      const option = options.get(normalizeEventKey(e.eventCode));
       if (option) option.count += 1;
     }
     // Whatever was picked by hand is always an option, so the select can show it checked (a code the lists above do not know included).
@@ -229,7 +224,7 @@ export function AnalyticsDataProvider({ children }: { children: React.ReactNode 
         b.count - a.count ||
         a.name.localeCompare(b.name)
     );
-  }, [allEntries, filters, libraryMatches, activeEvents, activeEventCodes, eventDirectory, gameFormIds, eventNameOf, gameSeason, archivedCodes, seasonOfEvent, unclaimed]);
+  }, [allEntries, filters, libraryMatches, activeEvents, activeEventCodes, eventDirectory, gameFormIds, eventNameOf, gameSeason, archivedSet, seasonOfEvent, unclaimed]);
 
   // Names for every event that has data in scope (not just the ones passing the accuracy filter), so they don't flicker as the threshold changes.
   const nameRequests = useMemo(() => {
@@ -255,7 +250,7 @@ export function AnalyticsDataProvider({ children }: { children: React.ReactNode 
       libraryMatches,
       eventOptions,
       selection,
-      allScope,
+      archivedCodes: archivedSet,
       joined,
       hasArchived: archivedCodes.length > 0,
       seasons: allSeasons,
@@ -263,7 +258,7 @@ export function AnalyticsDataProvider({ children }: { children: React.ReactNode 
       teamStats,
       teamNames,
     }),
-    [entriesLoaded, sessionsLoaded, filters.practice, allEntries, sessionsById, schema, activeEventCodes, activeEvents, primaryCode, eventDirectory, eventNameOf, libraryMatches, eventOptions, selection, allScope, joined, archivedCodes, allSeasons, upcomingGames, gameSeason, teamStats, teamNames]
+    [entriesLoaded, sessionsLoaded, filters.practice, allEntries, sessionsById, schema, activeEventCodes, activeEvents, primaryCode, eventDirectory, eventNameOf, libraryMatches, eventOptions, selection, archivedSet, joined, archivedCodes, allSeasons, upcomingGames, gameSeason, teamStats, teamNames]
   );
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
@@ -310,10 +305,10 @@ export function useAnalyticsEntries(filtersOverride?: AnalyticsFilters, options?
       isStandard
         ? null
         : selectAnalyticsEntries(
-            { entries: data.allEntries, joined: data.joined, sessionsById: data.sessionsById, filters, activeEventCodes: data.activeEventCodes, gameFormIds, allScope: data.allScope },
+            { entries: data.allEntries, joined: data.joined, sessionsById: data.sessionsById, filters, activeEventCodes: data.activeEventCodes, gameFormIds },
             { applyAccuracy, includeExcluded }
           ),
-    [isStandard, data.allEntries, data.joined, data.sessionsById, filters, data.activeEventCodes, data.allScope, applyAccuracy, includeExcluded, gameFormIds]
+    [isStandard, data.allEntries, data.joined, data.sessionsById, filters, data.activeEventCodes, applyAccuracy, includeExcluded, gameFormIds]
   );
   const selection = custom ?? data.selection;
 
@@ -338,12 +333,12 @@ export function useSingleEvent(): { code: string | null; event: EventInfo | null
   const data = useAnalyticsData();
   const { filters } = useAnalyticsFilters();
   const fallback =
-    pickDefaultEvent({ events: data.activeEvents.filter((e) => !data.allScope.excluded.has(e.code)), seasons: data.seasons, seasonId: filters.gameId }) ??
+    pickDefaultEvent({ events: data.activeEvents.filter((e) => !data.archivedCodes.has(e.code)), seasons: data.seasons, seasonId: filters.gameId }) ??
     data.eventOptions.find((o) => !o.noGameConfig)?.code ??
     null;
   const code = resolveSingleEventCode(filters, fallback);
   // A picked code comes back from the URL upper-cased, so fall back to the option (matched without case) when the directory has it under another case.
-  const option = code ? data.eventOptions.find((o) => o.code.toUpperCase() === code.toUpperCase()) : undefined;
+  const option = code ? data.eventOptions.find((o) => sameEventCode(o.code, code)) : undefined;
   const event = code ? (data.eventDirectory.get(code) ?? option?.event ?? null) : null;
   return { code, event, noGameConfig: option?.noGameConfig ?? (event !== null && !hasGameConfig(data.seasons, event.season)) };
 }

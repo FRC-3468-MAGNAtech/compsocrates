@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { SEASONS, DEFAULT_SEASON_ID } from "@/lib/seasons";
 import { CURRENT_FTC_GAME_ID, FTC_GAME_DEFINITIONS, FTC_GAME_ID_LIST } from "@/config/games/ftc";
+import { normalizeEventKey } from "@/config/event";
 import { DEFAULT_FILTERS, eventCodeIn, parseFilters, resolveSingleEventCode, type AnalyticsFilters } from "@/lib/analytics/filters";
 import { selectAnalyticsEntries } from "@/lib/analytics/entries";
 import { matchKey } from "@/lib/analytics/match-breakdown";
 import type { ScoutEntry } from "@/lib/scout-entries";
-import { gameOfSeason, hasGameConfig, inAllEventsScope, librarySeasons, offeredUnderGame, pickDefaultEvent, pickedWithoutGameConfig, upcomingGameFor, upcomingGameNote, upcomingGamesOf, type AllEventsScope } from "./event-defaults";
+import { gameOfSeason, hasGameConfig, librarySeasons, offeredUnderGame, pickDefaultEvent, pickedWithoutGameConfig, upcomingGameFor, upcomingGameNote, upcomingGamesOf } from "./event-defaults";
 
 // Every season below comes from the program's own game list: no year or game name is written here.
 const frcSeasons = SEASONS.map((s) => ({ id: s.id, apiSeason: s.apiSeason }));
@@ -110,11 +111,6 @@ describe("practice events follow the same season rule", () => {
     expect(offeredUnderGame(seasonOf.get("2026lake"), frcCurrent.apiSeason)).toBe(true);
     expect(offeredUnderGame(undefined, frcCurrent.apiSeason)).toBe(true);
   });
-  it("practice All Events leaves those events' entries out too", () => {
-    const sc: AllEventsScope = { gameSeason: frcCurrent.apiSeason, seasonOf: (c) => seasonOf.get(c.toLowerCase()), excluded: new Set() };
-    expect(inAllEventsScope("2023bayou", sc)).toBe(false);
-    expect(inAllEventsScope("2026lake", sc)).toBe(true);
-  });
 });
 
 describe("an upcoming game (a place for registered events, no stats)", () => {
@@ -170,58 +166,59 @@ function entry(id: string, eventCode: string, over: Partial<ScoutEntry> = {}): S
   };
 }
 
-const seasonByCode: Record<string, number> = { A: frcCurrent.apiSeason, B: frcCurrent.apiSeason, C: frcCurrent.apiSeason, OLD: frcOlder.apiSeason };
-const scope = (excluded: string[] = []): AllEventsScope => ({ gameSeason: frcCurrent.apiSeason, seasonOf: (c) => seasonByCode[c], excluded: new Set(excluded) });
 const allFilters: AnalyticsFilters = { ...DEFAULT_FILTERS, events: { kind: "all" } };
-const run = (entries: ScoutEntry[], s: AllEventsScope | undefined, filters: AnalyticsFilters = allFilters) =>
-  selectAnalyticsEntries({ entries, sessionsById: new Map(), filters, activeEventCodes: [], allScope: s }).scope.map((e) => e.id);
+const run = (entries: ScoutEntry[], filters: AnalyticsFilters = allFilters) =>
+  selectAnalyticsEntries({ entries, sessionsById: new Map(), filters, activeEventCodes: [] }).scope.map((e) => e.id);
 
+// "All Events" has no scope of its own beyond the game: the entry's form ties it to one game, and archived events are part of it.
 describe("All Events", () => {
   it("combines 2 events", () => {
-    expect(run([entry("1", "A"), entry("2", "B")], scope())).toEqual(["1", "2"]);
+    expect(run([entry("1", "A"), entry("2", "B")])).toEqual(["1", "2"]);
   });
 
   it("combines 3 events", () => {
-    expect(run([entry("1", "A"), entry("2", "B"), entry("3", "C")], scope())).toEqual(["1", "2", "3"]);
+    expect(run([entry("1", "A"), entry("2", "B"), entry("3", "C")])).toEqual(["1", "2", "3"]);
   });
 
-  it("never mixes seasons: an event of another season is left out", () => {
-    expect(run([entry("1", "A"), entry("2", "OLD")], scope())).toEqual(["1"]);
-    expect(inAllEventsScope("OLD", scope())).toBe(false);
+  it("never mixes games: another game's form is left out", () => {
+    expect(run([entry("1", "A"), entry("2", "B", { formId: frcOlder.id })])).toEqual(["1"]);
+    const older: AnalyticsFilters = { ...DEFAULT_FILTERS, gameId: frcOlder.id, events: { kind: "all" } };
+    expect(run([entry("1", "A"), entry("2", "B", { formId: frcOlder.id })], older)).toEqual(["2"]);
   });
 
-  it("never mixes games: another game's form is left out by the game filter", () => {
-    expect(run([entry("1", "A"), entry("2", "B", { formId: frcOlder.id })], scope())).toEqual(["1"]);
+  it("works for every game, including one whose events are all archived (nothing is left out)", () => {
+    for (const season of SEASONS) {
+      const filters: AnalyticsFilters = { ...DEFAULT_FILTERS, gameId: season.id, events: { kind: "all" } };
+      const entries = [entry("1", "archived-1", { formId: season.id }), entry("2", "archived-2", { formId: season.id })];
+      expect(run(entries, filters), season.id).toEqual(["1", "2"]);
+    }
   });
 
-  it("keeps an event whose season is not known (its entries still carry the game's form)", () => {
-    expect(inAllEventsScope("MYSTERY", scope())).toBe(true);
-  });
-
-  it("leaves archived events out unless they are shown", () => {
-    const entries = [entry("1", "A"), entry("2", "B")];
-    expect(run(entries, scope(["B"]))).toEqual(["1"]);
-    expect(run(entries, scope([]))).toEqual(["1", "2"]);
-  });
-
-  it("an explicit event pick is not narrowed by the archived switch", () => {
-    const custom = { ...DEFAULT_FILTERS, events: { kind: "custom" as const, codes: ["B"] } };
-    expect(run([entry("1", "A"), entry("2", "B")], scope(["B"]), custom)).toEqual(["2"]);
+  it("includes an event stored under a legacy key the same as any other", () => {
+    expect(run([entry("1", "2026lake"), entry("2", "2025arli")])).toEqual(["1", "2"]);
   });
 
   it("keeps match numbers apart: the same match number at two events never joins", () => {
     const a = entry("1", "A", { matchNumber: 5 });
     const b = entry("2", "B", { matchNumber: 5 });
-    expect(run([a, b], scope())).toEqual(["1", "2"]);
+    expect(run([a, b])).toEqual(["1", "2"]);
     expect(matchKey(a.eventCode, a.matchType, a.matchNumber)).not.toBe(matchKey(b.eventCode, b.matchType, b.matchNumber));
   });
 
-  it("an empty season (no entries in it) is an empty selection, not a crash", () => {
-    expect(run([entry("2", "OLD")], scope())).toEqual([]);
-    expect(run([], scope())).toEqual([]);
+  it("an empty game is an empty selection, not a crash", () => {
+    expect(run([entry("2", "OLD", { formId: frcOlder.id })])).toEqual([]);
+    expect(run([])).toEqual([]);
   });
+});
 
-  it("reads the team-wide dataset it was given and narrows nothing else (no allScope = unchanged behavior)", () => {
-    expect(run([entry("1", "A"), entry("2", "OLD")], undefined)).toEqual(["1", "2"]);
+describe("a picked event whose key has a legacy alias", () => {
+  // The older Bayou key is stored and read as the current one, so entries scouted there under the older game sit under the current key.
+  it("finds the entries stored under the key it resolves to, from either spelling", () => {
+    const stored = entry("1", normalizeEventKey("2025lake"), { formId: frcOlder.id });
+    const picked = (code: string): AnalyticsFilters => ({ ...DEFAULT_FILTERS, gameId: frcOlder.id, events: { kind: "custom", codes: [code] } });
+    expect(run([stored], picked("2025lake"))).toEqual(["1"]);
+    expect(run([stored], picked("2026lake"))).toEqual(["1"]);
+    expect(run([stored], picked("2026arli"))).toEqual([]);
+    expect(eventCodeIn(["2025lake"], stored.eventCode)).toBe(true);
   });
 });

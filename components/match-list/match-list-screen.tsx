@@ -1,5 +1,7 @@
 "use client";
 
+import { formatScheduled } from "@/lib/dashboard/time";
+import { resolveEventTimeZone } from "@/lib/events/event-timezone";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import Link from "@/components/program/link";
 import { CalendarX2, Clock, RefreshCw, Search, Trophy } from "lucide-react";
@@ -15,7 +17,7 @@ import { EventName } from "@/components/events/event-name";
 import { eventTitle } from "@/lib/events/names";
 import type { EventInfo } from "@/lib/events/types";
 import { hasEventEnded } from "@/lib/events/event-status";
-import { MATCH_LIST_TABS, buildMatchRows, defaultTab, filterRows, formatEventDates, formatStart, rowsInTab, tabCounts, winnerOf, type MatchListRow, type MatchListStatus, type MatchListTab } from "@/lib/match-list/model";
+import { MATCH_LIST_TABS, buildMatchRows, defaultTab, filterRows, formatEventDates, rowsInTab, tabCounts, winnerOf, type MatchListRow, type MatchListStatus, type MatchListTab } from "@/lib/match-list/model";
 import { cn } from "@/lib/utils";
 
 // FIX4: the Match List page. Everything is plain props (the connected page feeds it the active events, the FIRST API
@@ -60,7 +62,7 @@ export function MatchListScreen({ events, eventsLoaded, matches, loading, error,
   const shownEvents = useMemo(() => (selected === ALL ? events : events.filter((e) => e.code === selected)), [events, selected]);
 
   const rowsByEvent = useMemo(
-    () => new Map(events.map((e) => [e.code, buildMatchRows({ eventCode: e.code, matches, timeZone: e.timezone, now, isOurTeam, eventEnded: hasEventEnded(e, now, currentSeason) })])),
+    () => new Map(events.map((e) => [e.code, buildMatchRows({ eventCode: e.code, matches, timeZone: resolveEventTimeZone(e), now, isOurTeam, eventEnded: hasEventEnded(e, now, currentSeason) })])),
     [events, matches, now, isOurTeam, currentSeason]
   );
   const shownRows = useMemo(() => shownEvents.flatMap((e) => rowsByEvent.get(e.code) ?? []), [shownEvents, rowsByEvent]);
@@ -161,7 +163,7 @@ export function MatchListScreen({ events, eventsLoaded, matches, loading, error,
                 ) : (
                   <ul className="flex flex-col gap-2">
                     {visible.map((row) => (
-                      <MatchCard key={row.key} row={row} timeZone={event.timezone} showEvent={false} isOurTeam={isOurTeam} />
+                      <MatchCard key={row.key} row={row} timeZone={resolveEventTimeZone(event)} showEvent={false} isOurTeam={isOurTeam} />
                     ))}
                   </ul>
                 )}
@@ -307,7 +309,7 @@ function MatchCard({ row, timeZone, showEvent, isOurTeam }: { row: MatchListRow;
     >
       <div className="flex items-baseline justify-between gap-2 sm:block">
         <div className="text-xl font-semibold tracking-tight">{row.label}</div>
-        <div className="text-xs text-[var(--muted-foreground)]">{formatStart(row.startMs, null, undefined, true)}</div>
+        <div className="text-xs text-[var(--muted-foreground)]">{row.startMs === null ? "Time TBD" : formatScheduled(row.startMs, timeZone)}</div>
         {showEvent && (
           <div className="text-[11px] text-[var(--muted-foreground)]" title={row.eventCode}>
             <EventName eventKey={row.eventCode} />

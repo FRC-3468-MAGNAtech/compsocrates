@@ -1,5 +1,6 @@
 "use client";
 
+import { resolveEventTimeZone } from "@/lib/events/event-timezone";
 import { createContext, useContext, useMemo, useState } from "react";
 import { useActiveEvents } from "@/lib/active-event";
 import { pickDefaultActiveEvent } from "@/lib/active-events";
@@ -141,7 +142,7 @@ export function DashboardProvider({ role, children }: { role: RoleId; children: 
   );
   const eventCode = event?.code ?? null;
   const eventStatus = useMemo(() => (event ? getEventStatus(event, visitedAt) : null), [event, visitedAt]);
-  const timeZone = event?.timezone ?? null;
+  const timeZone = event ? resolveEventTimeZone(event) : null;
 
   // --- FIRST API: fetched once, shared by every widget ----------------------------------
   const requests = useMemo(() => (event ? [{ code: event.code, season: event.season }] : []), [event]);

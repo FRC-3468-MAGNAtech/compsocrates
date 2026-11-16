@@ -42,6 +42,7 @@ export function EventMultiSelect({
   onShowArchivedChange,
   hasArchived,
   seasonKind,
+  allowAllInSingle = false,
 }: {
   options: EventOption[];
   scope: EventScope;
@@ -58,6 +59,8 @@ export function EventMultiSelect({
   hasArchived: boolean;
   /** How the program words a season next to a name (`ProgramConfig.event.seasonKind`). */
   seasonKind: "calendar" | "start-year";
+  /** Single-event mode only: also offer "All events" (a page whose table works across events). */
+  allowAllInSingle?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -92,7 +95,8 @@ export function EventMultiSelect({
   }, [open]);
 
   const customCodes = scope.kind === "custom" ? scope.codes : [];
-  const selectedCodes = singleEvent ? (singleSelectedCode ? [singleSelectedCode] : []) : customCodes;
+  const allPicked = scope.kind === "all";
+  const selectedCodes = singleEvent ? (singleSelectedCode && !(allowAllInSingle && allPicked) ? [singleSelectedCode] : []) : customCodes;
   const isSelected = (code: string) => selectedCodes.some((c) => sameCode(c, code));
   const nameOf = (code: string) => {
     const option = options.find((o) => sameCode(o.code, code));
@@ -100,9 +104,11 @@ export function EventMultiSelect({
   };
 
   const summary = singleEvent
-    ? singleSelectedCode
-      ? nameOf(singleSelectedCode)
-      : "Pick an event"
+    ? allowAllInSingle && allPicked
+      ? "All events"
+      : singleSelectedCode
+        ? nameOf(singleSelectedCode)
+        : "Pick an event"
     : scope.kind === "all"
       ? "All events"
       : scope.kind === "active"
@@ -170,14 +176,20 @@ export function EventMultiSelect({
                 )}
                 <PresetRow
                   label="All events"
-                  hint={practice ? "Every library and live event" : "Every event of this game's season"}
+                  hint={practice ? "Every library and live event" : "Every event of this game, archived ones included"}
                   selected={scope.kind === "all" || (practice && scope.kind === "active")}
                   onClick={() => onChange({ kind: "all" })}
                 />
                 <div className="mx-2 my-1 border-t border-[var(--glass-border)]" />
               </>
             )}
-            {singleEvent && <p className="px-3 py-1.5 text-[11px] text-[var(--muted-foreground)]">This page works on one event&apos;s schedule, so All events is not offered here.</p>}
+            {singleEvent && allowAllInSingle && (
+              <>
+                <PresetRow label="All events" hint="Every event of this game, archived ones included" selected={allPicked} onClick={() => { onChange({ kind: "all" }); setOpen(false); }} />
+                <div className="mx-2 my-1 border-t border-[var(--glass-border)]" />
+              </>
+            )}
+            {singleEvent && !allowAllInSingle && <p className="px-3 py-1.5 text-[11px] text-[var(--muted-foreground)]">This page works on one event&apos;s schedule, so All events is not offered here.</p>}
 
             {options.length === 0 && <p className="px-3 py-4 text-center text-xs text-[var(--muted-foreground)]">No events with data yet.</p>}
 

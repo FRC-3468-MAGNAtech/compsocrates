@@ -14,7 +14,7 @@ import { EntryEditDialog } from "@/components/admin/entry-edit-dialog";
 import { ImportCsvDialog } from "@/components/analytics/import-csv-dialog";
 import { useAuth } from "@/lib/auth";
 import { useProgram, useProgramConfig } from "@/lib/program/context";
-import { buildGameSchema, withPracticeColumns } from "@/lib/analytics/game-schema";
+import { buildGameSchema, withEventColumn, withPracticeColumns } from "@/lib/analytics/game-schema";
 import { useActiveForm, useForms } from "@/lib/forms/forms-context";
 import { entriesToCsv } from "@/lib/analytics/csv";
 import { currentEventName } from "@/lib/events/event-names";
@@ -40,18 +40,21 @@ export default function MatchScoutAnalyticsPage() {
   // Game / Event / Practice now come from the shared filter bar (P10). Import
   // and Recalculate act on a single event, so this page asks the bar's Event
   // control to be a single select while it's mounted.
-  useSingleEventMode();
+  // The table works across events too, so this page's Event control also offers All events (Import and Recalculate stay one-event actions).
+  useSingleEventMode(true, false, true);
   const { filters } = useAnalyticsFilters();
   const data = useAnalyticsData();
   const practiceMode = filters.practice;
-  const { code: eventCode, event: singleEvent } = useSingleEvent();
+  const { code: pickedCode, event: singleEvent } = useSingleEvent();
+  const allEvents = !practiceMode && filters.events.kind === "all";
+  const eventCode = allEvents ? null : pickedCode;
   const eventSeason = singleEvent?.season ?? data.season;
   const sessionsById = data.sessionsById;
 
   // Real-event data is pinned to the one chosen event; practice data spans events, as the filter says.
   const pinnedFilters = useMemo(
-    () => (practiceMode ? filters : { ...filters, events: { kind: "custom" as const, codes: eventCode ? [eventCode] : [] } }),
-    [practiceMode, filters, eventCode]
+    () => (practiceMode || allEvents ? filters : { ...filters, events: { kind: "custom" as const, codes: eventCode ? [eventCode] : [] } }),
+    [practiceMode, allEvents, filters, eventCode]
   );
   // This is the *raw* table: no accuracy filter, and excluded entries stay visible (the Config modal toggles them).
   const { scope: sourceEntries, loaded } = useAnalyticsEntries(pinnedFilters, { applyAccuracy: false, includeExcluded: true });
@@ -70,7 +73,11 @@ export default function MatchScoutAnalyticsPage() {
   // P21: the table is derived from the form(s) the visible entries were scouted with; importing writes with the season's active form.
   const forms = useForms();
   const { form: importForm } = useActiveForm(filters.gameId);
-  const schema = useMemo(() => (practiceMode ? withPracticeColumns(buildGameSchema(data.schema)) : buildGameSchema(data.schema)), [data.schema, practiceMode]);
+  const schema = useMemo(() => {
+    const base = buildGameSchema(data.schema);
+    const withEvent = allEvents && !practiceMode ? withEventColumn(base) : base;
+    return practiceMode ? withPracticeColumns(base) : withEvent;
+  }, [data.schema, practiceMode, allEvents]);
   const importSchema = useMemo(() => buildGameSchema(importForm), [importForm]);
 
   const nameMap = useMemo(() => {
@@ -123,7 +130,7 @@ export default function MatchScoutAnalyticsPage() {
 
   const handleExport = () => {
     const csv = entriesToCsv(schema, visibleEntries, resolveDisplayName, { eventName: currentEventName, includeEvent: true });
-    const filename = practiceMode ? "match-scout-practice.csv" : `match-scout-${eventCode ?? "export"}.csv`;
+    const filename = practiceMode ? "match-scout-practice.csv" : allEvents ? "match-scout-all-events.csv" : `match-scout-${eventCode ?? "export"}.csv`;
     downloadTextFile(filename, csv, "text/csv;charset=utf-8");
   };
 
@@ -175,7 +182,7 @@ export default function MatchScoutAnalyticsPage() {
     setDeleteTarget(null);
   };
 
-  if (!eventCode && !practiceMode) {
+  if (!eventCode && !practiceMode && !allEvents) {
     return (
       <GlassPanel className="flex flex-col items-center gap-3 py-12 text-center">
         <CalendarX2 className="h-8 w-8 text-[var(--muted-foreground)]" />
@@ -205,7 +212,7 @@ export default function MatchScoutAnalyticsPage() {
           <Button variant="glass" size="sm" className="gap-2" onClick={handleExport}>
             <Download className="h-4 w-4" /> Export CSV
           </Button>
-          {!practiceMode && (
+          {!practiceMode && !allEvents && (
             <>
               {features.csvImport && (!ownEntryStore || canImportCsv(profile)) && (
                 <Button variant="glass" size="sm" className="gap-2" onClick={() => setImportOpen(true)}>

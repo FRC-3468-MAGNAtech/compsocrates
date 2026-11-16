@@ -35,7 +35,9 @@ type FilterContextValue = {
   singleEvent: boolean;
   /** …and wants it even while Practice is on (the Pick List: its official data is always one real event). */
   singleEventInPractice: boolean;
-  setSingleEvent: (value: boolean, includePractice?: boolean) => void;
+  /** …and offers an "All events" choice in that single select (Match Analytics: a table of entries, which works across events). */
+  singleEventAllowsAll: boolean;
+  setSingleEvent: (value: boolean, includePractice?: boolean, allowAll?: boolean) => void;
 };
 
 const FilterContext = createContext<FilterContextValue | null>(null);
@@ -44,8 +46,8 @@ export function AnalyticsFilterProvider({ children }: { children: React.ReactNod
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const queryString = searchParams.toString();
-  const [single, setSingle] = useState({ on: false, includePractice: false });
-  const setSingleEvent = useCallback((value: boolean, includePractice: boolean = false) => setSingle({ on: value, includePractice }), []);
+  const [single, setSingle] = useState({ on: false, includePractice: false, allowAll: false });
+  const setSingleEvent = useCallback((value: boolean, includePractice: boolean = false, allowAll: boolean = false) => setSingle({ on: value, includePractice, allowAll }), []);
 
   // The games are the active program's (the forms context), and Practice mode exists only where practice is connected: a hand-edited link cannot turn it on.
   const { seasons, defaultSeasonId } = useForms();
@@ -81,6 +83,7 @@ export function AnalyticsFilterProvider({ children }: { children: React.ReactNod
       query: filtersToQuery(filters),
       singleEvent: single.on,
       singleEventInPractice: single.on && single.includePractice,
+      singleEventAllowsAll: single.on && single.allowAll,
       setSingleEvent,
     }),
     [filters, setFilters, resetFilters, single, setSingleEvent]
@@ -117,11 +120,11 @@ export function useAnalyticsHref(): (path: string, extra?: Record<string, string
  * `includePractice` for a page that needs one event even in Practice mode
  * (the Pick List).
  */
-export function useSingleEventMode(enabled: boolean = true, includePractice: boolean = false) {
+export function useSingleEventMode(enabled: boolean = true, includePractice: boolean = false, allowAll: boolean = false) {
   const { setSingleEvent } = useAnalyticsFilters();
   useEffect(() => {
     // Registers/unregisters this page's request with the layout-level filter bar.
-    setSingleEvent(enabled, includePractice);
+    setSingleEvent(enabled, includePractice, allowAll);
     return () => setSingleEvent(false);
-  }, [enabled, includePractice, setSingleEvent]);
+  }, [enabled, includePractice, allowAll, setSingleEvent]);
 }

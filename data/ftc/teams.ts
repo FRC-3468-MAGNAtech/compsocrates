@@ -9,6 +9,7 @@
  * Active events are stored denormalized (`activeEvent`, `activeEvents`, `activeEventCodes`) and read as they are; nothing here
  * derives them from another field. Server-written fields (`ownerUid`, `pendingTransfer`) pass through untouched.
  */
+import { resolveEventTimeZone } from "@/lib/events/event-timezone";
 import type { EventInfo, EventLifecycleStatus } from "@/lib/events/types";
 import type { TeamDoc } from "@/lib/team";
 import type { AccountTeam } from "@/lib/team-number";
@@ -103,7 +104,7 @@ export function readStoredEvent(value: unknown): EventInfo | null {
     country: nonEmptyString(value.country),
     venue: nonEmptyString(value.venue),
     website: nonEmptyString(value.website),
-    timezone: nonEmptyString(value.timezone),
+    timezone: resolveEventTimeZone({ timezone: nonEmptyString(value.timezone), country: nonEmptyString(value.country), stateProv: nonEmptyString(value.stateProv), city: nonEmptyString(value.city) }),
     status: EVENT_STATUSES.find((status) => status === value.status) ?? "upcoming",
   };
 }

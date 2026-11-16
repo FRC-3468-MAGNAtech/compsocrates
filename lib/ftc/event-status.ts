@@ -7,7 +7,9 @@ import type { EventLifecycleStatus, EventInfo } from "@/lib/events/types";
 // active-events hook) — `EventInfo.status` is frozen at fetch time, so an event
 // stored on the team doc days ago would otherwise still read "upcoming".
 
-export type EventStatusInput = Pick<EventInfo, "dateStart" | "dateEnd"> & { timezone?: string | null };
+import { resolveEventTimeZone } from "@/lib/events/event-timezone";
+
+export type EventStatusInput = Pick<EventInfo, "dateStart" | "dateEnd"> & { timezone?: string | null; country?: string | null; stateProv?: string | null };
 
 /** Calendar date (YYYY-MM-DD) of `now` in the event's own timezone, falling back to the viewer's local timezone. */
 function calendarDay(now: Date, timeZone?: string | null): string {
@@ -32,7 +34,8 @@ function calendarDay(now: Date, timeZone?: string | null): string {
  * the API's date-only strings would parse into a UTC midnight.
  */
 export function getEventStatus(event: EventStatusInput, now: Date | number = new Date()): EventLifecycleStatus {
-  const today = calendarDay(typeof now === "number" ? new Date(now) : now, event.timezone);
+  // The event's zone settled from the API's own zone or, failing that, from where the event is (`resolveEventTimeZone`).
+  const today = calendarDay(typeof now === "number" ? new Date(now) : now, resolveEventTimeZone(event));
   const start = event.dateStart.slice(0, 10);
   const end = event.dateEnd.slice(0, 10);
   if (today < start) return "upcoming";

@@ -1,7 +1,6 @@
 import type { ScoutEntry } from "@/lib/scout-entries";
 import type { PracticeSession } from "@/lib/practice-sessions";
 import { eventCodeIn, resolveEventCodes, type AnalyticsFilters } from "@/lib/analytics/filters";
-import { inAllEventsScope, type AllEventsScope } from "@/lib/analytics/event-defaults";
 
 // Pure selection logic for the shared Analytics dataset (P10). The realtime
 // subscriptions live in data-context.tsx; this module only turns "every entry
@@ -107,8 +106,6 @@ export function selectAnalyticsEntries(
     activeEventCodes: string[];
     /** P21: every form id that counts as the filter's Game (default: just the Game's own id). */
     gameFormIds?: ReadonlySet<string>;
-    /** Where "All Events" stops (the selected game's season, archived events left out unless shown). Only consulted when the event scope is unrestricted. */
-    allScope?: AllEventsScope;
     /**
      * `joinEntries(entries, sessionsById)`, done once per data change and passed in, so a FILTER change (event, game, accuracy) only filters: it no longer
      * re-joins every entry to its session and allocates a new object per entry. Same length and order as `entries`. Absent = join on the way, as before.
@@ -125,7 +122,6 @@ export function selectAnalyticsEntries(
   for (let i = 0; i < entries.length; i++) {
     const entry = entries[i];
     if (!isInScope(entry, input.filters, eventCodes, input.gameFormIds)) continue;
-    if (eventCodes === null && input.allScope && !inAllEventsScope(entry.eventCode, input.allScope)) continue;
     if (joined) {
       scope.push(joined[i]);
       continue;

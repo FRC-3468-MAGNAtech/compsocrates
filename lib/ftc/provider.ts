@@ -1,3 +1,4 @@
+import { resolveEventTimeZone } from "@/lib/events/event-timezone";
 import "server-only";
 import { getDefaultSeason } from "./config";
 import { ftcFetch, FtcApiError } from "./http";
@@ -52,6 +53,8 @@ async function run<T>(fn: () => Promise<T>): Promise<ActionResult<T>> {
 }
 
 function toEvent(raw: RawEvent, season: number): EventInfo {
+  // The API's zone can be a Windows-style name or missing: settle it from the name or, failing that, the event's location.
+  const timezone = resolveEventTimeZone({ timezone: raw.timezone, country: raw.country, stateProv: raw.stateprov, city: raw.city });
   return {
     code: raw.code,
     season,
@@ -63,8 +66,8 @@ function toEvent(raw: RawEvent, season: number): EventInfo {
     country: raw.country ?? null,
     venue: raw.venue ?? null,
     website: raw.website ?? null,
-    timezone: raw.timezone ?? null,
-    status: getEventStatus({ dateStart: raw.dateStart, dateEnd: raw.dateEnd, timezone: raw.timezone ?? null }),
+    timezone,
+    status: getEventStatus({ dateStart: raw.dateStart, dateEnd: raw.dateEnd, timezone }),
   };
 }
 

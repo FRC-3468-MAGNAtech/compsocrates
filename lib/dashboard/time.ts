@@ -66,17 +66,40 @@ export function parseEventTime(value: string | null | undefined, timeZone: strin
   return instant;
 }
 
-/** "Sat 9:00 AM" in the event's timezone (the viewer's if none). Always label it "Scheduled" in the UI — the API's time is a plan, not a promise. */
-export function formatScheduled(ms: number, timeZone: string | null | undefined): string {
-  const options: Intl.DateTimeFormatOptions = { weekday: "short", hour: "numeric", minute: "2-digit" };
-  if (validZone(timeZone)) options.timeZone = timeZone;
-  return new Intl.DateTimeFormat(undefined, options).format(new Date(ms));
+/** The viewer's own IANA timezone (their device's), or null when the browser will not say. */
+export function viewerTimeZone(): string | null {
+  try {
+    return new Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+  } catch {
+    return null;
+  }
 }
 
-/** Time of day only, "9:00 AM" — for lists already grouped by day. */
-export function formatClock(ms: number, timeZone: string | null | undefined): string {
+/** Do the two zones show the same wall clock at this instant? (Zone names can differ while the clocks agree, and the other way round across daylight-saving changes.) */
+export function sameClock(ms: number, a: string, b: string): boolean {
+  return tzOffsetMs(ms, a) === tzOffsetMs(ms, b);
+}
+
+/**
+ * A match time for the viewer: "Sat 9:00 AM" on the VIEWER's clock, since `ms` is a real instant. When the event's clock differs from the viewer's at that instant,
+ * the zone name is added and the event's own clock is shown beside it ("Sat 7:00 AM PST (Sat 11:00 PM at the event)"), so a far-away event is never misread. An
+ * event with no known zone is shown on the viewer's clock alone. Label it "Scheduled" in the UI: the API's time is a plan, not a promise.
+ */
+export function formatScheduled(ms: number, eventZone: string | null | undefined, viewerZone: string | null = viewerTimeZone()): string {
+  const base: Intl.DateTimeFormatOptions = { weekday: "short", hour: "numeric", minute: "2-digit" };
+  const at = new Date(ms);
+  const viewer = validZone(viewerZone) ? viewerZone : undefined;
+  const plain = new Intl.DateTimeFormat(undefined, viewer ? { ...base, timeZone: viewer } : base);
+  if (!validZone(eventZone) || !viewer || sameClock(ms, eventZone, viewer)) return plain.format(at);
+  const named = new Intl.DateTimeFormat(undefined, { ...base, timeZone: viewer, timeZoneName: "short" }).format(at);
+  const atEvent = new Intl.DateTimeFormat(undefined, { ...base, timeZone: eventZone }).format(at);
+  return `${named} (${atEvent} at the event)`;
+}
+
+/** Time of day only, "9:00 AM", on the viewer's clock: for lists already grouped by day. */
+export function formatClock(ms: number, _eventZone?: string | null, viewerZone: string | null = viewerTimeZone()): string {
   const options: Intl.DateTimeFormatOptions = { hour: "numeric", minute: "2-digit" };
-  if (validZone(timeZone)) options.timeZone = timeZone;
+  if (validZone(viewerZone)) options.timeZone = viewerZone;
   return new Intl.DateTimeFormat(undefined, options).format(new Date(ms));
 }
 

@@ -44,7 +44,7 @@ export function AnalyticsFilterBar() {
   const raw = isRawAnalyticsRoute(pathname);
   // P30: the six form pages have no Practice mode and no accuracy (their entries aren't scored), so the bar is just Game and Event there
   const formRoute = isFormAnalyticsRoute(pathname);
-  const { filters, setFilters, singleEvent, singleEventInPractice } = useAnalyticsFilters();
+  const { filters, setFilters, singleEvent, singleEventInPractice, singleEventAllowsAll } = useAnalyticsFilters();
   const data = useAnalyticsData();
   const single = useSingleEvent();
 
@@ -52,13 +52,15 @@ export function AnalyticsFilterBar() {
   // once) — unless the page needs one event even then (the Pick List).
   const singleMode = singleEvent && (!filters.practice || singleEventInPractice);
   // A single-event page shows exactly one event, so the "N of M" count must be that event's, not the URL's whole selection.
+  // A single-event page that offers All events (Match Analytics) is not pinned while All events is the choice.
+  const allEventsPicked = singleMode && singleEventAllowsAll && filters.events.kind === "all";
   const countFilters = useMemo(
-    () => (singleMode ? { ...filters, events: { kind: "custom" as const, codes: single.code ? [single.code] : [] } } : undefined),
-    [singleMode, filters, single.code]
+    () => (singleMode && !allEventsPicked ? { ...filters, events: { kind: "custom" as const, codes: single.code ? [single.code] : [] } } : undefined),
+    [singleMode, allEventsPicked, filters, single.code]
   );
   const { scopeCount, usedCount, loaded } = useAnalyticsEntries(countFilters, raw ? { applyAccuracy: false, includeExcluded: true } : undefined);
   // A hand-picked event whose game has no config yet (the next, unannounced season): say so instead of showing empty tables.
-  const picked = singleMode ? (single.code ? [single.code] : []) : filters.events.kind === "custom" ? filters.events.codes : [];
+  const picked = singleMode ? (single.code && !allEventsPicked ? [single.code] : []) : filters.events.kind === "custom" ? filters.events.codes : [];
   const unconfigured = pickedWithoutGameConfig(data.eventOptions, picked);
   // The active program's games, and only the filters it has connected: Practice mode and the accuracy threshold need practice and official results.
   const games = useForms().seasons;
@@ -100,6 +102,7 @@ export function AnalyticsFilterBar() {
             onShowArchivedChange={(archived) => setFilters({ archived })}
             hasArchived={data.hasArchived}
             seasonKind={seasonKind}
+            allowAllInSingle={singleEventAllowsAll}
           />
         </Control>
 

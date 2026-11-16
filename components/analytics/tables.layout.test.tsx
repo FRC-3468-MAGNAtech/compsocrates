@@ -116,3 +116,15 @@ describe("column growth", () => {
     expect(columnCanGrow("comments", true)).toBe(false);
   });
 });
+
+describe("All events table", () => {
+  it("adds an Event column right after Match (a match number repeats at every event) without touching the real schema", async () => {
+    const { withEventColumn } = await import("@/lib/analytics/game-schema");
+    const base = GAMES[DEFAULT_GAME_ID];
+    const withEvent = withEventColumn(base);
+    const at = withEvent.columns.findIndex((c) => c.key === "match");
+    expect(withEvent.columns[at + 1].key).toBe("event");
+    expect(withEvent.columns).toHaveLength(base.columns.length + 1);
+    expect(base.columns.some((c) => c.key === "event")).toBe(false);
+  });
+});

@@ -2,6 +2,7 @@
 // games (`useForms().seasons`), so nothing here names a year, a game or a program.
 
 import type { EventInfo } from "@/lib/events/types";
+import { sameEventCode } from "@/lib/analytics/filters";
 
 /** A game the program scouts: its id and the events API season (year) it is played in. */
 export type GameSeason = { id: string; apiSeason: number };
@@ -85,27 +86,12 @@ export const upcomingGameNote = (name: string): string => `${name} has not been 
 
 /** The picked events whose game is not configured yet: drives the "game not configured" empty state (never a blank table or a crash). */
 export function pickedWithoutGameConfig(options: readonly { code: string; noGameConfig?: boolean }[], pickedCodes: readonly string[]): string[] {
-  return pickedCodes.filter((c) => options.some((o) => o.noGameConfig && o.code.toUpperCase() === c.toUpperCase()));
+  return pickedCodes.filter((c) => options.some((o) => o.noGameConfig && sameEventCode(o.code, c)));
 }
 
 export const GAME_NOT_CONFIGURED_NOTE = "The game for this event is not configured yet, so there is nothing to show. Pick an event from a configured season.";
 
-/**
- * Where "All Events" stops: the entries of the selected game at any event of that game's season, minus archived events unless the viewer asked to
- * see them. An event with no known season (it is not in the team's list or the season's event list) is kept: the game's own form already ties the
- * entry to the game, and dropping data we cannot place would hide real entries.
+/*
+ * "All Events" has no scope of its own beyond the game: an entry carries the form it was scouted with, which ties it to one game (so a game never mixes with
+ * another), and archived events are part of it, current or not. (A season check on top of that would drop entries stored under a legacy event key.)
  */
-export type AllEventsScope = {
-  /** The events API season of the selected game. */
-  gameSeason: number;
-  /** The season of an event code when it is known (team list, season event list). */
-  seasonOf: (code: string) => number | undefined;
-  /** Archived event codes to leave out (empty when "Show archived events" is on). */
-  excluded: ReadonlySet<string>;
-};
-
-export function inAllEventsScope(code: string, scope: AllEventsScope): boolean {
-  if (scope.excluded.has(code)) return false;
-  const season = scope.seasonOf(code);
-  return season === undefined || season === scope.gameSeason;
-}
