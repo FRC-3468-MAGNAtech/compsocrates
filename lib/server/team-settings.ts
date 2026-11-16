@@ -13,6 +13,15 @@ export async function getAdminsSeeAllProfiles(db: Firestore): Promise<boolean> {
   return snap.data()?.adminsSeeAllProfiles !== false;
 }
 
+/**
+ * appSettings/global.avatarUploadsEnabled (additive, Session 8): the platform owner's switch for profile picture uploads. Missing means ON; only an explicit `false`
+ * turns it off (the Upload option disappears and the upload route refuses; pictures already uploaded keep showing).
+ */
+export async function getAvatarUploadsEnabled(db: Firestore): Promise<boolean> {
+  const snap = await db.doc(APP_SETTINGS_PATH).get();
+  return snap.data()?.avatarUploadsEnabled !== false;
+}
+
 /** A random uppercase join code (the `teams/{CODE}` doc id). Collisions are checked by the caller (`pickFreeTeamCode`). */
 export function randomJoinCode(length = 6): string {
   return generateTeamCode(Math.random, length);
