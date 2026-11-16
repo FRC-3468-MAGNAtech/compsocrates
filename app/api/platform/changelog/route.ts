@@ -18,7 +18,7 @@ export async function POST(request: Request) {
       case "create":
         return applyWrite(db, owner, { kind: "create", input: body.entry, status: body.status === "published" ? "published" : "draft" });
       case "update":
-        return applyWrite(db, owner, { kind: "update", id: body.id, input: body.entry, expectedRev: body.expectedRev, status: body.status === "published" ? "published" : body.status === "draft" ? "draft" : undefined });
+        return applyWrite(db, owner, { kind: "update", id: body.id, input: body.entry, expectedRev: body.expectedRev, times: body.times, recordEdit: body.recordEdit, dateUnlocked: body.dateUnlocked, status: body.status === "published" ? "published" : body.status === "draft" ? "draft" : undefined });
       case "publish":
       case "unpublish":
         return applyWrite(db, owner, { kind: "status", id: body.id, expectedRev: body.expectedRev, status: body.action === "publish" ? "published" : "draft" });

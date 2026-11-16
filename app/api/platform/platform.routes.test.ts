@@ -103,7 +103,7 @@ describe("platform changelog routes: writes and visibility", () => {
     expect(fake.ids("platformAuditLog")).toHaveLength(2); // create + publish
     // an imported entry (written by the importer, legacy: true) stays legacy and below the current ones after the owner edits it
     fake.seed("platformChangelog/cs-legacy-t-a", { title: "Old", version: "", date: "2024-01-01", status: "published", programs: ["frc"], items: [{ category: "new", text: "x", programs: ["frc"] }], legacy: true, createdBy: "cs-legacy-import", createdAt: 1, updatedAt: 1, publishedAt: 1, rev: 1 });
-    const edited = await (await post({ action: "update", id: "cs-legacy-t-a", expectedRev: 1, entry: entry({ title: "Old, edited", programs: ["frc"] }) })).json();
+    const edited = await (await post({ action: "update", id: "cs-legacy-t-a", expectedRev: 1, entry: entry({ title: "Old, edited", programs: ["frc"], date: "2024-01-01" }) })).json();
     expect(edited.entry).toMatchObject({ legacy: true, title: "Old, edited", publishedAtMs: 1, status: "published" });
   });
 

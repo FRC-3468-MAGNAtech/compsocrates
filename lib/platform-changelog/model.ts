@@ -34,6 +34,14 @@ export type PlatformEntry = {
   updatedAtMs: number | null;
   /** When it first went live (drives the unread dot). Null for a draft. */
   publishedAtMs: number | null;
+  /**
+   * Session 9 (additive, absent on older documents): when the entry was first posted, for DISPLAY only. Set once by the server at the first publish of a
+   * current entry; never cleared by unpublish, never restamped by republish; the owner can fill or clear it by hand. Not `publishedAt` (that one drives the dot).
+   */
+  postedAtMs?: number | null;
+  /** Session 9 (additive): when the content was last edited and by whom (uid). Set by the server on a recorded content save, or by the owner by hand. */
+  editedAtMs?: number | null;
+  editedBy?: string;
   /** Counts saves; an edit must name the revision it started from, so two edits cannot silently overwrite each other. */
   rev: number;
 };
@@ -92,12 +100,15 @@ export function groupItems(items: readonly PlatformItem[]): { category: ChangeTy
   return CHANGE_TYPE_IDS.map((category) => ({ category, items: items.filter((i) => i.category === category) })).filter((g) => g.items.length > 0);
 }
 
-/** Current entries first (newest date, then newest publish/create time, then version), legacy entries below whatever their date. */
+/**
+ * Current entries first (newest date, then newest publish/create time, then version), legacy entries below whatever their date. A legacy entry's
+ * tie-break is its creation time only (immutable), so unpublishing and republishing it never moves it; current entries keep publish-then-create.
+ */
 export function compareEntries(a: PlatformEntry, b: PlatformEntry): number {
   if (a.legacy !== b.legacy) return a.legacy ? 1 : -1;
   if (a.date !== b.date) return b.date.localeCompare(a.date);
-  const at = a.publishedAtMs ?? a.createdAtMs ?? 0;
-  const bt = b.publishedAtMs ?? b.createdAtMs ?? 0;
+  const at = a.legacy ? (a.createdAtMs ?? 0) : (a.publishedAtMs ?? a.createdAtMs ?? 0);
+  const bt = b.legacy ? (b.createdAtMs ?? 0) : (b.publishedAtMs ?? b.createdAtMs ?? 0);
   if (at !== bt) return bt - at;
   const v = b.version.localeCompare(a.version, undefined, { numeric: true });
   return v !== 0 ? v : a.id.localeCompare(b.id);
@@ -157,6 +168,9 @@ export function entryFromDoc(id: string, data: Record<string, unknown>): Platfor
     createdAtMs: asMs(data.createdAt),
     updatedAtMs: asMs(data.updatedAt),
     publishedAtMs: asMs(data.publishedAt),
+    postedAtMs: asMs(data.postedAt),
+    editedAtMs: asMs(data.editedAt),
+    editedBy: str(data.editedBy),
     rev: typeof data.rev === "number" && Number.isInteger(data.rev) ? data.rev : 0,
   };
 }

@@ -6,6 +6,7 @@ import { authedApi, ApiError } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth";
 import { timestampMs } from "@/lib/changelog";
 import { hasUnread, sortEntries, type EntryInput, type PlatformEntry } from "@/lib/platform-changelog/model";
+import type { TimePatch } from "@/lib/platform-changelog/times";
 import { useProgram } from "@/lib/program/context";
 import type { ProgramData } from "@/lib/program/data";
 import { saveUserFields } from "@/lib/program/user-fields";
@@ -109,7 +110,7 @@ export async function markChangelogSeen(uid: string, port: Pick<ProgramData, "pr
 
 export type OwnerWrite =
   | { action: "create"; entry: EntryInput; status: "draft" | "published" }
-  | { action: "update"; id: string; expectedRev: number; entry: EntryInput; status?: "draft" | "published" }
+  | { action: "update"; id: string; expectedRev: number; entry: EntryInput; status?: "draft" | "published"; times?: TimePatch; recordEdit?: boolean; dateUnlocked?: boolean }
   | { action: "publish" | "unpublish"; id: string; expectedRev: number }
   | { action: "delete"; id: string; expectedRev: number };
 
