@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { plainAvatar } from "@/lib/avatar/model";
 import { doc, onSnapshot, serverTimestamp, writeBatch } from "firebase/firestore";
 import { buildAuditEntry, newAuditLogRef } from "@/lib/audit-log";
 import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
@@ -84,11 +85,11 @@ export async function saveOwnProfile(actor: { uid: string; teamId: string }, edi
     displayName: edit.displayName,
     bio: edit.bio,
     pronouns: edit.pronouns,
-    avatar: edit.avatar,
+    avatar: plainAvatar(edit.avatar), // never the upload fields: the profile rules accept only type and value
     visibility: edit.visibility,
     updatedAt: serverTimestamp(),
   });
-  batch.update(doc(db, programPath(program, "users"), actor.uid), { avatar: edit.avatar });
+  batch.update(doc(db, programPath(program, "users"), actor.uid), { avatar: plainAvatar(edit.avatar) });
   await batch.commit();
 }
 

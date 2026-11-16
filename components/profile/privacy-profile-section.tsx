@@ -2,9 +2,15 @@
 
 import { useId, useState } from "react";
 import Link from "@/components/program/link";
-import { Check, Globe, Lock, Save } from "lucide-react";
+import { Camera, Check, Globe, Lock, Save } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { PhotoUploadDialog } from "@/components/profile/photo-upload-dialog";
+import { removeMyAvatar, uploadAvatarBlob } from "@/lib/avatar/client";
+import { avatarErrorMessage } from "@/lib/avatar/crop";
+import { canOfferUpload, useAvatarSettings } from "@/lib/avatar/settings";
+import { plainAvatar, type AvatarInput } from "@/lib/avatar/model";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Input, Label, Textarea } from "@/components/ui/input";
 import { Shimmer } from "@/components/ui/shimmer";
@@ -17,6 +23,17 @@ import { saveOwnProfile, useProfile, type ProfileEdit } from "@/lib/profile/serv
 import { DEFAULT_PROFILE_VISIBILITY } from "@/lib/profile/config";
 import { cn } from "@/lib/utils";
 
+/** What the Session 8 upload dialog and the leave-the-photo confirmation need. */
+export type PhotoProps = {
+  /** The account has an uploaded photo (fields set). */
+  hasUpload: boolean;
+  /** Show the Upload option: the server has a Blob store and the owner has not turned uploads off. */
+  canOffer: boolean;
+  onUpload: (blob: Blob, onProgress: (ratio: number) => void) => Promise<void>;
+  /** Deletes the uploaded photo (and its stored fields). Rejects with the server code on failure. */
+  onRemove: () => Promise<void>;
+};
+
 const sameAvatar = (a: AvatarChoice, b: AvatarChoice) => a.type === b.type && a.value === b.value;
 
 /** Account Settings > Privacy and profile (P25): picture, display name, pronouns, bio and who can see the profile page. */
@@ -24,6 +41,7 @@ export function PrivacyProfileSection() {
   const { user, profile: me } = useAuth();
   const program = useProgram();
   const adminsSeeAll = useAdminsSeeAllProfiles();
+  const avatarSettings = useAvatarSettings();
   const state = useProfile(user?.uid ?? null, me?.teamId ?? null);
   // Held here, not in the form: a save changes the stored profile, which restarts the form (see the key below).
   const [justSaved, setJustSaved] = useState(false);
@@ -39,13 +57,28 @@ export function PrivacyProfileSection() {
   const saved = state.profile;
   return (
     <ProfileEditorForm
-      key={JSON.stringify([saved?.displayName ?? "", saved?.bio ?? "", saved?.pronouns ?? "", saved?.avatar ?? me.avatar ?? DEFAULT_AVATAR])}
+      key={JSON.stringify([saved?.displayName ?? "", saved?.bio ?? "", saved?.pronouns ?? "", saved?.avatar ?? plainAvatar(me.avatar ?? DEFAULT_AVATAR)])}
       saved={saved}
       adminsSeeAll={adminsSeeAll}
       accountName={me.name}
       accountAvatar={me.avatar ?? null}
       googleUrl={user.photoURL && isGoogleAvatarUrl(user.photoURL) ? user.photoURL : null}
       justSaved={justSaved}
+      photo={{
+        hasUpload: !!(me.avatar as AvatarInput | undefined)?.upload,
+        canOffer: canOfferUpload(avatarSettings),
+        onUpload: async (blob, onProgress) => {
+          await uploadAvatarBlob(blob, onProgress);
+        },
+        onRemove: removeMyAvatar,
+      }}
+      onChangeAvatar={(avatar) =>
+        saveOwnProfile(
+          { uid: user.uid, teamId: me.teamId },
+          { displayName: saved?.displayName ?? "", bio: saved?.bio ?? "", pronouns: saved?.pronouns ?? "", avatar, visibility: saved?.visibility ?? DEFAULT_PROFILE_VISIBILITY },
+          program
+        )
+      }
       onSave={async (edit) => {
         await saveOwnProfile({ uid: user.uid, teamId: me.teamId }, edit, program);
         setJustSaved(true);
@@ -81,6 +114,8 @@ export function ProfileEditorForm({
   justSaved,
   onSave,
   onSetVisibility,
+  photo,
+  onChangeAvatar,
 }: {
   saved: ProfileDoc | null;
   /** The owner's "admins see every profile on their team" switch; false hides the transparency line. null/undefined means on. */
@@ -94,6 +129,10 @@ export function ProfileEditorForm({
   onSave: (edit: ProfileEdit) => Promise<void>;
   /** FIX4: called the moment a non-admin picks Public or Private (saved on its own, not with "Save profile"). Rejects when the write fails. */
   onSetVisibility: (visibility: ProfileVisibility) => Promise<void>;
+  /** Session 8: uploaded photos. Absent: no upload UI (the browser-test fixture). */
+  photo?: PhotoProps;
+  /** Saves a picture choice on its own (used right after an uploaded photo was deleted to make room for it). */
+  onChangeAvatar?: (avatar: AvatarChoice) => Promise<void>;
 }) {
   const ids = useId();
 
@@ -113,6 +152,36 @@ export function ProfileEditorForm({
   const [visibilityStatus, setVisibilityStatus] = useState<"idle" | "saved" | "failed">("idle");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [leaving, setLeaving] = useState<AvatarChoice | null>(null);
+  const [leaveBusy, setLeaveBusy] = useState(false);
+  const [leaveError, setLeaveError] = useState<string | null>(null);
+  const hasUpload = !!photo?.hasUpload;
+  const accountUpload = (accountAvatar as AvatarInput | null)?.upload;
+  const previewAvatar: AvatarInput = hasUpload ? { ...avatar, upload: accountUpload } : avatar;
+
+  /** Picking Initials, Google or a preset while an uploaded photo exists first asks, then deletes the photo, then saves the choice. */
+  const choose = (next: AvatarChoice) => {
+    if (hasUpload) {
+      setLeaveError(null);
+      setLeaving(next);
+    } else setAvatar(next);
+  };
+  const confirmLeave = async () => {
+    if (!leaving || !photo) return;
+    setLeaveBusy(true);
+    setLeaveError(null);
+    try {
+      await photo.onRemove(); // a failure stops here: nothing changes
+      if (onChangeAvatar) await onChangeAvatar(leaving);
+      else setAvatar(leaving);
+      setLeaving(null);
+    } catch (err) {
+      setLeaveError(avatarErrorMessage(err instanceof Error && "code" in err ? String((err as { code: unknown }).code) : null, "Your photo couldn't be deleted, so nothing was changed. Try again."));
+    } finally {
+      setLeaveBusy(false);
+    }
+  };
 
   const shownVisibility: ProfileVisibility = visibility;
 
@@ -170,24 +239,72 @@ export function ProfileEditorForm({
       <fieldset className="flex flex-col gap-3">
         <legend className="mb-1 text-sm font-semibold">Picture</legend>
         <div className="flex flex-wrap items-center gap-4">
-          <Avatar name={sanitizeDisplayName(displayName) || accountName} size="xl" avatar={avatar} />
+          <Avatar name={sanitizeDisplayName(displayName) || accountName} size="xl" avatar={previewAvatar} />
           <div role="radiogroup" aria-label="Picture" className="flex flex-wrap gap-2" data-testid="avatar-picker">
-            <AvatarTile label="Initials" selected={avatar.type === "initials"} onSelect={() => setAvatar({ type: "initials", value: "" })}>
+            {hasUpload && (
+              <AvatarTile label="Your photo" selected onSelect={() => {}}>
+                <Avatar name={accountName} size="md" avatar={previewAvatar} />
+              </AvatarTile>
+            )}
+            {photo?.canOffer && (
+              <button
+                type="button"
+                onClick={() => setUploading(true)}
+                data-testid="photo-upload-button"
+                className="flex min-h-11 flex-col items-center justify-center gap-1 rounded-2xl border border-dashed border-[var(--glass-border)] px-3 py-2 text-[11px] text-[var(--muted-foreground)] hover:bg-white/5"
+              >
+                <Camera className="h-5 w-5" aria-hidden />
+                {hasUpload ? "Replace photo" : "Upload"}
+              </button>
+            )}
+            <AvatarTile label="Initials" selected={!hasUpload && avatar.type === "initials"} onSelect={() => choose({ type: "initials", value: "" })}>
               <Avatar name={accountName} size="md" />
             </AvatarTile>
             {googleUrl && (
-              <AvatarTile label="Google picture" selected={avatar.type === "google"} onSelect={() => setAvatar({ type: "google", value: googleUrl })}>
+              <AvatarTile label="Google picture" selected={!hasUpload && avatar.type === "google"} onSelect={() => choose({ type: "google", value: googleUrl })}>
                 <Avatar name={accountName} size="md" avatar={{ type: "google", value: googleUrl }} />
               </AvatarTile>
             )}
             {AVATAR_PRESETS.map((p) => (
-              <AvatarTile key={p.id} label={p.label} selected={avatar.type === "preset" && avatar.value === p.id} onSelect={() => setAvatar({ type: "preset", value: p.id })}>
+              <AvatarTile key={p.id} label={p.label} selected={!hasUpload && avatar.type === "preset" && avatar.value === p.id} onSelect={() => choose({ type: "preset", value: p.id })}>
                 <Avatar name={accountName} size="md" avatar={{ type: "preset", value: p.id }} />
               </AvatarTile>
             ))}
           </div>
         </div>
-        <p className="text-xs text-[var(--muted-foreground)]">There are no uploads: pick your initials{googleUrl ? ", your Google picture" : ""} or one of the presets.</p>
+        <p className="text-xs text-[var(--muted-foreground)]">
+          Pick your initials{googleUrl ? ", your Google picture" : ""} or one of the presets{photo?.canOffer ? ", or upload a photo (team admins can remove photos)" : ""}.
+        </p>
+        {photo && (
+          <>
+            <PhotoUploadDialog
+              open={uploading}
+              onClose={() => setUploading(false)}
+              onUpload={async (blob, onProgress) => {
+                await photo.onUpload(blob, onProgress);
+              }}
+            />
+            <Dialog open={leaving !== null} onOpenChange={(o) => !o && !leaveBusy && setLeaving(null)}>
+              <DialogContent className="glass-overlay w-[min(94vw,420px)]" data-testid="leave-photo-dialog">
+                <DialogTitle>Delete your uploaded photo?</DialogTitle>
+                <DialogDescription>This will delete your uploaded photo. To use it again you will need to upload it again.</DialogDescription>
+                {leaveError && (
+                  <p role="alert" data-testid="leave-photo-error" className="mt-3 text-sm text-red-400">
+                    {leaveError}
+                  </p>
+                )}
+                <div className="mt-5 flex justify-end gap-2">
+                  <Button variant="ghost" className="min-h-11" disabled={leaveBusy} onClick={() => setLeaving(null)}>
+                    Keep my photo
+                  </Button>
+                  <Button className="min-h-11" disabled={leaveBusy} onClick={() => void confirmLeave()} data-testid="leave-photo-confirm">
+                    {leaveBusy ? "Deleting…" : "Delete photo and continue"}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </>
+        )}
       </fieldset>
 
       {/* Text */}

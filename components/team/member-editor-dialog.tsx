@@ -8,6 +8,9 @@ import { Button } from "@/components/ui/button";
 import { HoverTip } from "@/components/ui/hover-tip";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/input";
+import { removeMemberAvatar } from "@/lib/avatar/client";
+import type { AvatarInput } from "@/lib/avatar/model";
+import { useProgram } from "@/lib/program/context";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { ADMIN_TOGGLE_BLOCK_REASONS, diffMemberAccess, normalizeSecondaryRoles, type AdminToggleBlock, type MemberAccess } from "@/lib/member-access";
@@ -45,6 +48,24 @@ export function MemberEditorDialog({
     isAdmin: member.isOwner ? true : member.isAdmin,
   });
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  // Session 8: an admin can remove a member's uploaded photo (the server checks the admin is on the member's team and writes the audit entry).
+  const program = useProgram();
+  const [photoGone, setPhotoGone] = useState(false);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  const hasPhoto = !photoGone && !!(member.avatar as AvatarInput | undefined)?.upload;
+  const removePhoto = async () => {
+    setPhotoBusy(true);
+    setPhotoError(null);
+    try {
+      await removeMemberAvatar(program, member.uid);
+      setPhotoGone(true);
+    } catch (err) {
+      setPhotoError(err instanceof Error ? err.message : "Couldn't remove the photo.");
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
 
   const changes = diffMemberAccess(member, draft);
   const dirty = Object.keys(changes).length > 0;
@@ -94,6 +115,22 @@ export function MemberEditorDialog({
               <DialogDescription className="truncate">{member.email}</DialogDescription>
             </div>
           </div>
+
+          {(hasPhoto || photoGone) && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--glass-border)] p-3 text-sm" data-testid="member-photo-row">
+              <span className="text-[var(--muted-foreground)]">{photoGone ? "Photo removed." : "This member uploaded a photo."}</span>
+              {hasPhoto && (
+                <Button variant="outline" className="min-h-11" disabled={photoBusy} onClick={() => void removePhoto()} data-testid="member-photo-remove">
+                  {photoBusy ? "Removing…" : "Remove photo"}
+                </Button>
+              )}
+              {photoError && (
+                <p role="alert" className="w-full text-xs text-red-400">
+                  {photoError}
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="mt-5 flex flex-col gap-5">
             <div>

@@ -13,6 +13,7 @@ import { getPercentColor } from "@/lib/accuracy/engine";
 import type { ProfileDoc } from "@/lib/profile/model";
 import { headerName } from "@/lib/profile/model";
 import { monthYear, relativeTime } from "@/lib/profile/format";
+import { withUploadOf } from "@/lib/avatar/model";
 import { EMPTY_ACHIEVEMENT_CONFIG } from "@/lib/achievements/config";
 import { buildItems, type AchievementItem } from "@/lib/achievements/view";
 import type { CategoryStat, EventEntries, EventTargetProgress, ProfileStats } from "@/lib/profile/stats";
@@ -28,7 +29,7 @@ export function LimitedProfileCard({ member }: { member: TeamMember }) {
   const primary = getRole(member.primaryRole);
   return (
     <GlassPanel data-testid="profile-limited" className="flex flex-col items-center gap-4 py-10 text-center">
-      <Avatar name={member.name} size="xl" avatar={member.avatar} />
+      <Avatar name={member.name} size="xl" avatar={member.avatar} hidePhoto />
       <div className="flex flex-col items-center gap-2">
         <h1 className="text-2xl font-semibold tracking-tight">{member.name}</h1>
         <span className={cn("rounded-full px-2.5 py-1 text-xs font-medium", primary.className)}>{primary.label}</span>
@@ -62,7 +63,7 @@ export function ProfileHeader({
   const bio = profile?.bio?.trim();
   return (
     <GlassPanel data-testid="profile-header" className="flex flex-col gap-5 sm:flex-row sm:items-start">
-      <Avatar name={name} size="xl" avatar={profile?.avatar ?? member.avatar} className="self-start" />
+      <Avatar name={name} size="xl" avatar={withUploadOf(profile?.avatar ?? member.avatar, member.avatar, profile?.visibility)} className="self-start" />
       <div className="flex min-w-0 flex-1 flex-col gap-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">

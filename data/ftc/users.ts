@@ -8,6 +8,8 @@
  * The members' assigned FTC team ids (`fieldTeamIds`) have no slot on `TeamMember`, so `readMemberFieldTeamIds` returns them.
  */
 import type { UserDoc } from "@/lib/auth";
+import { plainAvatar, withUpload } from "@/lib/avatar/model";
+import type { AvatarChoice } from "@/lib/profile/config";
 import { parseAvatar } from "@/lib/profile/model";
 import { isRoleId, normalizeLegacyRole, sortRolesCanonical, type RoleId } from "@/lib/roles";
 import type { TeamMember } from "@/lib/team-members";
@@ -86,8 +88,14 @@ export function ftcUserToProfile(uid: string, doc: FtcUserDoc): UserDoc {
     ...(glassLayerLevel !== null ? { glassLayerLevel } : {}),
     ...(workspaceFormWidth !== null ? { workspaceFormWidth } : {}),
     ...(workspacePhoneSplit !== null ? { workspacePhoneSplit } : {}),
-    ...(doc.avatar ? { avatar: parseAvatar(doc.avatar) } : {}),
+    ...avatarField(uid, doc),
   };
+}
+
+/** The stored avatar choice with the account's uploaded picture attached when it has one (Session 8; the stored `avatar` field itself is unchanged). */
+function avatarField(uid: string, doc: FtcUserDoc): { avatar?: AvatarChoice } {
+  const avatar = withUpload(doc.avatar ? parseAvatar(doc.avatar) : undefined, uid, doc);
+  return avatar ? { avatar } : {};
 }
 
 /** Reads a roster row (Team Management / People) from a user doc. */
@@ -103,7 +111,7 @@ export function ftcUserToMember(uid: string, doc: FtcUserDoc): TeamMember {
     secondaryRoles: profile.secondaryRoles,
     isAdmin: profile.isAdmin,
     isOwner: profile.isOwner,
-    ...(doc.avatar ? { avatar: parseAvatar(doc.avatar) } : {}),
+    ...avatarField(uid, doc),
     ...(joinedAtMs ? { joinedAtMs } : {}),
     ...(assignedTeamIds && assignedTeamIds.length > 0 ? { assignedTeamIds } : {}),
   };
@@ -117,6 +125,6 @@ const PROFILE_FIELDS = ["name", "themeId", "colorMode", "gradientIntensity", "av
 /** What to write for a change to one's own profile: only those fields, none of them `undefined`. Roles, team, admin and owner flags are never part of it. */
 export function ftcProfilePatch(patch: FtcProfilePatch): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-  for (const key of PROFILE_FIELDS) if (patch[key] !== undefined) out[key] = patch[key];
+  for (const key of PROFILE_FIELDS) if (patch[key] !== undefined) out[key] = key === "avatar" ? plainAvatar(patch.avatar as AvatarChoice) : patch[key];
   return out;
 }

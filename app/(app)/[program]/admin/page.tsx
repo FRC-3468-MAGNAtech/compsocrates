@@ -31,6 +31,7 @@ import { usePendingApplicationCount } from "@/lib/applications-client";
 import { SidebarPanel } from "@/components/admin/sidebar-panel";
 import { AchievementsPanel } from "@/components/admin/achievements-panel";
 import { AdminsSeeProfilesSetting } from "@/components/admin/admins-see-profiles-setting";
+import { AvatarUploadsSetting } from "@/components/admin/avatar-uploads-setting";
 import { PlatformChangelogPanel } from "@/components/admin/platform-changelog-panel";
 import { PlatformCreditsPanel } from "@/components/admin/platform-credits-panel";
 
@@ -143,6 +144,7 @@ export default function AdminPanelPage() {
           </div>
           {teamCreationError && <p className="text-sm text-red-400">{teamCreationError}</p>}
           <AdminsSeeProfilesSetting />
+          <AvatarUploadsSetting />
         </GlassPanel>
       )}
 

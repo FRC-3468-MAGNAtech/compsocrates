@@ -10,6 +10,8 @@ import { CS_DEFAULT_THEME_ID, CS_OWNER_UIDS, isCsOwnerUid } from "@/config/cs";
 import type { CsRecord, CsUserDoc } from "@/data/cs/types";
 import { str, toEpochMs } from "@/data/cs/util";
 import type { UserDoc } from "@/lib/auth";
+import { plainAvatar, withUpload } from "@/lib/avatar/model";
+import type { AvatarChoice } from "@/lib/profile/config";
 import { parseAvatar } from "@/lib/profile/model";
 import { isRoleId, normalizeLegacyRole, sortRolesCanonical, ROLES, type RoleId } from "@/lib/roles";
 import type { TeamMember } from "@/lib/team-members";
@@ -105,7 +107,7 @@ export function csUserToProfile(uid: string, doc: CsUserDoc, options: CsUserRead
     ...(typeof record.glassLayerLevel === "number" ? { glassLayerLevel: record.glassLayerLevel } : {}),
     ...(typeof record.workspaceFormWidth === "number" ? { workspaceFormWidth: record.workspaceFormWidth } : {}),
     ...(typeof record.workspacePhoneSplit === "number" ? { workspacePhoneSplit: record.workspacePhoneSplit } : {}),
-    ...(record.avatar ? { avatar: parseAvatar(record.avatar) } : {}),
+    ...avatarField(uid, record),
     ...(typeof doc.bio === "string" ? { bio: doc.bio } : {}),
     ...(typeof doc.photoURL === "string" && doc.photoURL ? { photoURL: doc.photoURL } : {}),
     ...(doc.profileVisibility === "team" || doc.profileVisibility === "public" || doc.profileVisibility === "private" ? { profileVisibility: doc.profileVisibility } : {}),
@@ -114,6 +116,16 @@ export function csUserToProfile(uid: string, doc: CsUserDoc, options: CsUserRead
     ...(typeof doc.preferredDashboard === "string" && doc.preferredDashboard ? { preferredDashboard: doc.preferredDashboard } : {}),
   };
   return profile;
+}
+
+/** The stored avatar choice with the account's uploaded picture attached when it has one (Session 8; the stored `avatar` field itself is unchanged). */
+function avatarOf(uid: string, record: CsRecord): AvatarChoice | undefined {
+  return withUpload(record.avatar ? parseAvatar(record.avatar) : undefined, uid, record);
+}
+
+function avatarField(uid: string, record: CsRecord): { avatar?: AvatarChoice } {
+  const avatar = avatarOf(uid, record);
+  return avatar ? { avatar } : {};
 }
 
 function isCeGradient(value: unknown): value is "subtle" | "normal" | "vivid" {
@@ -134,7 +146,7 @@ export function csUserToMember(uid: string, doc: CsUserDoc, options: CsUserReadO
     isAdmin: profile.isAdmin,
     isOwner: profile.isOwner,
     legacyRole: typeof doc.role === "string" ? doc.role : undefined,
-    avatar: record.avatar ? parseAvatar(record.avatar) : undefined,
+    avatar: avatarOf(uid, record),
     joinedAtMs: createdMs || undefined,
   };
 }
@@ -181,7 +193,8 @@ export function profilePatchToCsUser(patch: ProfilePatch, current: CsUserDoc = {
     if (csTheme) out.accountThemeId = csTheme;
   }
 
-  for (const key of ["gradientIntensity", "avatar", "bio", "photoURL", "profileVisibility", "profileComplete", "experiencedScout"] as const) {
+  if (patch.avatar !== undefined) out.avatar = plainAvatar(patch.avatar);
+  for (const key of ["gradientIntensity", "bio", "photoURL", "profileVisibility", "profileComplete", "experiencedScout"] as const) {
     if (patch[key] !== undefined) out[key] = patch[key];
   }
   return out;
