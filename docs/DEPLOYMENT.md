@@ -91,12 +91,14 @@ Protects the team application form. In the Cloudflare dashboard open **Turnstile
 
 ### Photo uploads (Vercel Blob)
 
-The form `image` field stores photos in Vercel Blob. Until a store is connected, `/api/blob/upload` and `/api/blob/delete` answer `503 not-configured` and the app keeps working.
+The form `image` field (photos) and profile pictures (avatars) are stored in Vercel Blob, in ONE **public** store. Until it is connected, `/api/blob/upload`, `/api/blob/delete` and `/api/avatar` answer `503 not-configured` naming `BLOB_PUBLIC_READ_WRITE_TOKEN`, and the app keeps working.
 
-1. Vercel dashboard > your project > **Storage** > create a **Blob** store with **Public** access.
-2. Connect it to the project for Production and Preview (and Development if offered); Vercel adds `BLOB_READ_WRITE_TOKEN`.
+1. Vercel dashboard > your project > **Storage** > create a **Blob** store with **Public** access. The access mode **cannot be changed after the store is created**; the code always asks for `access: "public"`, and a private store fails with `store-access-mismatch` (a friendly "Photo uploads aren't available right now" line for users, the detail "Blob store access mode does not match" in development).
+2. Connect it to the project for **Production and Preview** (and Development if offered) with the custom prefix **`BLOB_PUBLIC`**: Vercel adds `BLOB_PUBLIC_READ_WRITE_TOKEN` (the app reads only this one; `BLOB_PUBLIC_STORE_ID` and `BLOB_PUBLIC_WEBHOOK_PUBLIC_KEY` are not used). The SDK does not find a token with a custom prefix by itself, so the app passes it explicitly (`lib/blob/stores.ts`).
 3. For local development run `vercel env pull .env.local`, or copy the token into `.env.local`. Never commit it.
-4. Redeploy.
+4. **Redeploy** after adding or changing any environment variable: a running deployment keeps the values it was built with.
+
+Form photos and avatars both use the `BLOB_PUBLIC` token. The old private store (`BLOB_READ_WRITE_TOKEN`) is not used by the app for new files; if it is still connected, the app only uses it to delete older files stored there (the delete route chooses the token by the file URL's host and refuses any other host). **Production should get its own Blob store before uploads are turned on; until then Preview and Production share one store, so a preview can modify production files.**
 
 What to know: uploads go straight from the browser to Blob, and `/api/blob/upload` only issues a one-use token after checking the signed-in user and their team, so photo bytes never pass through a function (the app compresses to about 1600 px and caps files at 6 MB). Blob URLs are public but unguessable (128 bits of randomness, no user-entered text), so anyone who has a URL can view the photo: do not treat photos as private. Only the uploader, or an admin or owner of the same team, can delete a photo. Photos wait in the browser (IndexedDB) while offline and upload when the connection returns. The free plan has storage and transfer limits; check Vercel's current numbers and watch the store's usage during the season.
 

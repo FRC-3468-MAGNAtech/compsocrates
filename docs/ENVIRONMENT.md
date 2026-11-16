@@ -41,7 +41,8 @@ Group A uses the same names as the CompSocrates app. Group B is required by this
 | `EMAIL_FROM` | Sender for outgoing email | No notification emails |
 | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | Cloudflare Turnstile site key (set both or neither) | The bot check on the team application form is skipped |
 | `TURNSTILE_SECRET_KEY` | Cloudflare Turnstile secret | The bot check on the team application form is skipped |
-| `BLOB_READ_WRITE_TOKEN` | Vercel Blob storage for photos | Photo uploads |
+| `BLOB_PUBLIC_READ_WRITE_TOKEN` | Vercel Blob PUBLIC store (connected with the prefix `BLOB_PUBLIC`): profile pictures and form photos | Picture and photo uploads and deletes (503 `not-configured` naming this variable) |
+| `BLOB_READ_WRITE_TOKEN` | Legacy PRIVATE Vercel Blob store (the app no longer writes to it) | Nothing new: only used to delete older files stored there |
 | `NEXT_PUBLIC_FIREBASE_VAPID_KEY` | Web push key | Push notifications |
 | `FIREBASE_ADMIN_PROJECT_ID` | Override for the Admin SDK's project id. Leave it unset: it defaults to `NEXT_PUBLIC_FIREBASE_PROJECT_ID`. | Nothing |
 | `APPLICATION_SECRET` | Signs team-application tokens | Falls back to a key derived from `FIREBASE_ADMIN_PRIVATE_KEY` |
@@ -109,7 +110,8 @@ Every host the code calls or loads, from a grep of `app/`, `components/`, `lib/`
 | Firebase (`*.googleapis.com`, `www.gstatic.com`) | Auth, Firestore, Cloud Messaging, Admin SDK | `lib/firebase/client.ts`, `lib/firebase/admin.ts`, `app/firebase-messaging-sw.js/route.ts` (loads the Firebase scripts from `www.gstatic.com`) | `NEXT_PUBLIC_FIREBASE_*` (browser), `FIREBASE_ADMIN_*` (server), `NEXT_PUBLIC_FIREBASE_VAPID_KEY` | Neutral |
 | `api.resend.com` | Notification email | `lib/server/email.ts` | `RESEND_API_KEY`, `EMAIL_FROM` | Neutral |
 | `challenges.cloudflare.com` | Turnstile bot check (script in the browser, verification on the server) | `components/auth/turnstile.tsx`, `lib/server/turnstile.ts` | `NEXT_PUBLIC_TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` | Neutral |
-| `*.public.blob.vercel-storage.com` | Photo storage (uploads go through `@vercel/blob`) | `app/api/blob/*`, `lib/blob/*` | `BLOB_READ_WRITE_TOKEN` | Neutral |
+| `*.public.blob.vercel-storage.com` | Photo and profile picture storage (uploads go through `@vercel/blob`; the token comes from `lib/blob/stores.ts`) | `app/api/blob/*`, `app/api/avatar/*`, `lib/blob/*` | `BLOB_PUBLIC_READ_WRITE_TOKEN` | Neutral |
+| `*.private.blob.vercel-storage.com` | The legacy private store: deletes of older files only (token chosen by the URL's host) | `app/api/blob/delete` | `BLOB_READ_WRITE_TOKEN` | Neutral |
 | `lh3.googleusercontent.com` | Google profile pictures (displayed only) | `lib/profile/model.ts` | none | Neutral |
 | `fonts.googleapis.com` | Fonts, fetched at build time by `next/font` | `app/layout.tsx` | none | Neutral |
 | `frc-events.firstinspires.org`, `www.thebluealliance.com` (links only) | "Data Sources" credit links | `components/events/data-source-credits.tsx` | none | FRC |

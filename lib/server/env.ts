@@ -50,7 +50,8 @@ export const ENV_VARS: readonly EnvVarInfo[] = [
   { name: "EMAIL_FROM", group: "optional", purpose: "Sender for outgoing email", whenMissing: "No notification emails." },
   { name: "NEXT_PUBLIC_TURNSTILE_SITE_KEY", group: "optional", purpose: "Cloudflare Turnstile site key", whenMissing: "The bot check on the team application form is skipped." },
   { name: "TURNSTILE_SECRET_KEY", group: "optional", purpose: "Cloudflare Turnstile secret", whenMissing: "The bot check on the team application form is skipped." },
-  { name: "BLOB_READ_WRITE_TOKEN", group: "optional", purpose: "Vercel Blob storage for photos", whenMissing: "Photo uploads." },
+  { name: "BLOB_PUBLIC_READ_WRITE_TOKEN", group: "optional", purpose: "Vercel Blob PUBLIC store: profile pictures and form photos", whenMissing: "Profile picture and form photo uploads and deletes." },
+  { name: "BLOB_READ_WRITE_TOKEN", group: "optional", purpose: "Legacy PRIVATE Vercel Blob store (the app no longer writes to it)", whenMissing: "Nothing new: it is only used to delete older files that were stored there." },
   { name: "NEXT_PUBLIC_FIREBASE_VAPID_KEY", group: "optional", purpose: "Web push key", whenMissing: "Push notifications." },
   { name: "APPLICATION_SECRET", group: "optional", purpose: "Signs team-application tokens", whenMissing: "Falls back to a key derived from the Admin credentials." },
   { name: "NEXT_PUBLIC_RELEASE_OWNER_UIDS", group: "optional", purpose: "Optional browser copy of RELEASE_OWNER_UIDS", whenMissing: "Nothing: the server reads RELEASE_OWNER_UIDS; this only lets the UI know who the owner is." },
@@ -143,7 +144,10 @@ export const cronSecret = (): string | null => read("CRON_SECRET") || null;
 export const resendApiKey = (): string | null => read("RESEND_API_KEY") || null;
 export const emailFrom = (): string | null => read("EMAIL_FROM") || null;
 export const turnstileSecret = (): string | null => read("TURNSTILE_SECRET_KEY") || null;
+/** The LEGACY private store's token (BLOB_READ_WRITE_TOKEN). The app no longer writes there; it is used only to delete older files. */
 export const blobToken = (): string | null => read("BLOB_READ_WRITE_TOKEN") || null;
+/** The PUBLIC store's token (connected in Vercel with the prefix BLOB_PUBLIC). Profile pictures and form photos live here. Use lib/blob/stores.ts, not this directly. */
+export const publicBlobToken = (): string | null => read("BLOB_PUBLIC_READ_WRITE_TOKEN") || null;
 export const applicationSecret = (): string | null => read("APPLICATION_SECRET") || null;
 export const turnstileSiteKey = (): string | null => read("NEXT_PUBLIC_TURNSTILE_SITE_KEY") || null;
 /** Vercel's production URL (no scheme), else the deployment's own URL; null off Vercel. */

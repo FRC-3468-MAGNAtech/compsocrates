@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ENV_VARS, firebaseAdminEnv, firebaseAdminMissingNames, firebaseProjectIdMismatch, firstApiCredentials, missingEnv, parseList, releaseOwnerEmails, releaseOwnerUids, tbaApiKey } from "./env";
+import { ENV_VARS, firebaseAdminEnv, firebaseAdminMissingNames, firebaseProjectIdMismatch, firstApiCredentials, missingEnv, parseList, publicBlobToken, releaseOwnerEmails, releaseOwnerUids, tbaApiKey } from "./env";
 
 const NAMES = ENV_VARS.map((v) => v.name).concat(["NEXT_PUBLIC_RELEASE_OWNER_UIDS", "NEXT_PUBLIC_FIREBASE_PROJECT_ID"]);
 let saved: Record<string, string | undefined>;
@@ -100,6 +100,18 @@ describe("missingEnv", () => {
   it("filters by group, and optional variables are not reported by default", () => {
     expect(missingEnv().every((v) => v.group !== "optional")).toBe(true);
     expect(missingEnv(["optional"]).every((v) => v.group === "optional")).toBe(true);
+  });
+
+  it("declares the public Blob token (optional, so Setup Check lists it when unset) and keeps the legacy one; no store id or webhook key", () => {
+    const byName = new Map(ENV_VARS.map((v) => [v.name, v]));
+    expect(byName.get("BLOB_PUBLIC_READ_WRITE_TOKEN")?.group).toBe("optional");
+    expect(byName.get("BLOB_READ_WRITE_TOKEN")?.group).toBe("optional");
+    expect(byName.has("BLOB_PUBLIC_STORE_ID")).toBe(false);
+    expect(byName.has("BLOB_PUBLIC_WEBHOOK_PUBLIC_KEY")).toBe(false);
+    expect(missingEnv(["optional"]).some((v) => v.name === "BLOB_PUBLIC_READ_WRITE_TOKEN")).toBe(true);
+    process.env.BLOB_PUBLIC_READ_WRITE_TOKEN = "vercel_blob_rw_x_y";
+    expect(missingEnv(["optional"]).some((v) => v.name === "BLOB_PUBLIC_READ_WRITE_TOKEN")).toBe(false);
+    expect(publicBlobToken()).toBe("vercel_blob_rw_x_y");
   });
 
   it("every variable name is documented once", () => {
