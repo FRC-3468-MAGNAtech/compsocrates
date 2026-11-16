@@ -150,3 +150,5 @@ Harmless to CS (it ignores them) but not part of CS's schema. Drop them if the s
 ## Cleanup left
 - Mixed LF and CRLF line endings across files (git warns on commit). Normalise with a `.gitattributes` when convenient.
 - `npm audit` and dependency upgrades.
+- Session 7 (new collections, all written only by Admin SDK routes, no rules): `platformChangelog/{id}` and `platformCredits/main` (shapes in `docs/SESSION7_RESULTS.md`), new `platformAuditLog.action` values `create|edit|publish|unpublish|delete-platform-changelog-entry` and `save-platform-credits`. The old `changelog`, `programs/<id>/changelog`, `credits`, `programs/<id>/credits` documents and `teams.changelogSeeded` are no longer read or written by the app (left in place).
+- Session 7 left for later: accounts with no team still land on the apply-to-team screen inside the program shell (the data and components do not need a team; routing is a later session); dead pure helpers in `lib/changelog/index.ts` (the old per-team entry model) could be trimmed.
