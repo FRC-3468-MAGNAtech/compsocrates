@@ -3,7 +3,6 @@
  * so a component asks `useProgram()` instead of naming a program. Pure data, safe to import from client code.
  */
 
-import type { StarterEntry } from "@/lib/changelog/seed";
 import type { RadarProfile } from "@/config/games/radar";
 import type { EventKeyShape } from "@/lib/events/event-key";
 
@@ -114,6 +113,8 @@ export const ADMIN_TAB_IDS = [
   "applications",
   "templates",
   "recovery",
+  "platform-changelog",
+  "platform-credits",
   "setup-check",
 ] as const;
 export type AdminTabId = (typeof ADMIN_TAB_IDS)[number];
@@ -154,8 +155,6 @@ export type ProgramConfig = {
    * `ownershipTransfer`: the Ownership card (its actions call a server route that only knows the default program's teams).
    */
   teamSettings: { ownershipTransfer: boolean };
-  /** The starter changelog drafts created the first time an admin opens the Changelog. Absent: the default program's list (lib/changelog/seed.ts). */
-  changelogSeed?: readonly StarterEntry[];
   /**
    * Practice Scouting copy and rules that differ by program (the screens themselves are shared).
    * `noScoreIsResult`: a finished session whose library match has no official score yet shows its result (no accuracy) instead of a loading skeleton.

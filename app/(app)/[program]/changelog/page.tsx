@@ -1,111 +1,82 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
-import { GitCommitVertical, Plus, Search, X } from "lucide-react";
+import { GitCommitVertical, Search, X } from "lucide-react";
 import { EntryCard } from "@/components/changelog/entry-card";
-import { EntryEditor } from "@/components/changelog/entry-editor";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Shimmer } from "@/components/ui/shimmer";
+import { Switch } from "@/components/ui/switch";
+import { CHANGE_TYPES, type ChangeType } from "@/lib/changelog";
 import { useAuth } from "@/lib/auth";
-import {
-  CHANGE_TYPES,
-  countByType,
-  emptyDraft,
-  entryLabel,
-  entryToDraft,
-  filterEntries,
-  initiallyExpanded,
-  latestPublishedMs,
-  localIsoDate,
-  type ChangeType,
-  type ChangelogDraft,
-  type ChangelogEntry,
-} from "@/lib/changelog";
-import { deleteEntry, markChangelogSeen, patchEntry, seedChangelogIfNeeded, useAsyncAction, useChangelog } from "@/lib/changelog/store";
-import { usePermissions } from "@/lib/permissions";
+import { markChangelogSeen, usePlatformFeed } from "@/lib/platform-changelog/client";
+import { countByCategory, entriesForProgram, filterPlatformEntries, latestVisiblePublishedMs } from "@/lib/platform-changelog/model";
+import { PROGRAMS } from "@/config/programs";
 import { useProgram } from "@/lib/program/context";
 import { useProgramData } from "@/lib/program/data";
 import { cn } from "@/lib/utils";
 
-type EditorState = { key: number; entryId: string | null; initial: ChangelogDraft };
+// ONE changelog for the whole site (Session 7): the same page and the same feed in every program. The default view shows the items tagged for the
+// current program plus the ones tagged for every program; "Show all programs" shows everything with a small program badge on the items that are not
+// for everyone. Entries are written by the platform owner (Admin Panel > Changelog), never per team. No team is needed to open this page.
 
 export default function ChangelogPage() {
   const { user, profile } = useAuth();
-  const { isAdmin } = usePermissions();
-  const teamId = profile?.teamId ?? null;
   const program = useProgram();
-  const { entries, loaded, error: loadError } = useChangelog(teamId, isAdmin);
-  const actor = useMemo(() => (user && profile && teamId ? { teamId, uid: user.uid, name: profile.name } : null), [user, profile, teamId]);
+  const port = useProgramData();
+  const { entries, loaded, error: loadError, reload } = usePlatformFeed();
 
+  const [showAll, setShowAll] = useState(false);
   const [types, setTypes] = useState<ChangeType[]>([]);
   const [query, setQuery] = useState("");
   // Per-card open/closed choices the reader has made; anything not here follows the default below.
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
 
-  const [editor, setEditor] = useState<EditorState | null>(null);
-  const [editorOpen, setEditorOpen] = useState(false);
-  const editorKey = useRef(0);
-  const [deleting, setDeleting] = useState<ChangelogEntry | null>(null);
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const rowAction = useAsyncAction();
-  const deleteAction = useAsyncAction();
-
-  // First admin visit creates the starter drafts (guarded by a marker on the team doc, so it only ever happens once).
-  const seededRef = useRef(false);
-  useEffect(() => {
-    if (!isAdmin || !actor || !loaded || loadError || seededRef.current) return;
-    seededRef.current = true;
-    seedChangelogIfNeeded(actor, program).catch((err) => console.error("couldn't seed the starter changelog drafts:", err));
-  }, [isAdmin, actor, loaded, loadError, program]);
-
-  // Opening the page clears the nav dot — and so does something being published while you're looking at it.
-  const latestPublished = useMemo(() => latestPublishedMs(entries), [entries]);
+  // Opening the page clears the nav dot (and so does something new being published while you look). Same write as before; skipped for an account
+  // with no profile in this program (it has no user document to stamp, and no dot either).
+  const latest = useMemo(() => latestVisiblePublishedMs(entries, program), [entries, program]);
   const stampedFor = useRef<number | null | undefined>(undefined);
   const uid = user?.uid ?? null;
-  const port = useProgramData();
+  const hasProfile = profile !== null && profile !== undefined;
   const [seenError, setSeenError] = useState<string | null>(null);
   useEffect(() => {
-    if (!uid || !loaded || loadError || stampedFor.current === latestPublished) return;
-    stampedFor.current = latestPublished;
+    if (!uid || !hasProfile || !loaded || loadError || stampedFor.current === latest) return;
+    stampedFor.current = latest;
     markChangelogSeen(uid, port).then(
       () => setSeenError(null),
       (err: unknown) => setSeenError(err instanceof Error ? err.message : "Couldn't record the changelog visit.")
     );
-  }, [uid, loaded, loadError, latestPublished, port]);
+  }, [uid, hasProfile, loaded, loadError, latest, port]);
 
+  const scoped = useMemo(() => entriesForProgram(entries, showAll ? null : program), [entries, showAll, program]);
   const filterActive = types.length > 0 || query.trim() !== "";
-  const displayed = useMemo(() => filterEntries(entries, { types, query }), [entries, types, query]);
-  const counts = useMemo(() => countByType(entries), [entries]);
-  const draftCount = entries.filter((e) => e.status === "draft").length;
-  // Newest two start open and the rest collapsed; while filtering or searching, every match opens so the hit is visible.
-  const defaults = useMemo(() => (filterActive ? new Set(displayed.map((e) => e.id)) : initiallyExpanded(entries)), [filterActive, displayed, entries]);
-  const isExpanded = (id: string) => overrides[id] ?? defaults.has(id);
-  const setAll = (open: boolean) => setOverrides((o) => ({ ...o, ...Object.fromEntries(displayed.map((e) => [e.id, open])) }));
-
+  const shown = useMemo(() => filterPlatformEntries(scoped, { types, query }), [scoped, types, query]);
+  const current = shown.filter((e) => !e.legacy);
+  const legacy = shown.filter((e) => e.legacy);
+  const counts = useMemo(() => countByCategory(scoped), [scoped]);
+  // The newest two current entries start open; while filtering or searching every match opens so the hit is visible. Legacy entries start closed.
+  const defaultOpen = useMemo(() => (filterActive ? new Set(shown.map((e) => e.id)) : new Set(current.slice(0, 2).map((e) => e.id))), [filterActive, shown, current]);
+  const isExpanded = (id: string) => overrides[id] ?? defaultOpen.has(id);
+  const setAll = (open: boolean) => setOverrides((o) => ({ ...o, ...Object.fromEntries(shown.map((e) => [e.id, open])) }));
   const toggleType = (t: ChangeType) => setTypes((cur) => (cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t]));
+  const programLabel = PROGRAMS[program].brand.label;
 
-  const openEditor = (entry: ChangelogEntry | null) => {
-    editorKey.current += 1;
-    setEditor({ key: editorKey.current, entryId: entry?.id ?? null, initial: entry ? entryToDraft(entry) : emptyDraft(localIsoDate(new Date())) });
-    setEditorOpen(true);
-  };
-
-  const confirmDelete = async () => {
-    if (!actor || !deleting) return;
-    const ok = await deleteAction.run(() => deleteEntry(actor, deleting.id, program), "Couldn't delete the entry. Check your connection and try again.");
-    if (ok) setDeleteOpen(false);
-  };
+  const timeline = (list: typeof shown) => (
+    <ol className="relative flex flex-col gap-5 pl-6">
+      <div className="absolute bottom-2 left-[9px] top-2 w-px bg-[var(--glass-border)]" aria-hidden />
+      {list.map((entry) => (
+        <li key={entry.id} className="relative list-none">
+          <span className="absolute -left-6 top-6 flex h-[18px] w-[18px] items-center justify-center rounded-full" style={{ background: entry.legacy ? undefined : "var(--theme-gradient)" }} aria-hidden>
+            <GitCommitVertical className={cn("h-3 w-3", entry.legacy ? "text-[var(--muted-foreground)]" : "text-white")} />
+          </span>
+          <EntryCard entry={entry} expanded={isExpanded(entry.id)} onToggle={() => setOverrides((o) => ({ ...o, [entry.id]: !isExpanded(entry.id) }))} showProgramBadges={showAll} />
+        </li>
+      ))}
+    </ol>
+  );
 
   return (
     <div className="flex flex-col gap-6">
-      {loadError && (
-        <p role="alert" className="text-sm text-red-400">
-          {loadError}
-        </p>
-      )}
       {seenError && (
         <p role="alert" className="text-sm text-red-400">
           {seenError} The unread dot will stay until it is saved.
@@ -116,11 +87,10 @@ export default function ChangelogPage() {
           <h1 className="text-2xl font-semibold tracking-tight">Changelog</h1>
           <p className="text-sm text-[var(--muted-foreground)]">What&apos;s new, improved, and fixed.</p>
         </div>
-        {isAdmin && (
-          <Button onClick={() => openEditor(null)} disabled={!actor}>
-            <Plus className="h-4 w-4" /> New entry
-          </Button>
-        )}
+        <label className="flex min-h-11 items-center gap-3 text-sm">
+          <Switch checked={showAll} onCheckedChange={setShowAll} aria-label="Show all programs" />
+          <span>Show all programs</span>
+        </label>
       </div>
 
       {/* The filter bar is always rendered, so nothing jumps when the entries arrive. */}
@@ -152,23 +122,13 @@ export default function ChangelogPage() {
             );
           })}
           <span className="mx-1 hidden h-4 w-px bg-[var(--glass-border)] sm:block" aria-hidden />
-          <Button variant="ghost" size="sm" onClick={() => setAll(true)} disabled={displayed.length === 0}>
+          <Button variant="ghost" size="sm" onClick={() => setAll(true)} disabled={shown.length === 0}>
             Expand all
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => setAll(false)} disabled={displayed.length === 0}>
+          <Button variant="ghost" size="sm" onClick={() => setAll(false)} disabled={shown.length === 0}>
             Collapse all
           </Button>
         </div>
-        {isAdmin && draftCount > 0 && (
-          <p className="text-xs text-amber-300">
-            {draftCount} {draftCount === 1 ? "draft is" : "drafts are"} only visible to admins until published.
-          </p>
-        )}
-        {rowAction.error && (
-          <p role="alert" className="text-sm text-red-300">
-            {rowAction.error}
-          </p>
-        )}
       </div>
 
       {!loaded ? (
@@ -182,13 +142,30 @@ export default function ChangelogPage() {
             </div>
           ))}
         </div>
-      ) : displayed.length === 0 ? (
+      ) : loadError ? (
+        <div role="alert" className="glass-card flex flex-col items-center gap-3 p-10 text-center">
+          <p className="font-medium">The changelog didn&apos;t load.</p>
+          <p className="max-w-sm text-sm text-[var(--muted-foreground)]">{loadError}</p>
+          <Button variant="outline" size="sm" onClick={reload}>
+            Try again
+          </Button>
+        </div>
+      ) : shown.length === 0 ? (
         <div className="glass-card flex flex-col items-center gap-3 p-10 text-center">
-          <p className="font-medium">{entries.length === 0 ? "Nothing here yet." : "No entries match."}</p>
+          <p className="font-medium">{entries.length === 0 ? "Nothing here yet." : scoped.length === 0 ? `Nothing for ${programLabel} yet.` : "No entries match."}</p>
           <p className="max-w-sm text-sm text-[var(--muted-foreground)]">
-            {entries.length === 0 ? (isAdmin ? "Add the first entry to start the team's release notes." : "Release notes will show up here once an admin publishes them.") : "Try a different search, or clear the filters."}
+            {entries.length === 0
+              ? "Release notes will show up here once they are published."
+              : scoped.length === 0
+                ? "Turn on Show all programs to see the notes for every program."
+                : "Try a different search, or clear the filters."}
           </p>
-          {entries.length > 0 && filterActive ? (
+          {entries.length > 0 && scoped.length === 0 && (
+            <Button variant="outline" size="sm" onClick={() => setShowAll(true)}>
+              Show all programs
+            </Button>
+          )}
+          {scoped.length > 0 && filterActive && (
             <Button
               variant="outline"
               size="sm"
@@ -199,78 +176,24 @@ export default function ChangelogPage() {
             >
               Clear filters
             </Button>
-          ) : (
-            entries.length === 0 &&
-            isAdmin && (
-              <Button size="sm" onClick={() => openEditor(null)}>
-                <Plus className="h-4 w-4" /> New entry
-              </Button>
-            )
           )}
         </div>
       ) : (
-        <ol className="relative flex flex-col gap-5 pl-6">
-          <div className="absolute bottom-2 left-[9px] top-2 w-px bg-[var(--glass-border)]" aria-hidden />
-          <AnimatePresence initial={false}>
-            {displayed.map((entry) => (
-              <motion.li key={entry.id} className="relative list-none" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}>
-                <span
-                  className={cn("absolute -left-6 top-6 flex h-[18px] w-[18px] items-center justify-center rounded-full", entry.status === "draft" && "border border-dashed border-[var(--muted-foreground)]")}
-                  style={entry.status === "draft" ? undefined : { background: "var(--theme-gradient)" }}
-                  aria-hidden
-                >
-                  <GitCommitVertical className={cn("h-3 w-3", entry.status === "draft" ? "text-[var(--muted-foreground)]" : "text-white")} />
-                </span>
-                <EntryCard
-                  entry={entry}
-                  expanded={isExpanded(entry.id)}
-                  onToggle={() => setOverrides((o) => ({ ...o, [entry.id]: !isExpanded(entry.id) }))}
-                  filterTypes={types}
-                  admin={isAdmin}
-                  actionsDisabled={!actor || rowAction.busy}
-                  onEdit={() => openEditor(entry)}
-                  onDelete={() => {
-                    deleteAction.clearError();
-                    setDeleting(entry);
-                    setDeleteOpen(true);
-                  }}
-                  onTogglePinned={() => actor && void rowAction.run(() => patchEntry(actor, entry.id, { pinned: !entry.pinned }, program), "Couldn't update the entry.")}
-                  onTogglePublished={() => actor && void rowAction.run(() => patchEntry(actor, entry.id, { status: entry.status === "draft" ? "published" : "draft" }, program), "Couldn't update the entry.")}
-                />
-              </motion.li>
-            ))}
-          </AnimatePresence>
-        </ol>
-      )}
-
-      {editor && actor && <EntryEditor key={editor.key} open={editorOpen} onOpenChange={setEditorOpen} entryId={editor.entryId} initial={editor.initial} actor={actor} />}
-
-      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <DialogContent>
-          <DialogTitle className="pr-8">Delete this entry?</DialogTitle>
-          <DialogDescription>
-            {deleting ? (
-              <>
-                <strong className="text-[var(--foreground)]">{entryLabel(deleting)}</strong> will be removed for everyone
-                {deleting.status === "published" ? " — it's currently published" : ""}. This can&apos;t be undone.
-              </>
-            ) : null}
-          </DialogDescription>
-          {deleteAction.error && (
-            <p role="alert" className="mt-3 text-sm text-red-300">
-              {deleteAction.error}
-            </p>
+        <div className="flex flex-col gap-8">
+          {current.length > 0 && timeline(current)}
+          {legacy.length > 0 && (
+            <section aria-labelledby="changelog-legacy" className="flex flex-col gap-4">
+              <div>
+                <h2 id="changelog-legacy" className="text-lg font-semibold tracking-tight">
+                  Legacy
+                </h2>
+                <p className="text-sm text-[var(--muted-foreground)]">Release notes from the earlier CompSocrates.</p>
+              </div>
+              {timeline(legacy)}
+            </section>
           )}
-          <div className="mt-6 flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => setDeleteOpen(false)} disabled={deleteAction.busy}>
-              Cancel
-            </Button>
-            <Button variant="danger" onClick={() => void confirmDelete()} disabled={deleteAction.busy}>
-              {deleteAction.busy ? "Deleting…" : "Delete entry"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+        </div>
+      )}
     </div>
   );
 }

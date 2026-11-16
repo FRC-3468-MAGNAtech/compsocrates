@@ -27,7 +27,6 @@ import {
   type ChangelogDraft,
   type ChangelogEntry,
 } from "./index";
-import { STARTER_ENTRIES, starterDocId } from "./seed";
 
 function entry(over: Partial<ChangelogEntry> = {}): ChangelogEntry {
   return {
@@ -259,23 +258,3 @@ describe("dates", () => {
   });
 });
 
-describe("starter entries", () => {
-  it("are valid, publishable-looking drafts: unique keys, real dates, safe text, at least one change each", () => {
-    expect(STARTER_ENTRIES.length).toBeGreaterThanOrEqual(3);
-    expect(new Set(STARTER_ENTRIES.map((s) => s.key)).size).toBe(STARTER_ENTRIES.length);
-    for (const s of STARTER_ENTRIES) {
-      const draft: ChangelogDraft = { version: s.version, title: s.title, date: s.date, summary: s.summary, changes: s.changes, status: "draft", pinned: false };
-      expect(validateDraft(draft), s.key).toEqual({ ok: true, errors: {} });
-    }
-  });
-
-  it("are dated in order, oldest first", () => {
-    const dates = STARTER_ENTRIES.map((s) => s.date);
-    expect([...dates].sort()).toEqual(dates);
-  });
-
-  it("have deterministic doc ids scoped to the team", () => {
-    expect(starterDocId("teamA", "v0-1-0")).toBe("starter-teamA-v0-1-0");
-    expect(starterDocId("teamA", "v0-1-0")).not.toBe(starterDocId("teamB", "v0-1-0"));
-  });
-});

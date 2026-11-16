@@ -1,7 +1,6 @@
 import { BRAND } from "@/config/brand";
 import { FTC_GAME_DEFINITIONS, FTC_GAME_ID_LIST } from "@/config/games/ftc";
 import { resolveRadarSource, type RadarProfile } from "@/config/games/radar";
-import { FTC_STARTER_ENTRIES } from "@/lib/ftc/changelog-seed";
 import type { ProgramConfig } from "./types";
 
 /** Pages only the other program has so far. They stay in this program's navigation as greyed-out entries; each one is planned. */
@@ -95,12 +94,10 @@ export const FTC_PROGRAM: ProgramConfig = {
   },
   // Only the tabs whose data layer is ported, in the shared order. Not listed, so they do not exist here: Entries, the two ID tools, Setup Check and the platform-owner tabs
   // (Team Applications, Template Review, Recovery). The team's own templates live inside the Forms tab (as in the other program), without public sharing.
-  admin: { tabs: ["match-library", "forms", "page-access", "sidebar", "submissions", "sessions", "rescore", "audit-log", "backups"], platformSettings: false, templateSharing: false },
+  admin: { tabs: ["match-library", "forms", "page-access", "sidebar", "submissions", "sessions", "rescore", "audit-log", "backups", "platform-changelog", "platform-credits"], platformSettings: false, templateSharing: false },
   multiTeam: true,
   // Team Settings: the season's form is chosen in Admin Panel > Forms (as in the other program); ownership transfer is a root-only server route, so its card is not shown.
   teamSettings: { ownershipTransfer: false },
-  // The changelog's starter drafts: only features this program has today (lib/ftc/changelog-seed.ts).
-  changelogSeed: FTC_STARTER_ENTRIES,
   library: { scoresRequired: false, importKind: "schedule", scheduledTime: true, editImportedScores: true, backfill: false, placeholderVideoSwitch: false, videoCsv: false },
   practice: { noScoreIsResult: true, liveTileText: "Scout a real, livestreamed FTC match." },
   // The practice difficulty cut-offs come from each game's own config (its alliance score thresholds), read by `lib/difficulty.ts` for this program.

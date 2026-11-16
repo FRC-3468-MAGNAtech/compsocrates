@@ -17,7 +17,7 @@ const SCAN = ["app", "components"];
 /** path -> why this file reads the data port. Rendering must stay identical; only the data source may differ. */
 const PORT_READERS: Record<string, string> = {
   "app/(app)/[program]/analytics/match-scout/page.tsx": "own-entry store: who may import CSV / recalculate accuracy (a permission, not a layout)",
-  "app/(app)/[program]/changelog/page.tsx": "reads the program's changelog store",
+  "app/(app)/[program]/changelog/page.tsx": "mark-seen: stamps lastSeenChangelogAt on the program's own user document through its port (the entries themselves come from the one platform feed)",
   "app/(app)/[program]/layout.tsx": "ported programs get their enrollment gate; the frame around it is the shared ProgramSetupFrame",
   "app/(app)/[program]/practice-scouting/page.tsx": "own session store: placeholder video and the unreadable-sessions notice (accepted FTC-only)",
   "app/(app)/[program]/scout/page.tsx": "own entry store for accuracy recompute",

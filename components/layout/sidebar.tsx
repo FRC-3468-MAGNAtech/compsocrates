@@ -21,7 +21,7 @@ import type { ConnectionNotice } from "@/lib/connection-notice";
 import { Avatar } from "@/components/ui/avatar";
 import { useAuth } from "@/lib/auth";
 import { getRole } from "@/lib/roles";
-import { useChangelogUnread } from "@/lib/changelog/store";
+import { usePlatformChangelogUnread } from "@/lib/platform-changelog/client";
 import { BRAND, storageKey } from "@/config/brand";
 import { useProgram, useProgramConfig } from "@/lib/program/context";
 import { ProgramSwitcher } from "@/components/program/program-switcher";
@@ -208,7 +208,7 @@ export function Sidebar({ mobileOpen, onClose, connection = null }: { mobileOpen
   );
   // The changelog is read from the default program's collection, so a program without it connected asks for nothing (no team = no subscription).
   const { features } = useProgramConfig().connection;
-  const changelogUnread = useChangelogUnread(features.changelog ? (profile?.teamId ?? null) : null, profile?.lastSeenChangelogAt);
+  const changelogUnread = usePlatformChangelogUnread(features.changelog && !!profile, profile?.lastSeenChangelogAt);
 
   const handleLogout = () => {
     void logout();
