@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { accessiblePages, canAccessPage, explainAccess, parsePageAccess, setMemberPageState, type AccessUser, type PageAccessConfig } from "./access";
 import { PAGES } from "./pages";
+import { PROGRAMS, isUnavailableInProgram } from "@/config/programs";
+import type { ProgramId } from "@/config/programs/types";
 import { canShowPage } from "@/lib/sidebar/resolve";
 import { ROLES, type RoleId } from "@/lib/roles";
 
@@ -57,11 +59,15 @@ describe("characterization: page types", () => {
     expect(canAccessPage(null, "dashboard", null)).toBe(false);
     expect(canAccessPage(undefined, "dashboard", null)).toBe(false);
   });
-  it("a page the program lacks (FTC unavailable path) is hidden by the shared resolver even though access allows it, and FRC shows it", () => {
+  it("a page the program lacks (an unavailable path) is hidden by the shared resolver even though access allows it, and a program that has it shows it", () => {
     const judgeBook = { id: "judge-book", href: "/judge-book", label: "Judge Book", icon: (() => null) as never };
+    const programs = Object.keys(PROGRAMS) as ProgramId[];
+    const lacking = programs.filter((id) => isUnavailableInProgram(id, "/judge-book"));
+    const having = programs.filter((id) => !isUnavailableInProgram(id, "/judge-book"));
+    expect(lacking.length).toBe(1);
     expect(canAccessPage(user(), "judge-book", null)).toBe(true);
-    expect(canShowPage(judgeBook, { program: "ftc", isAdmin: true, can: () => true })).toBe(false);
-    expect(canShowPage(judgeBook, { program: "frc", isAdmin: false, can: (id) => canAccessPage(user(), id, null) })).toBe(true);
+    for (const program of lacking) expect(canShowPage(judgeBook, { program, isAdmin: true, can: () => true })).toBe(false);
+    for (const program of having) expect(canShowPage(judgeBook, { program, isAdmin: false, can: (id) => canAccessPage(user(), id, null) })).toBe(true);
   });
 });
 
