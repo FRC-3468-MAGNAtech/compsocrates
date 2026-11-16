@@ -6,7 +6,7 @@ import { setAvatarUploadsEnabled } from "@/lib/avatar/client";
 import { setAvatarUploadsEnabledLocal, useAvatarSettings } from "@/lib/avatar/settings";
 
 /**
- * Platform-owner-only row (Admin Panel > Platform owner settings): may members upload a profile picture? Default on. Off hides the Upload option and the server
+ * Platform-owner-only row (Admin Panel > Platform owner settings): may members upload a profile picture? Default OFF (a missing field means off; uploads happen only when this is on). Off hides the Upload option and the server
  * refuses uploads; pictures already uploaded keep showing.
  */
 export function AvatarUploadsSetting() {
@@ -14,8 +14,8 @@ export function AvatarUploadsSetting() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
-  // Unknown (the public config could not be read) counts as ON, the default. The owner is the one person who can set it.
-  const on = settings.uploadsEnabled !== false;
+  // Unknown (the public config could not be read) and a missing field both show as OFF, the default: uploads are on only when explicitly true.
+  const on = settings.uploadsEnabled === true;
 
   const toggle = async (next: boolean) => {
     setError(null);
@@ -27,7 +27,7 @@ export function AvatarUploadsSetting() {
       await setAvatarUploadsEnabled(next);
       setSaved(true);
     } catch (err) {
-      setAvatarUploadsEnabledLocal(previous ?? true);
+      setAvatarUploadsEnabledLocal(previous ?? false);
       setError(err instanceof Error ? err.message : "Couldn't change this.");
     } finally {
       setBusy(false);
@@ -40,7 +40,7 @@ export function AvatarUploadsSetting() {
         <div>
           <div className="text-sm font-medium">Profile picture uploads</div>
           <div className="text-xs text-[var(--muted-foreground)]">
-            On by default: members can upload a photo in Account Settings. Turn it off and the Upload option disappears and the server refuses uploads. Photos already uploaded keep showing, and admins can still remove them.
+            Off by default. Turn it on and members can upload a photo in Account Settings; turn it off and the Upload option disappears and the server refuses uploads. Photos already uploaded keep showing, and admins can still remove them.
             {settings.loaded && settings.blobHost === null && " Uploads are not set up on this server yet (the picture store token is missing), so nobody can upload either way."}
           </div>
         </div>

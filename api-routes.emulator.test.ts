@@ -130,6 +130,9 @@ beforeEach(async () => {
   );
   const { users } = await adminAuth.listUsers();
   await Promise.all(users.map((u) => adminAuth.deleteUser(u.uid)));
+  // A missing teamCreationEnabled means OFF (beta release decision), so most tests start with public creation switched on, as the owner would have it. The
+  // "GET /api/public/config" block deletes this document to test the missing-field default.
+  await db.doc("appSettings/global").set({ teamCreationEnabled: true });
 });
 
 describe("POST /api/team/create", () => {
@@ -270,12 +273,30 @@ describe("POST /api/team/join (approval queue)", () => {
 });
 
 describe("GET /api/public/config", () => {
-  it("reports teamCreationEnabled: true before any team exists", async () => {
+  const settingsRef = () => getAdminFirestore()!.doc("appSettings/global");
+
+  it("a missing document means creation OFF, avatar uploads OFF and admins-see-profiles ON, and the read writes nothing", async () => {
+    await settingsRef().delete();
     const body = await (await publicConfig()).json();
-    expect(body.teamCreationEnabled).toBe(true);
+    expect(body).toMatchObject({ teamCreationEnabled: false, avatarUploadsEnabled: false, adminsSeeAllProfiles: true });
+    expect((await settingsRef().get()).exists).toBe(false);
   });
 
-  it("reports teamCreationEnabled: false once a team exists", async () => {
+  it("a document without the fields means the same, and the read leaves it exactly as it was", async () => {
+    await settingsRef().set({ somethingElse: 1 });
+    const body = await (await publicConfig()).json();
+    expect(body).toMatchObject({ teamCreationEnabled: false, avatarUploadsEnabled: false, adminsSeeAllProfiles: true });
+    expect((await settingsRef().get()).data()).toEqual({ somethingElse: 1 });
+  });
+
+  it("creation and uploads are on only when the field is explicitly true", async () => {
+    await settingsRef().set({ teamCreationEnabled: true, avatarUploadsEnabled: true, adminsSeeAllProfiles: false });
+    expect(await (await publicConfig()).json()).toMatchObject({ teamCreationEnabled: true, avatarUploadsEnabled: true, adminsSeeAllProfiles: false });
+    await settingsRef().set({ teamCreationEnabled: "yes", avatarUploadsEnabled: 1 });
+    expect(await (await publicConfig()).json()).toMatchObject({ teamCreationEnabled: false, avatarUploadsEnabled: false });
+  });
+
+  it("reports teamCreationEnabled: false once a team has been created (creation switches itself off)", async () => {
     const idToken = await createTestUser("admin@example.com");
     await createTeam(postJson({ teamNumber: 1 }, idToken));
     const body = await (await publicConfig()).json();

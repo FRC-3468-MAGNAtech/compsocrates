@@ -55,6 +55,9 @@ beforeEach(() => {
   fake = new FakeFirestore();
   store = new FakeBlobStore();
   mocks.store.current = store;
+  // A missing avatarUploadsEnabled means OFF (beta default), so the tests below start with the owner's switch explicitly on; the default itself is tested in
+  // "access and configuration".
+  fake.seed("appSettings/global", { avatarUploadsEnabled: true });
   fake.seed("users/u1", { displayName: "Una", teamId: "ALPHA", avatar: { type: "preset", value: "bot" } });
   fake.seed("programs/ftc/users/u1", { name: "Una", teamId: "ZED", isAdmin: false, primaryRole: "match-scout", secondaryRoles: [] });
   fake.seed("users/u2", { displayName: "Dee", teamId: "ALPHA" });
@@ -95,8 +98,17 @@ describe("access and configuration", () => {
     expect((await res.json()).code).toBe("uploads-off");
     expect(store.files.size).toBe(0);
   });
-  it("uploads are on when the switch is missing", async () => {
+  it("uploads are OFF when the switch is missing (beta default): refused, nothing stored", async () => {
     signIn("u1");
+    fake.seed("appSettings/global", { somethingElse: 1 });
+    const res = await send(await jpeg());
+    expect(res.status).toBe(403);
+    expect((await res.json()).code).toBe("uploads-off");
+    expect(store.files.size).toBe(0);
+  });
+  it("uploads are on only when the switch is explicitly true", async () => {
+    signIn("u1");
+    fake.seed("appSettings/global", { avatarUploadsEnabled: true });
     expect((await send(await jpeg())).status).toBe(200);
   });
 });
@@ -327,6 +339,7 @@ describe("the platform owner's switch", () => {
     expect((await flip("no")).status).toBe(400);
   });
   it("the owner writes the additive field on appSettings/global (and turning it off makes the upload route refuse)", async () => {
+    fake.seed("appSettings/global", {});
     signIn("owner");
     expect((await flip(false)).status).toBe(200);
     expect(fake.read("appSettings/global")).toEqual({ avatarUploadsEnabled: false });

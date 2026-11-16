@@ -10,7 +10,10 @@ import { getAdminsSeeAllProfiles, getAvatarUploadsEnabled, getTeamCreationEnable
  * in firestore.rules, so this is the only
  * way an unauthenticated visitor learns the flag.
  *
- * Session 8 adds the picture settings: `avatarUploadsEnabled` (the owner's switch, missing = on) and `avatarBlobHost` (the one host the app's uploaded pictures
+ * Every flag here is read-only: this route never writes appSettings/global. `teamCreationEnabled` and `avatarUploadsEnabled` are OFF when the field or the
+ * document is missing (beta release decision); `adminsSeeAllProfiles` is ON when missing.
+ *
+ * Session 8 adds the picture settings: `avatarUploadsEnabled` (the owner's switch, missing = off) and `avatarBlobHost` (the one host the app's uploaded pictures
  * are served from, or null when uploads are not set up on this server). The browser trusts an uploaded picture only on that host.
  */
 export async function GET() {

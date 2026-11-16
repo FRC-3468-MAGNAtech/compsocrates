@@ -25,6 +25,7 @@ const del = () => DELETE(new Request("http://localhost/api/avatar", { method: "D
 let fake: FakeFirestore;
 beforeEach(() => {
   fake = new FakeFirestore();
+  fake.seed("appSettings/global", { avatarUploadsEnabled: true }); // missing means OFF (beta default)
   fake.seed("users/u1", { displayName: "Una", teamId: "ALPHA" });
   fake.seed("users/admin1", { displayName: "Admin", teamId: "ALPHA", isTeamAdmin: true });
   mocks.verify.mockReset().mockResolvedValue({ uid: "u1", name: "Una" });

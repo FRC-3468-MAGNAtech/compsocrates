@@ -4,7 +4,7 @@ import { useEffect, useSyncExternalStore } from "react";
 
 // Session 8: the two picture settings the browser needs, fetched once per page load from the public config route and shared by every component that asks:
 //  - `blobHost`: the ONE host an uploaded picture may be served from (null when uploads are not set up on this server). resolveAvatar trusts nothing else.
-//  - `uploadsEnabled`: the platform owner's switch (missing = on). null = not known yet (treated as on for display, off for offering an upload).
+//  - `uploadsEnabled`: the platform owner's switch (missing = off: uploads only when explicitly true). null = not known yet (treated as off everywhere).
 export type AvatarSettings = { loaded: boolean; blobHost: string | null; uploadsEnabled: boolean | null };
 
 let value: AvatarSettings = { loaded: false, blobHost: null, uploadsEnabled: null };
@@ -56,5 +56,5 @@ export function useAvatarSettings(): AvatarSettings {
   return current;
 }
 
-/** Offer the Upload option only when the server has a Blob store and the owner's switch is not off. */
-export const canOfferUpload = (s: AvatarSettings): boolean => s.blobHost !== null && s.uploadsEnabled !== false;
+/** Offer the Upload option only when the server has a Blob store and the owner's switch is explicitly on. */
+export const canOfferUpload = (s: AvatarSettings): boolean => s.blobHost !== null && s.uploadsEnabled === true;

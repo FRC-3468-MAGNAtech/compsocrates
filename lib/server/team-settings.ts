@@ -14,12 +14,12 @@ export async function getAdminsSeeAllProfiles(db: Firestore): Promise<boolean> {
 }
 
 /**
- * appSettings/global.avatarUploadsEnabled (additive, Session 8): the platform owner's switch for profile picture uploads. Missing means ON; only an explicit `false`
- * turns it off (the Upload option disappears and the upload route refuses; pictures already uploaded keep showing).
+ * appSettings/global.avatarUploadsEnabled (additive, Session 8): the platform owner's switch for profile picture uploads. Missing means OFF: uploads are allowed only when
+ * the field is explicitly `true` (beta release decision; the owner sets it by hand). Pictures already uploaded keep showing either way.
  */
 export async function getAvatarUploadsEnabled(db: Firestore): Promise<boolean> {
   const snap = await db.doc(APP_SETTINGS_PATH).get();
-  return snap.data()?.avatarUploadsEnabled !== false;
+  return snap.data()?.avatarUploadsEnabled === true;
 }
 
 /** A random uppercase join code (the `teams/{CODE}` doc id). Collisions are checked by the caller (`pickFreeTeamCode`). */
@@ -27,37 +27,20 @@ export function randomJoinCode(length = 6): string {
   return generateTeamCode(Math.random, length);
 }
 
-/** The default when appSettings/global doesn't exist yet: enabled only if no team exists. */
-async function computeDefaultTeamCreationEnabled(db: Firestore, txn?: Transaction): Promise<boolean> {
-  const teamsQuery = db.collection("teams").limit(1);
-  const snap = txn ? await txn.get(teamsQuery) : await teamsQuery.get();
-  return snap.empty;
-}
-
 /**
- * Plain (non-transactional) read for the public config route: if the
- * settings doc doesn't exist yet, computes and persists the default so
- * later reads (and the create-team transaction) see a stable value instead
- * of recomputing "does any team exist" forever.
+ * appSettings/global.teamCreationEnabled: public team creation. Missing field or missing document means OFF (applications are not open). This read has NO side
+ * effects: it never writes appSettings/global. The platform owner turns creation on in the Admin Panel (or by hand in the console).
  */
 export async function getTeamCreationEnabled(db: Firestore): Promise<boolean> {
-  const ref = db.doc(APP_SETTINGS_PATH);
-  const snap = await ref.get();
-  if (snap.exists) return Boolean(snap.data()?.teamCreationEnabled);
-  const computed = await computeDefaultTeamCreationEnabled(db);
-  await ref.set({ teamCreationEnabled: computed }, { merge: true });
-  return computed;
+  const snap = await db.doc(APP_SETTINGS_PATH).get();
+  return snap.data()?.teamCreationEnabled === true;
 }
 
 /**
- * Transaction-safe read for /api/team/create — reads (and, if missing,
- * computes but does not persist — the transaction's own write does that)
- * the current value. Must be called before any writes in the same
- * transaction, per Firestore's reads-before-writes rule.
+ * Transaction-safe read for /api/team/create, same meaning as getTeamCreationEnabled. Must be called before any writes in the same transaction, per Firestore's
+ * reads-before-writes rule.
  */
 export async function getTeamCreationEnabledInTransaction(db: Firestore, txn: Transaction): Promise<boolean> {
-  const ref = db.doc(APP_SETTINGS_PATH);
-  const snap = await txn.get(ref);
-  if (snap.exists) return Boolean(snap.data()?.teamCreationEnabled);
-  return computeDefaultTeamCreationEnabled(db, txn);
+  const snap = await txn.get(db.doc(APP_SETTINGS_PATH));
+  return snap.data()?.teamCreationEnabled === true;
 }
