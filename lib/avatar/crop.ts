@@ -1,4 +1,5 @@
 // Session 8: the square crop the person frames in the upload dialog (zoom and reposition). Pure.
+import { STORE_ACCESS_MISMATCH_FRIENDLY } from "@/lib/blob/errors";
 
 export const MIN_ZOOM = 1;
 export const MAX_ZOOM = 3;
@@ -40,6 +41,7 @@ export const AVATAR_ERROR_MESSAGES: Record<string, string> = {
   "bad-image": "That picture couldn't be read. Try a different file.",
   "uploads-off": "Picture uploads are turned off for now. You can still pick your initials, your Google picture or a preset.",
   "not-configured": "Picture uploads aren't set up on this server yet. You can still pick your initials, your Google picture or a preset.",
+  "store-access-mismatch": STORE_ACCESS_MISMATCH_FRIENDLY,
   "rate-limited": "You've uploaded a lot of pictures. Try again in a while.",
   "not-signed-in": "You're signed out. Sign in again and retry.",
   heic: "This browser can't read HEIC photos. Choose a JPEG or PNG, or set your iPhone camera to Most Compatible (Settings > Camera > Formats).",

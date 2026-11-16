@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getAdminFirestore } from "@/lib/firebase/admin";
 import { vercelAvatarStore } from "@/lib/server/avatar-blobs";
 import { removeMemberAvatar } from "@/lib/server/avatar-service";
-import { blobToken } from "@/lib/server/env";
+import { blobStore } from "@/lib/blob/stores";
 import { isPlatformOwnerToken } from "@/lib/server/owner-admin";
 import { serverSignInProblem, verifyBearerToken } from "@/lib/server/require-user";
 
@@ -15,8 +15,8 @@ const fail = (status: number, code: string, error: string) => NextResponse.json(
  * entry under the program's path and notifies nobody.
  */
 export async function POST(request: Request) {
-  const token = blobToken();
-  if (!token) return fail(503, "not-configured", "Picture uploads aren't set up on this server: set BLOB_READ_WRITE_TOKEN.");
+  const { token, envName } = blobStore("avatars");
+  if (!token) return fail(503, "not-configured", `Picture uploads aren't set up on this server: set ${envName}.`);
   const decoded = await verifyBearerToken(request);
   if (!decoded) {
     const problem = serverSignInProblem();

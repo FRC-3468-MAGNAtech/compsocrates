@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import type { Firestore } from "firebase-admin/firestore";
 import { PROGRAMS } from "@/config/programs";
 import { avatarBlobPathFor, AVATAR_SOURCE_UPLOAD, CLEARED_AVATAR_FIELDS, isAvatarPathOf, splitBlobUrl } from "@/lib/avatar/model";
+import { isStoreAccessMismatch, STORE_ACCESS_MISMATCH, STORE_ACCESS_MISMATCH_DETAIL, STORE_FAILED, storeAccessMismatchText } from "@/lib/blob/errors";
 import { AVATAR_MAX_BYTES, processAvatar, type AvatarImageError } from "@/lib/server/avatar-image";
 import { deleteAvatarBlobs, type AvatarBlobStore } from "@/lib/server/avatar-blobs";
 import { callerMembership, programOf, type AchievementCaller, type RouteResult } from "@/lib/server/achievement-config";
@@ -29,6 +30,15 @@ const REMOVES_PER_HOUR = 30;
 const MEMBER_REMOVES_PER_HOUR = 60;
 
 const fail = (status: number, code: string, error: string, extra: Record<string, unknown> = {}): RouteResult => ({ status, body: { ok: false, code, error, ...extra } });
+
+/** A Blob failure as a 502: `store-access-mismatch` (friendly line; the developer detail only outside production) or the generic `store-failed`. */
+function storeFail(err: unknown, friendly: string): RouteResult {
+  if (isStoreAccessMismatch(err)) {
+    console.error(`${STORE_ACCESS_MISMATCH_DETAIL}: the app's Blob store is not the access mode the code asks for (see docs/DEPLOYMENT.md, Photo uploads).`);
+    return fail(502, STORE_ACCESS_MISMATCH, storeAccessMismatchText());
+  }
+  return fail(502, STORE_FAILED, friendly);
+}
 
 const IMAGE_ERRORS: Record<AvatarImageError, { status: number; code: string; error: string }> = {
   "bad-type": { status: 415, code: "wrong-type", error: "Use a JPEG, PNG or WebP picture." },
@@ -74,14 +84,14 @@ export async function uploadAvatar(deps: UploadDeps, caller: { uid: string }, bo
     ({ url } = await store.put(path, image.data, image.contentType));
   } catch (err) {
     console.error("avatar store failed:", err instanceof Error ? err.message : err);
-    return fail(502, "store-failed", "The picture couldn't be saved. Try again.");
+    return storeFail(err, "The picture couldn't be saved. Try again.");
   }
   // Fail closed if the store answered with a URL the display would refuse: nothing is left behind.
   const parts = splitBlobUrl(url);
   if (!parts || parts.path !== path || (deps.storeHost && parts.host !== deps.storeHost)) {
     await store.remove([url]).catch(() => {});
     console.error("avatar store returned an unexpected URL host");
-    return fail(502, "store-failed", "The picture couldn't be saved. Try again.");
+    return fail(502, STORE_FAILED, "The picture couldn't be saved. Try again.");
   }
 
   const fields = { avatarUrl: url, avatarBlobPath: path, avatarSource: AVATAR_SOURCE_UPLOAD };
@@ -115,7 +125,7 @@ export async function removeOwnAvatar(deps: { db: Firestore; store: AvatarBlobSt
     removed = await deleteAvatarBlobs(caller.uid, store); // blobs first: a failure here changes nothing
   } catch (err) {
     console.error("avatar removal failed:", err instanceof Error ? err.message : err);
-    return fail(502, "store-failed", "Your photo couldn't be removed. Try again.");
+    return storeFail(err, "Your photo couldn't be removed. Try again.");
   }
   const had = docs.some((d) => d.data.avatarSource === AVATAR_SOURCE_UPLOAD || typeof d.data.avatarUrl === "string");
   if (had) await clearFields(db, docs);
@@ -151,7 +161,7 @@ export async function removeMemberAvatar(
     removed = await deleteAvatarBlobs(target, store);
   } catch (err) {
     console.error("member avatar removal failed:", err instanceof Error ? err.message : err);
-    return fail(502, "store-failed", "The photo couldn't be removed. Try again.");
+    return storeFail(err, "The photo couldn't be removed. Try again.");
   }
   if (had) await clearFields(db, docs);
   if (had || removed > 0) {

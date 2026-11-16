@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({ verify: vi.fn(), problem: vi.fn(), db: vi.fn()
 vi.mock("@/lib/server/require-user", () => ({ verifyBearerToken: mocks.verify, serverSignInProblem: mocks.problem }));
 vi.mock("@/lib/firebase/admin", () => ({ getAdminFirestore: mocks.db, getAdminFirestoreRest: () => null }));
 vi.mock("@/lib/server/owner-admin", () => ({ isPlatformOwnerToken: (d: { uid?: string }) => d.uid === "owner" }));
-vi.mock("@/lib/server/env", () => ({ blobToken: mocks.token }));
+vi.mock("@/lib/server/env", () => ({ publicBlobToken: mocks.token, blobToken: () => "vercel_blob_rw_legstore1_secret" }));
 vi.mock("@/lib/server/avatar-blobs", async () => {
   const actual = await vi.importActual<typeof import("@/lib/server/avatar-blobs")>("@/lib/server/avatar-blobs");
   return { ...actual, vercelAvatarStore: () => mocks.store.current, avatarStoreHost: mocks.host };
@@ -76,7 +76,7 @@ describe("access and configuration", () => {
     expect(res.status).toBe(503);
     const json = await res.json();
     expect(json.code).toBe("not-configured");
-    expect(json.error).toContain("BLOB_READ_WRITE_TOKEN");
+    expect(json.error).toContain("BLOB_PUBLIC_READ_WRITE_TOKEN");
     expect((await del()).status).toBe(503);
   });
   it("401 with no token or a bad token; 503 server_not_configured when the Admin SDK is missing", async () => {

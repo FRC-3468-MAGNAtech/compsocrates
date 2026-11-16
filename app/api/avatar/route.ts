@@ -3,7 +3,7 @@ import { getAdminFirestore } from "@/lib/firebase/admin";
 import { AVATAR_MAX_BYTES } from "@/lib/server/avatar-image";
 import { avatarStoreHost, vercelAvatarStore } from "@/lib/server/avatar-blobs";
 import { removeOwnAvatar, uploadAvatar } from "@/lib/server/avatar-service";
-import { blobToken } from "@/lib/server/env";
+import { blobStore } from "@/lib/blob/stores";
 import { serverSignInProblem, verifyBearerToken } from "@/lib/server/require-user";
 
 // sharp needs Node (never Edge). The body is a few hundred KB (the browser downscales first); Vercel's own request limit is about 4.5 MB.
@@ -38,8 +38,8 @@ async function readCapped(request: Request, max: number): Promise<Uint8Array | n
 }
 
 async function gate(request: Request) {
-  const token = blobToken();
-  if (!token) return { ok: false as const, response: fail(503, "not-configured", "Picture uploads aren't set up on this server: set BLOB_READ_WRITE_TOKEN.") };
+  const { token, envName } = blobStore("avatars");
+  if (!token) return { ok: false as const, response: fail(503, "not-configured", `Picture uploads aren't set up on this server: set ${envName}.`) };
   const decoded = await verifyBearerToken(request);
   if (!decoded) {
     const problem = serverSignInProblem();
