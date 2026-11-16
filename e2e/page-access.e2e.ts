@@ -19,10 +19,12 @@ declare global {
 }
 
 test.describe("the role matrix", () => {
-  test("rows are the restricted pages, columns the roles, ticked from the defaults", async ({ page }) => {
+  test("rows are every page (grouped), columns the roles, ticked from the defaults; open pages are fully ticked", async ({ page }) => {
     await open(page, "?tab=roles");
     const matrix = page.getByTestId("role-matrix");
-    await expect(matrix.locator("tbody tr")).toHaveCount(11);
+    await expect(matrix.locator("tbody tr[data-page]")).toHaveCount(25);
+    await expect(page.getByTestId("matrix-media-match-list")).toHaveAttribute("data-state", "checked");
+    await expect(page.getByTestId("matrix-media-dashboard")).toBeDisabled();
     await expect(matrix.locator("thead th")).toHaveCount(10); // the page column + 9 roles
     for (const [role, pageId] of [
       ["lead-scout", "assignments"],
@@ -53,7 +55,7 @@ test.describe("the role matrix", () => {
 
   test("the page column stays put while the table scrolls sideways, and the page itself doesn't", async ({ page }) => {
     await open(page, "?tab=roles");
-    const first = page.getByTestId("role-matrix").locator("tbody tr").first().locator("th");
+    const first = page.getByTestId("role-matrix").locator("tbody tr[data-page]").first().locator("th");
     await expect(first).toHaveCSS("position", "sticky");
     const scroller = page.getByTestId("role-matrix");
     const before = (await first.boundingBox())!;
@@ -64,6 +66,8 @@ test.describe("the role matrix", () => {
     // its backing is solid (opaque), so scrolled cells never show through
     const alpha = await first.evaluate((el) => {
       const c = getComputedStyle(el).backgroundColor;
+      // The solid pinned surface is a `color-mix`, which the browser reports as `color(srgb r g b)` (alpha after a slash, 1 when absent).
+      if (c.startsWith("color(")) return c.includes("/") ? Number(c.split("/")[1].replace(")", "")) : 1;
       const m = c.match(/rgba?\(([^)]+)\)/);
       if (!m) return 0;
       const parts = m[1].split(/[,/ ]+/).filter(Boolean);
@@ -207,5 +211,64 @@ test.describe("on a phone", () => {
       await open(page, q);
       await expectNoHorizontalScroll(page);
     }
+  });
+});
+
+test.describe("the All Members matrix", () => {
+  const cell = (page: Page, uid: string, pageId: string) => page.locator(`button[data-uid="${uid}"][data-page="${pageId}"]`);
+
+  test("legend, a role cell explains, an empty cell grants one member, a solid cell removes it", async ({ page }) => {
+    await open(page, "?tab=members");
+    await page.getByTestId("pa-all-members").click();
+    await expect(page.getByTestId("matrix-legend")).toBeVisible();
+    await expect(page.getByTestId("members-matrix").locator("tbody tr[data-member]")).toHaveCount(5);
+
+    await expect(cell(page, "lee", "assignments")).toHaveAttribute("data-state", "role");
+    await cell(page, "lee", "assignments").click();
+    await expect(page.getByTestId("matrix-note")).toContainText("through the role Lead Scout");
+    await expect(page.getByTestId("matrix-note-role-link")).toBeVisible();
+    expect(await log(page)).toEqual([]); // explaining writes nothing
+
+    await expect(cell(page, "mia", "assignments")).toHaveAttribute("data-state", "none");
+    await cell(page, "mia", "assignments").click();
+    await expect(cell(page, "mia", "assignments")).toHaveAttribute("data-state", "granted");
+    await cell(page, "mia", "assignments").click();
+    await expect(cell(page, "mia", "assignments")).toHaveAttribute("data-state", "none");
+    expect(await log(page)).toEqual([
+      { type: "member", uid: "mia", pageId: "assignments", state: "grant" },
+      { type: "member", uid: "mia", pageId: "assignments", state: "default" },
+    ]);
+  });
+
+  test("the role link opens that role in Roles; always-on cells are locked", async ({ page }) => {
+    await open(page, "?tab=members");
+    await page.getByTestId("pa-all-members").click();
+    await expect(cell(page, "mia", "dashboard")).toHaveAttribute("data-state", "always");
+    await cell(page, "lee", "assignments").click();
+    await page.getByTestId("matrix-note-role-link").click();
+    await expect(page.getByTestId("role-matrix")).toBeVisible();
+  });
+
+  test("arrow keys move between cells, and the table scrolls inside its own box (no page-level sideways scroll)", async ({ page }) => {
+    await open(page, "?tab=members");
+    await page.getByTestId("pa-all-members").click();
+    const first = page.locator("button[data-cell]").first();
+    await first.focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(page.locator("button[data-cell][data-r='0'][data-c='1']")).toBeFocused();
+    await page.keyboard.press("ArrowDown");
+    await expect(page.locator("button[data-cell][data-r='1'][data-c='1']")).toBeFocused();
+    await expectNoHorizontalScroll(page);
+  });
+
+  test("a collapsed group hides its columns, and a page search filters them", async ({ page }) => {
+    await open(page, "?tab=members");
+    await page.getByTestId("pa-all-members").click();
+    await expect(page.locator("th[data-page='lead-scout-form']")).toBeVisible();
+    await page.getByRole("button", { name: /^Forms group, expanded/ }).click();
+    await expect(page.locator("th[data-page='lead-scout-form']")).toHaveCount(0);
+    await page.getByRole("button", { name: /^Forms group, collapsed/ }).click();
+    await page.getByTestId("mm-page-search").fill("match list");
+    await expect(page.locator("th[data-page]")).toHaveCount(1);
   });
 });

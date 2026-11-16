@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { KeyRound } from "lucide-react";
+import { KeyRound, Table2 } from "lucide-react";
 import { MemberAccessEditor, PreviewAsMember, RequestsList } from "@/components/page-access/parts";
+import { MembersMatrix } from "@/components/page-access/members-matrix";
 import { RoleMatrix } from "@/components/page-access/role-matrix";
 import { useAccessPageGroups } from "@/components/page-access/use-page-groups";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -54,6 +55,7 @@ export function PageAccessPanelView({
   error,
   initialTab = "roles",
   initialMemberUid,
+  initialAllMembers = false,
 }: {
   config: PageAccessConfig;
   members: TeamMember[];
@@ -67,9 +69,12 @@ export function PageAccessPanelView({
   error?: string | null;
   initialTab?: Tab;
   initialMemberUid?: string;
+  initialAllMembers?: boolean;
 }) {
   const [tab, setTab] = useState<Tab>(initialTab);
   const [memberUid, setMemberUid] = useState<string | null>(initialMemberUid ?? null);
+  const [allMembers, setAllMembers] = useState(initialAllMembers);
+  const [highlightRole, setHighlightRole] = useState<RoleId | null>(null);
   const groups = useAccessPageGroups();
   const pending = requests.filter((r) => r.status === "pending").length;
   const sorted = [...members].sort((a, b) => a.name.localeCompare(b.name));
@@ -116,7 +121,7 @@ export function PageAccessPanelView({
       {tab === "roles" && (
         <div className="flex flex-col gap-2">
           <p className="text-xs text-[var(--muted-foreground)]">A member can open a page when their primary or a secondary role is ticked. Changes save as you tick. Admins always keep Page Access and the Admin Panel.</p>
-          <RoleMatrix config={config} groups={groups} onToggle={onToggleRole} onToggleOpen={onToggleOpenRole} />
+          <RoleMatrix config={config} groups={groups} onToggle={onToggleRole} onToggleOpen={onToggleOpenRole} highlightRole={highlightRole} />
         </div>
       )}
 
@@ -129,7 +134,10 @@ export function PageAccessPanelView({
               </label>
               <Select
                 value={memberUid ?? ""}
-                onValueChange={setMemberUid}
+                onValueChange={(uid) => {
+                  setMemberUid(uid);
+                  setAllMembers(false);
+                }}
               >
                 <SelectTrigger id="pa-member" data-testid="pa-member-select">
                   <SelectValue placeholder="Pick a member">{member ? `${member.name} · ${getRole(member.primaryRole).label}` : undefined}</SelectValue>
@@ -144,8 +152,22 @@ export function PageAccessPanelView({
                 </SelectContent>
               </Select>
             </div>
+            <Button variant={allMembers ? "primary" : "glass"} aria-pressed={allMembers} onClick={() => setAllMembers((v) => !v)} className="shrink-0" data-testid="pa-all-members">
+              <Table2 className="h-4 w-4" aria-hidden /> All Members
+            </Button>
           </div>
-          {member ? (
+          {allMembers ? (
+            <MembersMatrix
+              config={config}
+              members={members}
+              groups={groups}
+              onSetMemberPage={onSetMemberPage}
+              onOpenRole={(role) => {
+                setHighlightRole(role);
+                setTab("roles");
+              }}
+            />
+          ) : member ? (
             <MemberAccessBody member={member} config={config} onSet={(pageId, state) => onSetMemberPage(member, pageId, state)} />
           ) : (
             <p className="glass-card px-4 py-6 text-center text-sm text-[var(--muted-foreground)]">Pick a member to grant or deny pages for them, see where their access comes from, and preview what they see.</p>
