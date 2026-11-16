@@ -22,6 +22,8 @@ export type CreditEntry = {
 export type CreditSection = {
   id: string;
   title: string;
+  /** Optional line under the section title (same safe markup as an entry's text). Absent: none. */
+  description?: string;
   /** Position within the page. Normalised to the array index on every edit. */
   order: number;
   entries: CreditEntry[];
@@ -31,7 +33,7 @@ export type EntryFields = Pick<CreditEntry, "name" | "description" | "link" | "i
 
 export type CreditsOp =
   | { type: "add-section"; id: string; title: string }
-  | { type: "edit-section"; sectionId: string; title: string }
+  | { type: "edit-section"; sectionId: string; title: string; description?: string }
   | { type: "delete-section"; sectionId: string }
   | { type: "move-section"; sectionId: string; toIndex: number }
   | { type: "add-entry"; sectionId: string; entry: CreditEntry }
@@ -44,6 +46,10 @@ export const MAX_ENTRIES = 60;
 export const MAX_SECTION_TITLE = 80;
 export const MAX_NAME = 80;
 export const MAX_DESCRIPTION = 300;
+export const MAX_SECTION_DESCRIPTION = 300;
+/** Entries over the whole page: keeps the one credits document far below Firestore's size limit. */
+export const MAX_TOTAL_ENTRIES = 300;
+export const MAX_URL = 500;
 
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
 
@@ -79,7 +85,14 @@ export function applyCreditsOp(sections: CreditSection[], op: CreditsOp): Credit
       return renumber([...sections, { id: op.id, title: op.title, order: sections.length, entries: [] }]);
 
     case "edit-section":
-      return withSection(op.sectionId, (s) => ({ ...s, title: op.title }));
+      return withSection(op.sectionId, (s) => {
+        const next: CreditSection = { ...s, title: op.title };
+        if (op.description !== undefined) {
+          if (op.description.trim() === "") delete next.description;
+          else next.description = op.description;
+        }
+        return next;
+      });
 
     case "delete-section":
       return sectionIndex(op.sectionId) < 0 ? sections : renumber(sections.filter((s) => s.id !== op.sectionId));
@@ -145,7 +158,8 @@ export function sanitizeSections(raw: unknown): CreditSection[] {
       const entry = e as CreditEntry;
       entries.push({ id: entry.id, name: str(entry.name), description: str(entry.description), link: url(entry.link), imageUrl: url(entry.imageUrl) });
     }
-    sections.push({ id: (s as CreditSection).id, title: str((s as CreditSection).title), order: typeof (s as CreditSection).order === "number" ? (s as CreditSection).order : sections.length, entries });
+    const description = str((s as CreditSection).description);
+    sections.push({ id: (s as CreditSection).id, title: str((s as CreditSection).title), ...(description ? { description } : {}), order: typeof (s as CreditSection).order === "number" ? (s as CreditSection).order : sections.length, entries });
   }
   return renumber(sections.sort((a, b) => a.order - b.order));
 }

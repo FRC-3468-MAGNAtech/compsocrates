@@ -95,10 +95,12 @@ export class FakeFirestore {
     };
   }
 
+  private autoId = 0;
+
   collection(name: string) {
-    let auto = 0;
     return {
-      doc: (id?: string) => this.docRef(`${name}/${id ?? `auto${Date.now()}_${auto++}`}`),
+      // One counter for the whole fake, so two auto ids never collide (even within the same millisecond or across collections).
+      doc: (id?: string) => this.docRef(`${name}/${id ?? `auto${Date.now()}_${this.autoId++}`}`),
       where: (field: string, op: string, value: unknown) => this.query(name, [{ field, op, value }], null),
       limit: (n: number) => this.query(name, [], n),
       get: async () => this.query(name, [], null).get(),

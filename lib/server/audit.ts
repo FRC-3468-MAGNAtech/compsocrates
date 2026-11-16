@@ -22,7 +22,13 @@ export type PlatformAuditAction =
   | "takedown-template"
   | "set-official-template"
   | "dismiss-template-reports"
-  | "seed-official-templates";
+  | "seed-official-templates"
+  | "create-platform-changelog-entry"
+  | "edit-platform-changelog-entry"
+  | "publish-platform-changelog-entry"
+  | "unpublish-platform-changelog-entry"
+  | "delete-platform-changelog-entry"
+  | "save-platform-credits";
 
 /** The platform owner's own log (`platformAuditLog`, readable only by platform owners): it may hold applicant details that must not appear in any team's Audit Log. */
 export function platformAuditDoc(action: PlatformAuditAction, actor: { uid: string; name: string }, details: Record<string, unknown>) {
