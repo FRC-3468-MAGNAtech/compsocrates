@@ -13,6 +13,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "check:themes": "vite-node scripts/check-theme-contrast.ts",
+    "export:firestore": "vite-node --config vitest.config.ts scripts/export-firestore.ts",
     "test:e2e": "playwright test",
     "test:rules": "firebase emulators:exec --only firestore,auth \"vitest run --config vitest.rules.config.ts\""
   },
