@@ -13,10 +13,10 @@ import { cn } from "@/lib/utils";
 const JOIN_VALUE = "__join__";
 
 /**
- * Which TEAM (not field team) the person is on right now, and the other teams they belong to in this program. One per program: it lists the account's ACTIVE
+ * Which TEAM (the account's membership, not a robot team inside it) the person is on right now, and the other teams they belong to in this program. One per program: it lists the account's ACTIVE
  * memberships here, switching calls the server (the active team is the user document's pointer, so every permission follows the new team together), and "Join
  * another team" goes to the join screen. Hidden entirely while the memberships kill switch is OFF: nothing is read and nothing is drawn.
- * The field-team switcher (robot teams inside one team) is `FieldTeamSwitcher`, a different thing.
+ * The switcher for robot teams inside one team is a separate component.
  */
 export function TeamSwitcher({ className, compact = false }: { className?: string; compact?: boolean }) {
   const enabled = useMembershipsEnabled();

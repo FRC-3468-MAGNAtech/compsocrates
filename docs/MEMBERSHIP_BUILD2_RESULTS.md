@@ -27,7 +27,7 @@ Branch `release-prep`. Nothing was deployed or run against a real project. Every
 Set the switch to false (or delete it): all new behaviour stops within ~30 s per instance. Revert the commits if needed; the new fields and collections can stay. The rules changes are additive or tightening; redeploy the saved ruleset to undo them.
 
 ## Verify
-`npm run lint` clean; `npm test` 344 files, 4472 tests pass; `npm run build` OK; `npm run test:rules` 7 files, 486 tests pass (331 in the other six files; `data/ftc/rules.emulator.test.ts` 155 pass, but its 20 s `beforeAll` timed out on this machine in the full run, as in the consolidation note, and passed with `--hookTimeout=90000`: unrelated slowness, config not changed). Unrelated failures: none.
+Re-verified at the end of this session after a fix: the brand guard had failed on the new shared files naming the stored robot-team list (comments reworded in `team-switcher.tsx`; `lib/memberships/flows.ts`, `lib/server/membership-flows.ts` and `lib/team-roster.ts` added to the guard's allowlist with reasons). `npm run lint` clean; `npm test` 344 files, 4472 tests pass; `npm run build` OK; `npm run test:rules` 7 files, 486 tests pass (331 in the other six files; `data/ftc/rules.emulator.test.ts` 155 pass, but its 20 s `beforeAll` timed out on this machine in the full run, as in the consolidation note, and passed with `--hookTimeout=90000`: unrelated slowness, config not changed). Unrelated failures: none.
 
 ## Left for build 3 and 4
 Build 3: no-team access, personal practice, applications, identical screens. Build 4: account deletion. Also: unsaved-changes prompt, force-remove button, the other program's teams on My teams, team labels for older memberships.
