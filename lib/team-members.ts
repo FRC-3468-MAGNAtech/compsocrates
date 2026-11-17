@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { collection, doc, onSnapshot, query, where, writeBatch } from "firebase/firestore";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { buildAuditEntry, newAuditLogRef } from "@/lib/audit-log";
@@ -12,6 +12,8 @@ import { csUserToMember, profilePatchToCsUser } from "@/data/cs/users";
 import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
 import { programData, useProgramData } from "@/lib/program/data";
 import { describeFirestoreError, type FirestoreFailure } from "@/lib/firestore-errors";
+import { mergeMembers, useRosterExtras } from "@/lib/team-roster";
+import { membershipApi, membershipsEnabled } from "@/lib/memberships/client";
 
 export type TeamMember = {
   uid: string;
@@ -40,6 +42,9 @@ export function useTeamMembers(teamId: string | null) {
   const [loaded, setLoaded] = useState(false);
   // A source that fails says so (the page names it); `loaded` still flips so nothing hangs on "loading".
   const [error, setError] = useState<FirestoreFailure | null>(null);
+  // The roster seam (lib/team-roster.ts): the team's active memberships, merged in. Always empty (and no read) while the memberships kill switch is OFF.
+  const extras = useRosterExtras(teamId);
+  const merged = useMemo(() => mergeMembers(members, extras), [members, extras]);
 
   useEffect(() => {
     if (!teamId || !isFirebaseConfigured()) {
@@ -88,7 +93,7 @@ export function useTeamMembers(teamId: string | null) {
     return unsubscribe;
   }, [teamId, data]);
 
-  return { members, loaded, error };
+  return { members: merged, loaded, error };
 }
 
 /**
@@ -107,6 +112,11 @@ export async function updateMemberAccess(
   program: ProgramId = DEFAULT_PROGRAM
 ) {
   if (Object.keys(changes).length === 0) return;
+  // Memberships ON: a server route makes the edit (the user document when this is the person's active team, their membership otherwise) and logs it.
+  if (await membershipsEnabled()) {
+    await membershipApi.access(program, { teamId: actor.teamId, uid: member.uid, changes });
+    return;
+  }
   // A namespaced program's member docs already use the app's field names; its port writes them and the audit entry in one batch.
   const data = programData(program);
   if (data) return data.members.updateAccess(actor, member, changes);

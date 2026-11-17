@@ -7,6 +7,8 @@ import { isAdminFromCsUser } from "@/data/cs/users";
 import { isOwnerUid } from "@/lib/server/owner-admin";
 import { chooseBootstrapOwner } from "@/lib/team-owner";
 import { applyPendingApprovalForUser } from "@/lib/server/join-requests";
+import { readPointerRoster } from "@/lib/server/team-roster";
+import { DEFAULT_PROGRAM } from "@/config/programs/types";
 
 export type SyncRolesInput = {
   uid: string;
@@ -33,7 +35,8 @@ async function bootstrapTeamOwner(db: Firestore, teamId: string, caller: { uid: 
   const teamRef = db.collection("teams").doc(teamId);
   const firstLook = await teamRef.get();
   if (!firstLook.exists || ownerUidOfTeam(firstLook.data() as CsRecord)) return false;
-  const membersSnap = await db.collection("users").where("teamId", "==", teamId).get();
+  // The owner bootstrap works on user documents (it writes the owner flag there), so it reads the pointer side of the roster seam: the same single query as before.
+  const membersSnap = { docs: (await readPointerRoster(db, DEFAULT_PROGRAM, teamId)).map((r) => ({ id: r.uid, data: () => r.data })) };
   return db.runTransaction(async (txn) => {
     const teamSnap = await txn.get(teamRef);
     if (!teamSnap.exists || ownerUidOfTeam(teamSnap.data() as CsRecord)) return false;

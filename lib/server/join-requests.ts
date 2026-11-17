@@ -22,6 +22,8 @@ import {
 import { str } from "@/data/cs/util";
 import { consumeRateLimit } from "@/lib/server/rate-limit";
 import { releaseOwnerUids } from "@/lib/server/env";
+import { readServerRoster } from "@/lib/server/team-roster";
+import { DEFAULT_PROGRAM } from "@/config/programs/types";
 
 /**
  * The server side of CS's join-request flow (docs/ROUTES.md D1/D6/D10), over the Admin SDK. CS did this through the Firestore
@@ -198,8 +200,9 @@ export async function deleteAccountData(db: Firestore, caller: Caller): Promise<
   if (userSnap.exists && teamId) {
     const teamSnap = await db.collection("teams").doc(teamId).get();
     if (teamSnap.exists && ownerUidOfTeam(teamSnap.data() as CsRecord) === caller.uid) {
-      const members = await db.collection("users").where("teamId", "==", teamId).get();
-      if (members.docs.some((m) => m.id !== caller.uid)) {
+      // The roster seam: today's `users where teamId ==` query, plus the team's active memberships while the kill switch is ON.
+      const members = await readServerRoster(db, DEFAULT_PROGRAM, teamId);
+      if (members.some((m) => m.uid !== caller.uid)) {
         return fail(409, "owns-team", "You own this team and it still has members. Transfer ownership in Team Settings first.");
       }
     }

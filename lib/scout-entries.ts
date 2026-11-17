@@ -24,6 +24,7 @@ import { str, stripUndefined } from "@/data/cs/util";
 import { auth, db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
 import { programData, useProgramData } from "@/lib/program/data";
+import { loadRosterExtras } from "@/lib/team-roster";
 import type { FirestoreFailure } from "@/lib/firestore-errors";
 import { assertSubmissionOpen, type SubmissionGateInput } from "@/lib/forms/submission-guard";
 import type { MatchType } from "@/lib/events/types";
@@ -303,8 +304,10 @@ function loadLegacyRows(teamId: string): Promise<RawRow[]> {
   if (cached) return cached;
   const task = (async () => {
     const members = await getDocs(query(collection(db, "users"), where("teamId", "==", teamId)));
-    const uids = members.docs.map((d) => d.id);
-    const names = [...new Set(members.docs.map((d) => str(d.data().displayName).trim()).filter(Boolean))];
+    // The roster seam: members whose active team is another one still have legacy rows here. Nothing extra is read while the memberships switch is OFF.
+    const extras = (await loadRosterExtras(DEFAULT_PROGRAM, teamId)).members.filter((m) => !members.docs.some((d) => d.id === m.uid));
+    const uids = [...members.docs.map((d) => d.id), ...extras.map((m) => m.uid)];
+    const names = [...new Set([...members.docs.map((d) => str(d.data().displayName).trim()), ...extras.map((m) => m.name)].filter(Boolean))];
     const snaps = await Promise.all([
       ...chunk(uids, IN_LIMIT).map((ids) => getDocs(query(collection(db, COLLECTION), where("scoutId", "in", ids)))),
       ...chunk(names, IN_LIMIT).map((list) => getDocs(query(collection(db, COLLECTION), where("scoutName", "in", list)))),

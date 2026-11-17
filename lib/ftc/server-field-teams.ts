@@ -5,6 +5,7 @@ import { programPath } from "@/lib/firebase/paths";
 import { MAX_ACCOUNT_TEAMS, sanitizeTeamName } from "@/lib/account-teams";
 import { getTeamByNumber } from "@/lib/ftc/provider";
 import { consumeRateLimit } from "@/lib/server/rate-limit";
+import { readServerRoster } from "@/lib/server/team-roster";
 import { ftcApiMissingNames } from "@/lib/server/env";
 import { parseTeamNumber } from "@/lib/team-number";
 import { readFieldTeams } from "@/data/ftc/teams";
@@ -70,11 +71,13 @@ async function sync(db: Firestore, teamId: string): Promise<RouteResult> {
   if (migrated.teams.length === 0) return { status: 200, body: { ok: true, teamMigrated: false, membersMigrated: 0 } };
 
   const all = migrated.teams.map((t) => t.id);
-  const members = await db.collection(programPath("ftc", "users")).where("teamId", "==", teamId).get();
-  const needing = members.docs.filter((d) => !Array.isArray(d.data().fieldTeamIds));
+  // The roster seam: the team's user documents (the query this always ran), plus its active memberships while the kill switch is ON, so a member whose active team
+  // is another one gets their assignment too (it lives on their membership).
+  const members = await readServerRoster(db, "ftc", teamId);
+  const needing = members.filter((r) => !Array.isArray(r.data.fieldTeamIds));
   for (let i = 0; i < needing.length; i += 400) {
     const batch = db.batch();
-    for (const d of needing.slice(i, i + 400)) batch.update(d.ref, { fieldTeamIds: [...all] });
+    for (const r of needing.slice(i, i + 400)) batch.update(r.ref, { fieldTeamIds: [...all] });
     await batch.commit();
   }
   return { status: 200, body: { ok: true, teamMigrated: migrated.wrote, membersMigrated: needing.length } };

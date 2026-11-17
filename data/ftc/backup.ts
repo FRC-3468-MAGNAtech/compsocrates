@@ -7,6 +7,7 @@ import { programCollection, programDoc, programPath } from "@/lib/firebase/paths
 import { describeFirestoreError, failureExplanation } from "@/lib/firestore-errors";
 import { ftcUserToMember, type FtcUserDoc } from "@/data/ftc/users";
 import { isRecord } from "@/data/ftc/util";
+import { withRosterExtras } from "@/lib/team-roster";
 import {
   FTC_BACKUP_LIBRARY_COLLECTIONS,
   FTC_BACKUP_TEAM_COLLECTIONS,
@@ -54,7 +55,9 @@ export async function readFtcBackup(teamId: string): Promise<Record<string, Reco
   // The roster: who is on the team and their roles, never emails or credentials.
   try {
     const snap = await getDocs(query(programCollection(db, PROGRAM, "users"), where("teamId", "==", teamId)));
-    out.members = snap.docs.flatMap((d) => (isRecord(d.data()) ? [memberForBackup(ftcUserToMember(d.id, d.data() as FtcUserDoc))] : []));
+    const fromUsers = snap.docs.flatMap((d) => (isRecord(d.data()) ? [ftcUserToMember(d.id, d.data() as FtcUserDoc)] : []));
+    // The roster seam: members whose active team is another one are part of this team's roster too (nothing extra is read while the memberships switch is OFF).
+    out.members = (await withRosterExtras(PROGRAM, teamId, fromUsers)).map(memberForBackup);
   } catch (err) {
     throw new Error(`Couldn't read the team members: ${why(err)}`);
   }

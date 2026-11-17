@@ -6,6 +6,8 @@ import type { CsUserDoc } from "@/data/cs/types";
 import { csUserToMember } from "@/data/cs/users";
 import { stripUndefined } from "@/data/cs/util";
 import { db } from "@/lib/firebase/client";
+import { DEFAULT_PROGRAM } from "@/config/programs/types";
+import { loadRosterExtras } from "@/lib/team-roster";
 
 // Firestore plumbing shared by the assignment stores (lib/assignments.ts, lib/team-assignments/store.ts, lib/event-attendance.ts).
 // The pure side (row <-> app model, write plans) lives in data/cs/assignments.ts.
@@ -28,7 +30,10 @@ export async function fetchRows(q: Query): Promise<CsAssignmentRow[]> {
 /** uid -> display name for the team's members (CS stores `scoutName` next to `scoutId` on every assignment). */
 export async function fetchMemberNames(teamId: string): Promise<Map<string, string>> {
   const snap = await getDocs(query(collection(db, "users"), where("teamId", "==", teamId)));
-  return new Map(snap.docs.map((d) => [d.id, csUserToMember(d.id, d.data() as CsUserDoc).name]));
+  const names = new Map(snap.docs.map((d) => [d.id, csUserToMember(d.id, d.data() as CsUserDoc).name] as [string, string]));
+  // The roster seam: people whose active team is another one still have their name on this team's assignments. Nothing is read while the memberships switch is OFF.
+  for (const m of (await loadRosterExtras(DEFAULT_PROGRAM, teamId)).members) if (!names.has(m.uid)) names.set(m.uid, m.name);
+  return names;
 }
 
 const BATCH_LIMIT = 400;
