@@ -9,6 +9,8 @@ import type { EventInfo } from "@/lib/events/types";
 declare global {
   interface Window {
     __refreshes?: number;
+    /** `?hold=1` only: finishes the refresh the page is holding open. */
+    __releaseRefresh?: () => void;
   }
 }
 
@@ -59,6 +61,7 @@ function Fixture() {
   const q = useSearchParams();
   const eventCount = Number(q.get("events") ?? 2);
   const state = q.get("state") ?? "ready";
+  const hold = q.get("hold") === "1";
   const events = EVENTS.slice(0, eventCount);
   const all = useMemo(() => [...schedule("USWABON1", 0), ...schedule("USWASEQ", 1)], []);
   const [updatedAt, setUpdatedAt] = useState<number | null>(Date.UTC(2025, 10, 8, 18, 58, 0));
@@ -81,10 +84,13 @@ function Fixture() {
         onRefresh={() => {
           window.__refreshes = (window.__refreshes ?? 0) + 1;
           setRefreshing(true);
-          setTimeout(() => {
+          const finish = () => {
             setUpdatedAt(Date.UTC(2025, 10, 8, 19, 1, 0));
             setRefreshing(false);
-          }, 300);
+          };
+          // ?hold=1: the request stays pending until the test releases it (no timer), so "refreshing" is observable on a slow browser.
+          if (hold) window.__releaseRefresh = finish;
+          else setTimeout(finish, 300);
         }}
         isOurTeam={(n) => OURS.has(n)}
         now={NOW}

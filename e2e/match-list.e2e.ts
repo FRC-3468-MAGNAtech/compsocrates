@@ -87,10 +87,16 @@ test.describe("one event", () => {
   });
 
   test("a manual refresh asks again and updates the last-updated time", async ({ page }) => {
-    await open(page, "?events=1");
+    // ?hold=1: the fixture keeps the request pending until we release it, so the disabled state does not depend on how fast the browser is.
+    await open(page, "?events=1&hold=1");
+    const refresh = page.getByTestId("refresh-matches");
     await expect(page.getByTestId("last-updated")).toContainText(/Updated\s+10:58/);
-    await page.getByTestId("refresh-matches").click();
-    await expect(page.getByTestId("refresh-matches")).toBeDisabled();
+    await refresh.click();
+    await expect(refresh).toBeDisabled();
+    await expect(refresh).toContainText("Refreshing…");
+    await expect(page.getByTestId("last-updated")).toContainText(/Updated\s+10:58/); // nothing new until the request returns
+    await page.evaluate(() => window.__releaseRefresh!());
+    await expect(refresh).toBeEnabled();
     await expect(page.getByTestId("last-updated")).toContainText(/Updated\s+11:01/);
     expect(await page.evaluate(() => window.__refreshes)).toBe(1);
   });
