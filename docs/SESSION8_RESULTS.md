@@ -1,0 +1,29 @@
+# Session 8: Achievements page, admin-made achievements, profile picture uploads (results)
+Branch `rebuild`. **No Firestore rule changed** (no `test:rules` run), nothing deployed, no production read or write, mocks and an in-memory Firestore only. Rollback: revert the commits (all additive; the new fields and `achievementConfig` documents can stay unread). `sharp` becomes a direct dependency again by reverting `package.json`/lockfile.
+Verify: `npm run lint` exit 0, 0 errors, 0 warnings. `npm test` 318 files, 4073 tests: 4070 pass, 3 fail, all in `config/brand-guard.test.ts` (FTC/old-game names in `my-scouting-filters`, `platform-changelog-fields.test`, `events-attended.test`: not mine, not fixed). `npm run build` passes.
+
+## Achievements
+- Eight built-ins (not five), now definitions in `lib/achievements/builtins.ts`; `badges.ts` keeps its old API on top of the engine. Characterization tests (committed first, unchanged since) pin earned states: none changed. Thresholds are not editable; hidden ones are not counted.
+- Metrics (`lib/achievements/metrics.ts`): practice sessions, longest streak, events attended and matches scouted (both with season scope), best accuracy, average accuracy (min samples, missing is never 0), Excellent categories, perfect entries. `ProgramConfig.achievementMetrics` (both "all").
+- Page `/achievements` (open, in `PAGES`, `NAV_PAGES` right after People, which owns `/profile`; there is no profile sidebar group; FTC `connection.paths`; `APP_SEGMENTS`). Renders with no team. The profile shows the compact section; others see earned only, no bars.
+- Admin Panel > Achievements (id in `ADMIN_TAB_IDS`, both tab lists, not platform-only). Config doc `{prefix}teams/{teamId}/achievementConfig/main` = `{version, overrides, custom[], order[], updatedAt, updatedBy}` (`order` is an addition: reordering). Route `/api/achievements/config` (GET, PUT), 409 `conflict`, audit `edit-achievements`, 503 `server_not_configured`. Not built: forms-submitted-by-type metric (no form-type input exists).
+
+## Pictures
+- `sharp` **0.35.4**, exact, direct dependency. Lockfile edited by hand (3 lines): `npm install` could not run offline and online it re-flagged unrelated entries. Route is Node runtime; `limitInputPixels` 36 MP; auto-orient first; no `withMetadata`; fails closed.
+- New additive fields `avatarUrl`, `avatarBlobPath`, `avatarSource` ("upload") on root `users/{uid}` and the other program's user doc; `appSettings/global.avatarUploadsEnabled` (missing = on; `/api/admin/avatar-uploads`; in `/api/public/config` with `avatarBlobHost`). Routes `POST/DELETE /api/avatar`, `POST /api/avatar/remove` (audit `remove-member-photo`, program path, no notification). Cleared fields are `null`.
+- **Clients can write `avatarUrl` directly under the current rules.** `resolveAvatar` is the protection: source "upload", our store host (from the token, via public config) and `avatars/<this uid>/`. Hiding a photo on a private profile is enforced by the app, not by Firestore.
+- Deviation: `profiles/{uid}` is NOT mirrored (a member's profile save replaces that document and the rules allow six keys, so a mirror is erased by the next bio edit). The Avatar reads the account documents.
+- Visibility: the limited card and profile pages use the profile's visibility. Lists (People, Team Management rows and editor) have no profile data, so they show the photo: not feasible. Assignments, credits, leaderboard, page access and join requests never showed pictures.
+- HEIC: converted only where the browser can decode it (Safari); otherwise rejected with a message. Crop: zoom and move sliders; the server center-crops otherwise.
+- Person data for the later account-deletion job: `avatarUrl`, `avatarBlobPath`, `avatarSource` on `users` (both programs); it must also cover `profiles`, the other program's user docs and `users.avatar` (`deleteAccountData` removes only root `users/{uid}`). Call `deleteAvatarBlobs(uid)` (lists `avatars/<uid>/`, deletes strays too).
+
+## Unverified without a real Blob store
+Upload, replace, delete and `list` calls, the store host derived from the token (`vercel_blob_rw_<id>_...`; a mismatch fails closed with 502 and the file removed), that the stored URL shows in a browser, EXIF removal on the real stored file. The CDN may serve a deleted file briefly.
+
+## Manual check (B = needs a real Blob store, A = needs an admin or owner)
+1. Open Achievements: groups, progress bars, filter, closest first. 2. Own profile: compact section and See all; from another account: earned only (and a private profile: limited card). 3. (A) Create "Practice Pro" (practice sessions, 5): a scout with 3 shows 3 / 5. 4. (A) Rename and hide a built-in: page and profile follow. 5. No-team account: empty-state note. 6. (B) Upload a large phone photo: preview, sidebar, People, no location data in the saved file. 7. (B) Pick a preset while a photo exists: confirmation, photo gone. 8. (B,A) Admin removes a member's photo: audit entry. 9. (B) Another account sees a private profile's photo as initials on the profile page. 10. (A) Owner turns uploads off: Upload disappears. Then compare `/frc` and `/ftc` side by side (Achievements page, Account photo section).
+
+## Unattributed changes (not staged): docs/BATCH5B_RESULTS.md, BATCH6_RESULTS.md, BATCH7_RESULTS.md, LIBRARY_MERGE_RESULTS.md, SESSION1_RESULTS.md.
+
+## Left for later
+A forms-submitted-by-type metric; season scope for practice-based metrics (sessions carry no season); photo hiding in lists (needs the profile visibility mirrored on the account documents, or a rules change); a durable `profiles` mirror (needs a rules change); browser (Playwright) specs for the new screens (not written or run); the effective settings come from the caller's own team, so the platform owner viewing another team's profile sees their own team's names.

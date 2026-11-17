@@ -1,0 +1,55 @@
+# Session 2: Analytics cluster (results)
+
+Branch `rebuild`. No rules, deploys or Firebase writes. No scoring, alliance total, flag or accuracy change. Parity: one page and one component set; no program-id comparison added; seasons come from `useForms().seasons`.
+
+## What was wrong
+- **Default 2027arli:** single-event pages (Match Scout, Pick List, Match Prediction) took the team's stored primary event with no season check, and `eventOptions` already hides other seasons, so no row matched and no check showed. Now `pickDefaultEvent` (`lib/analytics/event-defaults.ts`): first event of the selected game's season, earliest `dateStart`, list order as fallback; an event whose season has no game config is never the default.
+- **Empty tables once an event is picked (found while benchmarking):** `parseFilters` upper-cased picked codes, stored FRC codes are lower-case (`2026lake`), so a hand-picked event matched nothing. Codes now keep their spelling and every filter compares through `eventCodeIn`. Same fix serves the form pages. I found no other path to an empty form list.
+
+## Tasks
+1. Defaults, unconfigured season: option marked "No game config yet", selectable, shows a clear note (`GAME_NOT_CONFIGURED_NOTE`).
+2. Check mark: one `OptionCheck` in `components/ui/select.tsx` used by every select item and the event list; `aria-selected` on rows; arrow/Home/End keys in the event list.
+3. All Events (already a preset on multi-event pages) is now bounded to the selected game's season and drops archived events unless "Show archived events" is on (`archived=1` in the URL). Computed from the loaded dataset: no new reads or listeners. Match joins were already event-qualified (`eventCode|type|number`); pinned by a test. Pages: Team Averages, Rankings, Team Profile, Match Breakdown, Radar, Scout Status, form pages: All Events works. Match Scout table, Pick List, Match Prediction work on one event's schedule: no All Events there, one-line note in the list. Practice Scouting keeps its own All Events (Scout Accuracy filter: no season bound, no archive toggle): left as is.
+4. Tables: pinned header and cells are solid token surfaces (`.table-head-cell`, `.table-pinned-cell`, `.table-shell`), no backdrop blur; cells wrap/clip inside their column, free-text columns grow, number/id/badge columns do not. Session ID column (160px): middle truncation, tooltip, copy button (44px on touch). `font-mono` removed from Analytics (tabular numerals instead); none kept.
+5. Performance: see below.
+6. "Attempted climb": optional toggle in REBUILT Endgame > Climb, before the level select: `endgame.attemptedClimb` (boolean, 0 points) plus marker `endgame.attemptedClimbRecorded: true`, written only when answered. Off = no attempt; on with no level = failed attempt. Absent = unknown (also after CSV import of an empty cell, admin edit of an old entry). CSV column is generated from the config. Box plot uses only answered entries and prints "Based on N entries". Radar label padding fixed (`radarLabelPad`, `overflow-visible`). FTC (BIOBUZZ) is not affected.
+   - **Golden decision (you chose "gate the read"):** the golden fixtures DO carry `attemptedClimb` on their CS docs, so a plain round trip would change two inline snapshots. The marker keeps older docs, fixtures included, reading as unknown; the golden file is untouched and passes.
+7. Stacking: popover layer is the top of the z scale and both the event list and Radix selects use it and portal out; no fix needed, pinned by `stacking.test.ts`.
+
+## Performance (`lib/analytics/pipeline.bench.test.ts`, 5,000 entries, 40 events, median ms, Node)
+select one event, join in every filter change 0.57, pre-joined 0.20; All events 1.57 vs 0.13; join once per data change 1.24; team stats all events 16.9, one event 0.4. The pure pipeline is not the bottleneck. Ranked causes (from code): 1) backdrop blur on every header and pinned cell (about 100+ blur layers) plus a blurred scroller: removed; 2) one context value re-rendering every consumer on any change: not split (large refactor, left); 3) every filter change re-joined all entries: fixed (`joinEntries` once per data change); 4) team-wide listeners (entries, practice sessions, library matches, team doc, forms) re-run everything per snapshot: unchanged. Tables were already virtualized. No dependency added.
+**Not measurable here:** render time, layout, paint, GPU cost, real snapshot sizes.
+Profile:
+1) Chrome DevTools > Performance, record, then change the event select and scroll a long table;
+2) read Scripting, Rendering, Painting totals and long tasks;
+3) compare with `git stash` of this session on the same data.
+
+## Verify
+`npm run lint`: 0 errors, 1 warning (unused `timeZone`, `match-list-screen.tsx:291`, not from this session). `npm test`: 279 files, 3644 tests pass. `npm run build`: passes. Tests changed: `filters.test.ts` (codes keep case, `archived`), `rebuilt-form.test.ts` (optional key exempt from plugin-key parity). New: event defaults/All Events, event list render and keys, tables layout, stacking, climb attempt, radar label, benchmark.
+
+## Manual check
+1. Analytics with a 2027 event: default is the first 2026 event.
+2. Event select: check on the selected one, 2027 marked "No game config yet"; pick it for the note.
+3. Pick a configured event: tables and forms appear.
+4. All Events: numbers combine only that season; toggle archived.
+5. Scroll a long table: nothing shows through the pinned header.
+6. Narrow width (360px): long notes and Session IDs stay in their columns; copy works.
+7. One font in every column.
+8. Match Scout form: set "Attempted climb", save, open Robot Radar: Climb Reliability says "Based on 1 entry"; right label "Hub Volume" not clipped.
+9. Profile (3 steps above).
+10. /frc and /ftc side by side.
+
+## Rules, rollback, notes
+No rule changed. Two behavior changes you should know: archived events are now filtered by the "Show archived events" switch (on by default; was always shown); picked codes keep their case in the URL. Roll back: revert the session commits; the stored field is ignored by CS and by older code. New field: `endgame.attemptedClimb` (boolean) + `endgame.attemptedClimbRecorded` (true), form key `endgame_attemptedClimb`, `optionalAnswer: true`; listed in `docs/REMAINING.md`. Unattributed changes left uncommitted: `docs/BATCH5B_RESULTS.md`, `BATCH6_RESULTS.md`, `BATCH7_RESULTS.md`, `LIBRARY_MERGE_RESULTS.md`, `SESSION1_RESULTS.md` (list reformatting, not mine).
+
+## Follow-up after the manual check
+- Step 7: a free-text column (Auto Cycle Timer, Event, Alliance) had its own smaller, muted style; it now renders like every other cell (also the Session ID text).
+- Step 10 (second program): names fell through to the key because the shared name store answered "key" for a key with no season in it and that shadowed the season list's name; a team event stored as a bare key also hid the season list's record. Both fixed. The year now comes from the event's own season (`eventTitleInSeason`, program wording from `seasonKind`) when the key has none.
+- Coming game (revised): BIOCORE belongs to the FRC program, not FTC. `ProgramConfig.event.otherGames` lists it (`upcoming`) with CRESCENDO (a past game FRC does not scout). In Analytics, BIOCORE is a Game choice above REBUILT (default stays REBUILT) that holds the registered 2027 events; picking it shows "BIOCORE has not been announced yet, so there are no stats to show." where the stats would be, and never borrows another game's entries. The name carries no "not announced" text; 2027 events no longer appear under other games.
+- Practice events: the Analytics practice list took every library event. It now keeps only events of the selected game (library matches name their game); practice All Events uses the same season rule (`librarySeasons`, `offeredUnderGame`), plus the archived switch. The Practice Scouting match picker already filtered by season.
+- "Show archived events" is on by default (`archived=0` turns it off). Event Select sorts by game, not year: FRC BIOCORE, REBUILT, REEFSCAPE, CRESCENDO, CHARGED UP (each keyed to its events API season, so BIOCORE lists the 2027 events); FTC only its one current game (`lib/events/event-games.ts`).
+- Round 3: Active Events opens on the newest game (BIOCORE); Analytics still opens on the current game (REBUILT).
+- Bayou Regional 2025: `2025lake` was an alias of `2026lake` (config/event.ts). Event keys are stored through that alias, so selecting the 2025 event in Event Select wrote `2026lake` (already there) and changed nothing, and 2025 entries read as a 2026 event. The alias is removed (`2025lake` is the real 2025 Bayou Regional; `2026labr` stays as the one alias). Events also match alias-aware in Analytics and are listed once. If some entries were saved under `2026lake` in the database they still read as 2026.
+- All Events works for every game and always includes archived events (it is the game's form that scopes it, not a season check); Match Analytics now offers it too, with an Event column and no Import or Recalculate. Pick List and Match Prediction stay one-event pages.
+- Dates a day early (Mar 9 for Mar 10): `formatDateRange` parsed `2027-03-10` as UTC midnight and printed it in the viewer's zone, so anyone west of UTC saw every event a day early. It now prints the calendar date as written (checked under four zones). That, not a zone lookup, was the mismatch with FIRST. `lib/events/event-timezone.ts` (zone from the API, a Windows zone name, or the location) stays as a fallback for events with no usable zone; the API's own valid zone always wins. Match times show on the viewer's clock with the event's clock beside it when it differs.
+- Tests 3676 pass, lint 0 warnings, build passes.

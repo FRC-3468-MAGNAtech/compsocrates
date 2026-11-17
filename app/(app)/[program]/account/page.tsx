@@ -1,0 +1,215 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { KeyRound, Save, ShieldCheck } from "lucide-react";
+import { GlassPanel } from "@/components/ui/glass-panel";
+import { Avatar } from "@/components/ui/avatar";
+import { Input, Label } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { GoogleButton } from "@/components/auth/google-button";
+import { AppearancePanel } from "@/components/theme/appearance-panel";
+import { PrivacyProfileSection } from "@/components/profile/privacy-profile-section";
+import { useAuth } from "@/lib/auth";
+import { getRole } from "@/lib/roles";
+
+const PROVIDER_LABELS: Record<string, string> = {
+  password: "Email & password",
+  "google.com": "Google",
+};
+
+export default function AccountSettingsPage() {
+  const { user, profile, linkedProviders, updateUserProfile, changePassword, linkGoogle } = useAuth();
+  const [linkingGoogle, setLinkingGoogle] = useState(false);
+  const [linkError, setLinkError] = useState<string | null>(null);
+  const hasGoogle = linkedProviders.includes("google.com");
+  const hasPassword = linkedProviders.includes("password");
+
+  const handleLinkGoogle = async () => {
+    setLinkError(null);
+    setLinkingGoogle(true);
+    try {
+      await linkGoogle();
+    } catch (err) {
+      setLinkError(err instanceof Error ? err.message : "Couldn't link Google.");
+    } finally {
+      setLinkingGoogle(false);
+    }
+  };
+  const [displayName, setDisplayName] = useState(profile?.name ?? "");
+  const [savingName, setSavingName] = useState(false);
+  const [nameSaved, setNameSaved] = useState(false);
+
+  const [newPassword, setNewPassword] = useState("");
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordSaved, setPasswordSaved] = useState(false);
+  const [savingPassword, setSavingPassword] = useState(false);
+
+  // `profile` loads asynchronously after mount (it's null until the user doc
+  // snapshot resolves), so the lazy initializer above misses it — this syncs
+  // displayName once that first arrives. Guarded to run only once: profile
+  // can also change later for unrelated reasons (another admin edits this
+  // user's role), and re-syncing then would silently overwrite whatever the
+  // user is mid-typing in this field.
+  const didInitDisplayName = useRef(false);
+  useEffect(() => {
+    if (profile && !didInitDisplayName.current) {
+      didInitDisplayName.current = true;
+      setDisplayName(profile.name);
+    }
+  }, [profile]);
+
+  const handleSaveName = async () => {
+    setSavingName(true);
+    setNameSaved(false);
+    try {
+      await updateUserProfile({ name: displayName });
+      setNameSaved(true);
+    } finally {
+      setSavingName(false);
+    }
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordError(null);
+    setPasswordSaved(false);
+    setSavingPassword(true);
+    try {
+      await changePassword(newPassword);
+      setPasswordSaved(true);
+      setNewPassword("");
+    } catch (err) {
+      const code = (err as { code?: string })?.code;
+      setPasswordError(
+        code === "auth/requires-recent-login"
+          ? "For security, log out and back in before changing your password."
+          : err instanceof Error
+            ? err.message
+            : "Couldn't change your password."
+      );
+    } finally {
+      setSavingPassword(false);
+    }
+  };
+
+  const primaryRole = profile ? getRole(profile.primaryRole) : null;
+
+  return (
+    <div className="mx-auto flex max-w-3xl flex-col gap-6">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Account Settings</h1>
+        <p className="text-sm text-[var(--muted-foreground)]">Manage your profile, appearance, and password.</p>
+      </div>
+
+      <GlassPanel className="flex items-center gap-4">
+        <Avatar name={displayName || profile?.name || ""} size="lg" />
+        <div>
+          <div className="font-semibold">{displayName || profile?.name}</div>
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            {primaryRole && <Badge className={primaryRole.className}>{primaryRole.label}</Badge>}
+            {profile?.isOwner && (
+              <Badge variant="glass" className="gap-1">
+                <ShieldCheck className="h-3 w-3" /> Owner
+              </Badge>
+            )}
+            {profile?.isPlatformOwner && (
+              <Badge variant="glass" className="gap-1" title="Approves team applications and recovers accounts">
+                <ShieldCheck className="h-3 w-3" /> Platform owner
+              </Badge>
+            )}
+          </div>
+        </div>
+      </GlassPanel>
+
+      <GlassPanel className="flex flex-col gap-4">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Sign-in methods</h2>
+        <div className="flex flex-col gap-2">
+          {linkedProviders.map((id) => (
+            <div key={id} className="glass-card flex items-center justify-between gap-3 p-3 text-sm">
+              <span>{PROVIDER_LABELS[id] ?? id}</span>
+              <Badge variant="success" className="text-[10px]">
+                Linked
+              </Badge>
+            </div>
+          ))}
+        </div>
+        {!hasGoogle && (
+          <div className="flex flex-col gap-2 self-start">
+            <GoogleButton onClick={handleLinkGoogle} disabled={linkingGoogle} label="Link Google" />
+            {linkError && <p className="text-sm text-red-400">{linkError}</p>}
+          </div>
+        )}
+      </GlassPanel>
+
+      <GlassPanel className="flex flex-col gap-4">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Profile</h2>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <Label htmlFor="display-name">Display name</Label>
+            <Input
+              id="display-name"
+              value={displayName}
+              onChange={(e) => {
+                setDisplayName(e.target.value);
+                setNameSaved(false);
+              }}
+            />
+          </div>
+          <div>
+            <Label htmlFor="account-email">Email</Label>
+            <Input id="account-email" type="email" value={user?.email ?? ""} disabled />
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <Button className="gap-2 self-start" type="button" onClick={handleSaveName} disabled={savingName}>
+            <Save className="h-4 w-4" /> {savingName ? "Saving…" : "Save changes"}
+          </Button>
+          {nameSaved && <span className="text-sm text-emerald-400">Saved.</span>}
+        </div>
+      </GlassPanel>
+
+      {/* P25: the profile (picture, display name, pronouns, bio) and who can see it. */}
+      <section id="privacy-profile" className="flex scroll-mt-24 flex-col gap-3">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Privacy and profile</h2>
+        <PrivacyProfileSection />
+      </section>
+
+      {/* P18: themes live only here (the sidebar has just the light/dark quick toggle). Saved per user as soon as you pick. */}
+      <GlassPanel id="appearance" className="flex flex-col gap-4">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Appearance</h2>
+        <AppearancePanel />
+      </GlassPanel>
+
+      <GlassPanel className="flex flex-col gap-4">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
+          {hasPassword ? "Password" : "Set a password"}
+        </h2>
+        {!hasPassword && (
+          <p className="text-xs text-[var(--muted-foreground)]">
+            You signed up with Google. Set a password to also be able to log in without it.
+          </p>
+        )}
+        <form onSubmit={handleChangePassword} className="flex flex-col gap-4 sm:max-w-sm">
+          <div>
+            <Label htmlFor="new-password">{hasPassword ? "New password" : "Password"}</Label>
+            <Input
+              id="new-password"
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              minLength={6}
+              placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;"
+              required
+            />
+          </div>
+          {passwordError && <p className="text-sm text-red-400">{passwordError}</p>}
+          {passwordSaved && <p className="text-sm text-emerald-400">{hasPassword ? "Password changed." : "Password set."}</p>}
+          <Button className="gap-2 self-start" type="submit" disabled={savingPassword}>
+            <KeyRound className="h-4 w-4" /> {savingPassword ? "Saving…" : hasPassword ? "Change password" : "Set password"}
+          </Button>
+        </form>
+      </GlassPanel>
+    </div>
+  );
+}

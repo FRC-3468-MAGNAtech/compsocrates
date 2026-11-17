@@ -1,0 +1,203 @@
+// Production CompSocrates Firestore rules, as pasted by the project owner. REFERENCE ONLY: the rebuild's own
+// rules live in /firestore.rules and are derived from these (see docs/ROUTES.md D1, D2).
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner() {
+      return signedIn() && request.auth.uid == "veKYze7lFOOjZj8Vwnp9erZGTjs2";
+    }
+
+    function myUserDocPath() {
+      return /databases/$(database)/documents/users/$(request.auth.uid);
+    }
+
+    function myUserDocExists() {
+      return signedIn() && exists(myUserDocPath());
+    }
+
+    function myUserDoc() {
+      return get(myUserDocPath());
+    }
+
+    function myTeamId() {
+      return myUserDocExists() ? myUserDoc().data.teamId : "";
+    }
+
+    function isSelf(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function isTeamAdmin(teamId) {
+      return myUserDocExists()
+        && teamId is string
+        && teamId != ""
+        && myTeamId() == teamId
+        && (myUserDoc().data.isTeamAdmin == true || myUserDoc().data.role == "coach");
+    }
+
+    function isImportEventKey(value) {
+      return value is string
+        && (
+          value == "week0"
+          || value == "2026week0"
+          || value == "2025cmptx"
+          || value == "2023mslr"
+          || value == "2023lake"
+          || value == "2026tuis"
+          || value == "2026okok"
+          || value == "2026cosp"
+          || value == "2026arli"
+        );
+    }
+
+    function isMigrationImportWrite() {
+      return signedIn()
+        && request.auth.uid == "veKYze7lFOOjZj8Vwnp9erZGTjs2"
+        && (
+          (request.resource != null && isImportEventKey(request.resource.data.eventKey))
+          || (resource != null && isImportEventKey(resource.data.eventKey))
+        );
+    }
+
+    match /users/{uid} {
+      allow create: if isSelf(uid);
+
+      allow read: if isSelf(uid)
+        || isOwner()
+        || (
+          signedIn()
+          && myUserDocExists()
+          && resource.data.teamId is string
+          && resource.data.teamId != ""
+          && myTeamId() == resource.data.teamId
+        );
+
+      allow update: if isSelf(uid)
+        || isOwner()
+        || (
+          signedIn()
+          && (
+            isTeamAdmin(resource.data.teamId)
+            || (
+              request.resource.data.teamId is string
+              && request.resource.data.teamId != ""
+              && isTeamAdmin(request.resource.data.teamId)
+              && (
+                !("teamId" in resource.data)
+                || resource.data.teamId == null
+                || resource.data.teamId == ""
+              )
+            )
+          )
+        );
+
+      allow delete: if false;
+    }
+
+    match /teams/{teamId} {
+      allow read: if signedIn() && myUserDocExists() && myTeamId() == teamId;
+      allow create: if signedIn();
+      allow update, delete: if isOwner() || (signedIn() && isTeamAdmin(teamId));
+    }
+
+    match /teamJoinRequests/{requestId} {
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.teamId is string
+        && request.resource.data.teamId != "";
+
+      allow read: if signedIn() && (
+        resource.data.userId == request.auth.uid
+        || isTeamAdmin(resource.data.teamId)
+        || isOwner()
+      );
+
+      allow update, delete: if signedIn() && (
+        resource.data.userId == request.auth.uid
+        || isTeamAdmin(resource.data.teamId)
+        || isOwner()
+      );
+    }
+
+    match /practiceMatches/{docId} {
+      allow read: if signedIn();
+      allow create, update, delete: if isMigrationImportWrite();
+    }
+
+    match /scouting/{docId} {
+      allow read, create, update, delete: if signedIn();
+    }
+
+    match /leadScouting/{docId} {
+      allow read, create, update, delete: if signedIn();
+    }
+
+    match /practiceSessions/{docId} {
+      allow read, create, update, delete: if signedIn();
+    }
+
+    match /pitScouting/{docId} {
+      allow read, create, update, delete: if signedIn();
+    }
+
+    match /matchAssignments/{docId} {
+      allow read, create, update, delete: if signedIn();
+    }
+
+    match /pitAssignments/{docId} {
+      allow read, create, update, delete: if signedIn();
+    }
+
+    match /practiceAssignments/{docId} {
+      allow read, create, update, delete: if signedIn();
+    }
+
+    match /strategyScouting/{docId} {
+      allow read, create, update, delete: if signedIn();
+    }
+
+    match /matchStrategyPlans/{docId} {
+      allow read, create, update, delete: if signedIn();
+    }
+
+    match /driveScouting/{docId} {
+      allow read, create, update, delete: if signedIn();
+    }
+
+    match /helperReports/{docId} {
+      allow read, create, update, delete: if signedIn();
+    }
+
+    match /formPresets/{docId} {
+      allow create: if signedIn()
+        && myUserDocExists()
+        && request.resource.data.teamId == myTeamId();
+
+      allow read: if signedIn()
+        && myUserDocExists()
+        && resource.data.teamId == myTeamId();
+
+      allow update, delete: if signedIn()
+        && myUserDocExists()
+        && resource.data.teamId == myTeamId();
+    }
+
+    match /accuracyRescouts/{docId} {
+      allow read: if signedIn()
+        && myUserDocExists()
+        && resource.data.teamId == myTeamId();
+
+      allow create, update, delete: if signedIn()
+        && myUserDocExists()
+        && request.resource.data.teamId == myTeamId();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -31,7 +31,7 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # env files (can opt-in for committing if needed)
-.env.local
+.env*
 
 # vercel
 .vercel
@@ -40,5 +40,26 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# firebase
-firebase.ts
+# playwright (P18)
+/test-results/
+/playwright-report/
+
+# P24: Playwright screenshots of the practice workspace
+/e2e/screenshots/
+
+# keep the committed env template
+!.env.example
+
+# firebase emulator logs
+*-debug.log
+
+# Sensitive, keep local (see CLAUDE.md)
+docs/SECURITY-NOTES.md
+
+# Credentials and exported user data: never commit
+*-firebase-adminsdk-*.json
+*firebase-adminsdk*.json
+*service-account*.json
+*serviceAccount*.json
+ce-users.json
+**/ce-users.json

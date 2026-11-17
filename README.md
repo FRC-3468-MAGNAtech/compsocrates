@@ -1,36 +1,35 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CompSocrates
 
-## Getting Started
+Scouting for FIRST Robotics Competition (FRC) teams: match, pit, lead, strategy and drive-reflection forms, assignments, practice scouting, analytics, a Judge Book and event details. It reads and writes the existing CompSocrates Firestore data through an adapter, so it can share a project with the CompSocrates app. Three games are supported and submittable: REBUILT (2026), REEFSCAPE (2025) and CHARGED UP (2023).
 
-First, run the development server:
-
+## Run it
 ```bash
+npm install
+cp .env.example .env.local   # fill in Firebase, TBA and FIRST credentials
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
+`docs/ENVIRONMENT.md` explains every variable. Never point a development environment at the production Firebase project: use the emulators (below) or a copy.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Check it
+```bash
+npm run lint
+npm test                 # unit tests (Vitest)
+npm run build            # runs the theme contrast guard, then the production build
+npm run test:rules       # Firestore rules, API routes and adapter against the local emulators
+npm run test:e2e         # Playwright (needs `npx playwright install chromium webkit` once)
+```
+`test:rules` needs Java and the Firebase CLI. It uses the demo project id in `.firebaserc`, which cannot reach a real project.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Docs
+- `docs/CS-REFERENCE.md`: what the CompSocrates app does and how it stores data (collections, the three games and their scoring, routes, data-compatibility notes).
+- `docs/ROUTES.md`: the route map (old URL to new URL) and the decision log.
+- `docs/REMAINING.md`: what is not done, and known gaps.
+- `docs/ENVIRONMENT.md`: every environment variable and every outside service the code calls.
+- `docs/DEPLOYMENT.md`: Vercel and Firebase setup, rules deploy, optional services, emulator tests.
+- `docs/MOBILE.md`: the mobile audit and what still needs a real device.
+- `docs/SECURITY-NOTES.md`: open-access findings about the production Firestore rules and the old app. Sensitive and **local only**: do not publish it to a public repository.
+- `config/README.md`: where brand, event, game and API settings live.
+- `CLAUDE.md`: conventions and rules for working in this repo.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Stack
+Next.js 16 (App Router), React 19, TypeScript (strict), Tailwind 4 with generated theme tokens, Radix primitives, Firebase (Auth, Firestore, Admin SDK), Vitest and Playwright.

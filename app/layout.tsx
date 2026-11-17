@@ -1,24 +1,79 @@
+import type { Metadata, Viewport } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { ReactNode } from "react";
-import { AuthProvider } from "@/app/AuthContext";
-import ThemeInitializer from "@/app/components/ThemeInitializer";
-import CookieConsentBanner from "@/app/components/CookieConsentBanner";
+import { ThemeProvider } from "@/components/theme/theme-provider";
+import { themeCss, themeInitScript as themeInitScriptSource } from "@/lib/theme-css";
+import { AuthProvider } from "@/lib/auth";
+import { GlassLayerProvider } from "@/lib/glass-layer";
+import { BackgroundBlobs } from "@/components/layout/background-blobs";
+import { MotionProvider } from "@/components/layout/motion-provider";
+import { ScrollToTop } from "@/components/layout/scroll-to-top";
+import { BRAND } from "@/config/brand";
 
-export const metadata = {
-  title: "CompSocrates Scouting",
-  description: "Scouting website for robotics competitions",
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+export const metadata: Metadata = {
+  title: BRAND.title,
+  description: BRAND.metaDescription,
+  // The manifest itself is app/manifest.ts. The only logo artwork is the browser-tab icon (app/favicon.ico); the home-screen
+  // and social-image slots stay empty until an official logo is added to config/brand.ts (see the `logo` block there).
+  icons: {
+    icon: BRAND.logo.favicon ?? undefined,
+    apple: BRAND.logo.apple ? [{ url: BRAND.logo.apple, sizes: "180x180", type: "image/png" }] : undefined,
+  },
+  openGraph: BRAND.logo.og ? { title: BRAND.title, description: BRAND.metaDescription, images: [BRAND.logo.og] } : undefined,
+  // Lets an iPhone "Add to Home Screen" install run standalone (P17).
+  appleWebApp: { capable: true, title: BRAND.name, statusBarStyle: "black-translucent" },
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+// Mobile (P17): draw under the notch / home indicator (the bars use env(safe-area-inset-*)), and let the
+// layout resize when the on-screen keyboard opens instead of the keyboard covering the page.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  interactiveWidget: "resizes-content",
+  themeColor: BRAND.themeColor,
+};
+
+// Every theme's variables, generated from the registry (lib/themes.ts) and the pre-paint script that picks the saved
+// theme + mode (or the system's) before anything renders, so there is never a flash of the wrong theme (P18).
+const themeStyles = themeCss();
+const themeInitScript = themeInitScriptSource();
+
+export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en">
-      <body className="min-h-screen">
+    <html
+      lang="en"
+      data-theme="team"
+      data-mode="dark"
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
+    >
+      <head>
+        <style id="theme-tokens" dangerouslySetInnerHTML={{ __html: themeStyles }} />
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
+      <body className="min-h-full flex flex-col" suppressHydrationWarning>
+        {/* The theme, light/dark mode and glass level are all saved per user, so they sit inside the auth provider (FIX3, P18). */}
         <AuthProvider>
-          <ThemeInitializer />
-          <main className="w-full min-h-screen">
-            {children}
-          </main>
-          <CookieConsentBanner />
+          <ThemeProvider>
+            <GlassLayerProvider>
+              <MotionProvider>
+                <BackgroundBlobs />
+                <ScrollToTop />
+                {children}
+              </MotionProvider>
+            </GlassLayerProvider>
+          </ThemeProvider>
         </AuthProvider>
       </body>
     </html>

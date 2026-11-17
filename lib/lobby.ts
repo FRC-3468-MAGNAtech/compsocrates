@@ -1,0 +1,359 @@
+"use client";
+
+import {
+  deleteDoc,
+  doc,
+  onSnapshot,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+} from "firebase/firestore";
+import { useEffect, useState } from "react";
+import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
+import { useProgramConfig } from "@/lib/program/context";
+import { programData, useProgramData } from "@/lib/program/data";
+import { db, isFirebaseConfigured } from "@/lib/firebase/client";
+import { reportFirestoreError } from "@/lib/firestore-errors";
+import { lobbyPlayersQuery, lobbySessionsQuery, myLobbyPlayersQuery } from "@/lib/practice-queries";
+import { claimUniqueDocId, type PracticeSession, type SessionMode } from "@/lib/practice-sessions";
+import { LOBBY_CONFIG } from "@/lib/lobby/config";
+import type { PairAssignment } from "@/lib/lobby/pairing";
+
+export type LobbyStatus = "waiting" | "scouting" | "results" | "closed";
+
+export type LobbySettings = {
+  /** False = "host opts out of scouting" (host only runs the lobby). */
+  hostScouts: boolean;
+  /** True = the host's own screen shows the video large; everyone else sees only the form. */
+  hostIsDisplayer: boolean;
+};
+
+export type LobbyDoc = {
+  id: string;
+  teamId: string;
+  hostUid: string;
+  hostName: string;
+  seasonId: string;
+  mode: Exclude<SessionMode, null>;
+  status: LobbyStatus;
+  libraryMatchId: string | null;
+  settings: LobbySettings;
+  /**
+   * Set once, at Start — the full pairing for this round. Lives on the
+   * lobby doc (not on each player's own subdoc) because only the host may
+   * write it and a player can only write their own player doc, so it cannot be stored per-player.
+   */
+  pairing: PairAssignment[] | null;
+  /** ISO — when the countdown ends and video/forms go live for everyone (best-effort synchronized start). */
+  startsAt: string | null;
+  hostLastSeen: unknown;
+  createdAt: unknown;
+  resolvedAt: unknown | null;
+};
+
+export type LobbyPlayer = {
+  uid: string;
+  teamId: string;
+  name: string;
+  joinedAt: unknown;
+  lastSeen: unknown;
+  submitted: boolean;
+};
+
+const LOBBIES = "lobbies";
+const PLAYERS = "players";
+
+function toLobby(id: string, data: Record<string, unknown>): LobbyDoc {
+  return { id, ...data } as LobbyDoc;
+}
+
+/** Generates and reserves a lobby id (also the shareable join code) the same way practiceSessions reserves a Session ID. */
+export async function claimLobbyId(
+  teamId: string,
+  hostUid: string,
+  hostName: string,
+  seasonId: string,
+  mode: Exclude<SessionMode, null>,
+  program: ProgramId = DEFAULT_PROGRAM
+): Promise<string> {
+  const port = programData(program)?.lobby;
+  if (port) return port.claimLobby(teamId, hostUid, hostName, seasonId, mode);
+  return claimUniqueDocId("lobbies", "LB-", {
+    teamId,
+    hostUid,
+    hostName,
+    seasonId,
+    mode,
+    status: "waiting" satisfies LobbyStatus,
+    libraryMatchId: null,
+    settings: { hostScouts: true, hostIsDisplayer: false } satisfies LobbySettings,
+    pairing: null,
+    startsAt: null,
+    hostLastSeen: serverTimestamp(),
+    createdAt: serverTimestamp(),
+    resolvedAt: null,
+  });
+}
+
+/** Host-only writes (settings, match selection, pairing, status, heartbeat) — enforced by firestore.rules, not here. */
+export async function updateLobby(lobbyId: string, patch: Partial<LobbyDoc>, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
+  const port = programData(program)?.lobby;
+  if (port) return port.updateLobby(lobbyId, patch);
+  await updateDoc(doc(db, LOBBIES, lobbyId), patch);
+}
+
+export async function heartbeatHost(lobbyId: string, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
+  const port = programData(program)?.lobby;
+  if (port) return port.heartbeatHost(lobbyId);
+  await updateDoc(doc(db, LOBBIES, lobbyId), { hostLastSeen: serverTimestamp() });
+}
+
+export function useLobby(lobbyId: string | null) {
+  const [lobby, setLobby] = useState<LobbyDoc | null>(null);
+  const [loaded, setLoaded] = useState(() => !isFirebaseConfigured());
+  const port = useProgramData()?.lobby;
+
+  useEffect(() => {
+    if (!lobbyId || !isFirebaseConfigured()) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setLobby(null);
+      setLoaded(true);
+      return;
+    }
+    if (port) {
+      return port.subscribeLobby(
+        lobbyId,
+        (l) => {
+          setLobby(l);
+          setLoaded(true);
+        },
+        () => {
+          setLobby(null);
+          setLoaded(true);
+        }
+      );
+    }
+    const unsubscribe = onSnapshot(
+      doc(db, LOBBIES, lobbyId),
+      (snap) => {
+        setLobby(snap.exists() ? toLobby(snap.id, snap.data()) : null);
+        setLoaded(true);
+      },
+      (err) => {
+        console.error("lobbies/{id} subscription failed:", err);
+        setLobby(null);
+        setLoaded(true);
+      }
+    );
+    return unsubscribe;
+  }, [lobbyId, port]);
+
+  return { lobby, loaded };
+}
+
+/** Create-or-merge your own player doc — both "Join with code" and a reconnecting refresh call this the same way. */
+export async function joinLobby(lobbyId: string, teamId: string, uid: string, name: string, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
+  const port = programData(program)?.lobby;
+  if (port) return port.joinLobby(lobbyId, teamId, uid, name);
+  await setDoc(
+    doc(db, LOBBIES, lobbyId, PLAYERS, uid),
+    { uid, teamId, name, lastSeen: serverTimestamp(), submitted: false, joinedAt: serverTimestamp() },
+    { merge: true }
+  );
+}
+
+export async function heartbeatPlayer(lobbyId: string, uid: string, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
+  const port = programData(program)?.lobby;
+  if (port) return port.heartbeatPlayer(lobbyId, uid);
+  await updateDoc(doc(db, LOBBIES, lobbyId, PLAYERS, uid), { lastSeen: serverTimestamp() });
+}
+
+export async function markPlayerSubmitted(lobbyId: string, uid: string, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
+  const port = programData(program)?.lobby;
+  if (port) return port.markPlayerSubmitted(lobbyId, uid);
+  await updateDoc(doc(db, LOBBIES, lobbyId, PLAYERS, uid), { submitted: true });
+}
+
+/** Called by a player's own client on re-entering the waiting room (including after "Play Again") — clears a stale `submitted: true` from the previous round so the next round's "everyone submitted" check isn't satisfied before it even starts. */
+export async function resetPlayerSubmitted(lobbyId: string, uid: string, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
+  const port = programData(program)?.lobby;
+  if (port) return port.resetPlayerSubmitted(lobbyId, uid);
+  await updateDoc(doc(db, LOBBIES, lobbyId, PLAYERS, uid), { submitted: false });
+}
+
+export async function leaveLobbyPlayer(lobbyId: string, uid: string, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
+  const port = programData(program)?.lobby;
+  if (port) return port.leaveLobbyPlayer(lobbyId, uid);
+  await deleteDoc(doc(db, LOBBIES, lobbyId, PLAYERS, uid));
+}
+
+export function isPlayerActive(lastSeen: unknown): boolean {
+  if (!lastSeen || typeof lastSeen !== "object" || !("toMillis" in lastSeen)) return false;
+  return Date.now() - (lastSeen as { toMillis: () => number }).toMillis() < LOBBY_CONFIG.PLAYER_STALE_MS;
+}
+
+/** Client-derived only: a stale host never actually flips `status`. */
+export function isHostActive(hostLastSeen: unknown): boolean {
+  if (!hostLastSeen || typeof hostLastSeen !== "object" || !("toMillis" in hostLastSeen)) return false;
+  return Date.now() - (hostLastSeen as { toMillis: () => number }).toMillis() < LOBBY_CONFIG.HOST_STALE_MS;
+}
+
+/** A lobby's roster, filtered to the team (FIX3: rules aren't filters — the unfiltered subcollection read was denied). */
+export function useLobbyPlayers(lobbyId: string | null, teamId: string | null) {
+  const [players, setPlayers] = useState<LobbyPlayer[]>([]);
+  const [loaded, setLoaded] = useState(() => !isFirebaseConfigured());
+  const port = useProgramData()?.lobby;
+
+  useEffect(() => {
+    if (!lobbyId || !teamId || !isFirebaseConfigured()) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPlayers([]);
+      setLoaded(true);
+      return;
+    }
+    if (port) {
+      return port.subscribePlayers(
+        lobbyId,
+        teamId,
+        (list) => {
+          setPlayers(list);
+          setLoaded(true);
+        },
+        () => {
+          setPlayers([]);
+          setLoaded(true);
+        }
+      );
+    }
+    const unsubscribe = onSnapshot(
+      lobbyPlayersQuery(db, lobbyId, teamId),
+      (snap) => {
+        setPlayers(snap.docs.map((d) => d.data() as LobbyPlayer));
+        setLoaded(true);
+      },
+      (err) => {
+        reportFirestoreError("lobbies/{id}/players subscription failed", err, `lobbies/${lobbyId}/players where teamId == ${teamId}`);
+        setPlayers([]);
+        setLoaded(true);
+      }
+    );
+    return unsubscribe;
+  }, [lobbyId, teamId, port]);
+
+  return { players, loaded };
+}
+
+/**
+ * Realtime, every `practiceSessions` doc for this lobby (any player, any
+ * status) — the waiting room (to know a player's own session once Start
+ * fires, including on reconnect) and the Results screen (per-pair
+ * accuracy) both read off this one subscription.
+ */
+export function useLobbySessions(teamId: string | null, lobbyId: string | null) {
+  const [sessions, setSessions] = useState<PracticeSession[]>([]);
+  const [loaded, setLoaded] = useState(() => !isFirebaseConfigured());
+  const port = useProgramData()?.lobby;
+
+  useEffect(() => {
+    if (!teamId || !lobbyId || !isFirebaseConfigured()) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSessions([]);
+      setLoaded(true);
+      return;
+    }
+    if (port) {
+      return port.subscribeLobbySessions(
+        teamId,
+        lobbyId,
+        (list) => {
+          setSessions(list);
+          setLoaded(true);
+        },
+        () => {
+          setSessions([]);
+          setLoaded(true);
+        }
+      );
+    }
+    const unsubscribe = onSnapshot(
+      lobbySessionsQuery(db, teamId, lobbyId),
+      (snap) => {
+        setSessions(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as PracticeSession));
+        setLoaded(true);
+      },
+      (err) => {
+        reportFirestoreError("lobby practiceSessions subscription failed", err, `practiceSessions where teamId == ${teamId}, lobbyId == ${lobbyId}`);
+        setSessions([]);
+        setLoaded(true);
+      }
+    );
+    return unsubscribe;
+  }, [teamId, lobbyId, port]);
+
+  return { sessions, loaded };
+}
+
+/**
+ * Realtime, the most recent lobby this uid still has a player doc in (any
+ * status — the caller re-checks `useLobby()`'s own `status` to decide
+ * whether to actually show a "rejoin" banner, since a collection-group
+ * query here has no cheap way to pre-filter out closed lobbies). Needs the `players` collection-group index in
+ * firestore.indexes.json.
+ */
+export function useMyActiveLobbyId(uid: string | null, teamId: string | null = null) {
+  const [lobbyId, setLobbyId] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(() => !isFirebaseConfigured());
+  // A program without lobbies reads no player docs.
+  const lobbyConnected = useProgramConfig().connection.features.lobby;
+  const port = useProgramData()?.lobby;
+
+  useEffect(() => {
+    if (!uid || !lobbyConnected || !isFirebaseConfigured() || (port && !teamId)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setLobbyId(null);
+      setLoaded(true);
+      return;
+    }
+    if (port && teamId) {
+      // A program with its own store NEVER runs the collection-group query below (the rules cannot guard it): the port lists the team's lobbies and reads
+      // the caller's own player doc in each open one, by path.
+      return port.subscribeMyLobby(
+        teamId,
+        uid,
+        (id) => {
+          setLobbyId(id);
+          setLoaded(true);
+        },
+        () => {
+          setLobbyId(null);
+          setLoaded(true);
+        }
+      );
+    }
+    const unsubscribe = onSnapshot(
+      myLobbyPlayersQuery(db, uid),
+      (snap) => {
+        let best: { id: string; joinedAtMs: number } | null = null;
+        for (const d of snap.docs) {
+          const data = d.data() as LobbyPlayer;
+          const joinedAtMs =
+            data.joinedAt && typeof data.joinedAt === "object" && "toMillis" in data.joinedAt
+              ? (data.joinedAt as { toMillis: () => number }).toMillis()
+              : 0;
+          const id = d.ref.parent.parent!.id;
+          if (!best || joinedAtMs > best.joinedAtMs) best = { id, joinedAtMs };
+        }
+        setLobbyId(best?.id ?? null);
+        setLoaded(true);
+      },
+      (err) => {
+        reportFirestoreError("my-active-lobby collectionGroup subscription failed", err, `collectionGroup players where uid == ${uid}`);
+        setLobbyId(null);
+        setLoaded(true);
+      }
+    );
+    return unsubscribe;
+  }, [uid, teamId, lobbyConnected, port]);
+
+  return { lobbyId, loaded };
+}

@@ -1,0 +1,292 @@
+"use client";
+
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { CalendarRange } from "lucide-react";
+import { GlassPanel } from "@/components/ui/glass-panel";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { ScoutForm, type ScoutFormValues } from "@/components/scout/scout-form";
+import { GameSelect } from "@/components/scout/game-select";
+import { useProgram, useProgramConfig } from "@/lib/program/context";
+import { FormNotesLayout } from "@/components/forms/sticky-notes-panel";
+import { notesForSave } from "@/lib/sticky-notes";
+import type { StickyNote } from "@/lib/forms/types";
+import type { AssignedMatch } from "@/components/scout/match-picker-dialog";
+import { useSubmissionLockout } from "@/components/forms/submission-lockout";
+import { RequestSubIn } from "@/components/sub-ins/request-sub-in";
+import { pitValuesFromEntries } from "@/components/scout/pit-sync";
+import { assignedTeamsFor, myTeamFor, scoutedTeamsFor, teamMarks, type TeamMark } from "@/components/scout/team-status";
+import { useFormEntries } from "@/lib/form-entries";
+import { claimedAssignments, marksForMatch, subInMatchKey } from "@/lib/sub-ins/model";
+import { useSubInRequests } from "@/lib/sub-ins/store";
+import type { ScheduleSlot } from "@/lib/scheduler/types";
+import { useActiveEvents } from "@/lib/active-event";
+import { orderPrimaryFirst, pickDefaultActiveEvent } from "@/lib/active-events";
+import { useAuth } from "@/lib/auth";
+import { useAssignments } from "@/lib/assignments";
+import { useTeamScoutEntries, saveEntry, entryPayloadFor } from "@/lib/scout-entries";
+import type { ScoreResult } from "@/lib/forms/scoring";
+import { useActiveForm, useForms } from "@/lib/forms/forms-context";
+import { eventsForSeason } from "@/lib/forms/form-season";
+import { useFormSeason } from "@/lib/forms/use-form-season";
+import { useFormDisplayNames } from "@/lib/forms/use-form-display-name";
+import { useDocumentTitle } from "@/lib/use-document-title";
+import { fieldWithRole } from "@/lib/forms/meta";
+import { recomputeAfterSave } from "@/lib/analytics/recompute";
+import { useProgramData } from "@/lib/program/data";
+import { nextAssignment as findNextAssignment } from "@/lib/dashboard/insights";
+import type { EventMatch } from "@/lib/events/types";
+
+/** A synthetic EventMatch for an assigned slot — same convention as match-picker-dialog's manual-entry mode: no roster/score data exists for it yet, and downstream code already treats an unmatched (eventCode, type, number) as "no official data" gracefully. */
+function syntheticAssignedMatch(matchType: EventMatch["type"], matchNumber: number): AssignedMatch {
+  return {
+    type: matchType,
+    match: {
+      id: `${matchType}-assignment-${matchNumber}`,
+      matchNumber,
+      type: matchType,
+      description: null,
+      series: null,
+      played: false,
+      redTeams: [],
+      blueTeams: [],
+      redScore: null,
+      blueScore: null,
+      redPenaltyPoints: null,
+      bluePenaltyPoints: null,
+      startTime: null,
+    },
+  };
+}
+
+// `useSearchParams` needs a Suspense boundary for the static build.
+export default function MatchScoutFormPage() {
+  return (
+    <Suspense fallback={<div className="glass-card h-64 animate-pulse" />}>
+      <MatchScoutFormContent />
+    </Suspense>
+  );
+}
+
+function MatchScoutFormContent() {
+  const { events: allActiveEvents, primaryCode } = useActiveEvents();
+  const { user, profile } = useAuth();
+  // The Dashboard's "Scout now" opens this page as /scout?event=CODE&load=next — pre-picking that
+  // event and loading the scout's next assignment (P13).
+  const searchParams = useSearchParams();
+  // Fixed per visit; only used to prefer an In Progress event as the default.
+  const [now] = useState(() => Date.now());
+  const [pickedEventCode, setPickedEventCode] = useState<string | null>(() => searchParams.get("event"));
+  const [autoLoadNext, setAutoLoadNext] = useState(() => searchParams.get("load") === "next");
+  const name = profile?.name ?? "";
+  const teamId = profile?.teamId ?? null;
+  const program = useProgram();
+  const { features } = useProgramConfig().connection;
+  // A program with its own entry store lets only an admin write the derived accuracy fields; for everyone else the recompute after a save is skipped.
+  const ownEntryStore = useProgramData() != null;
+  const forms = useForms();
+  // Session E: the scout's game is kept in the URL (`?game=`): the active event's season by default, else the program's current one. P21: they fill in that game's
+  // active form (the built-in unless an admin chose another or edited it), and the event picker offers that season's events.
+  const { seasonId: gameId, setSeasonId: setGameId } = useFormSeason(pickDefaultActiveEvent({ events: allActiveEvents, primaryCode }, now));
+  const events = eventsForSeason(allActiveEvents, forms.seasons, gameId, forms.defaultSeasonId);
+  const eventChoices = orderPrimaryFirst({ events, primaryCode });
+  // The scout's own pick wins while that event is still active; otherwise an
+  // In Progress active event, otherwise the primary. With one active event all
+  // of this collapses to that event, exactly as before.
+  const activeEvent = events.find((e) => e.code === pickedEventCode) ?? pickDefaultActiveEvent({ events, primaryCode }, now);
+  const { form, loaded: formsLoaded } = useActiveForm(gameId);
+  const names = useFormDisplayNames(gameId);
+  const pageTitle = names.forType("match-scout");
+  useDocumentTitle(pageTitle);
+
+  const { assignments } = useAssignments(teamId, activeEvent?.code ?? null);
+  const { entries } = useTeamScoutEntries(teamId);
+  const eventCode = activeEvent?.code ?? null;
+  const lockout = useSubmissionLockout(teamId, gameId);
+  const { requests: subIns } = useSubInRequests(teamId);
+  // sub-in windows are hours long; a minute's resolution is plenty for the picker marks
+  const [tick, setTick] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setTick(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // The matches I am responsible for: my published assignments plus the sub-ins I took (CS `effectiveAssignedTeams`).
+  const uid = user?.uid ?? null;
+  const publishedSlots = assignments?.current?.slots;
+  // (no manual useMemo/useCallback below: React Compiler memoizes these, and rejects hand-written deps that it cannot prove stable)
+  const claims = eventCode && uid ? claimedAssignments(subIns, eventCode, uid) : [];
+  const published = publishedSlots ?? [];
+  const allSlots: ScheduleSlot[] = [
+    ...published,
+    ...claims
+      .filter((c) => !published.some((s) => s.scoutUid === uid && s.matchType === c.matchType && s.matchNumber === c.matchNumber && s.teamNumber === c.teamNumber))
+      .map((c): ScheduleSlot => ({ matchType: c.matchType, matchNumber: c.matchNumber, slot: "red1", teamNumber: c.teamNumber, scoutUid: uid })),
+  ];
+
+  // pit-sync (CS loadPitDefaults): this event's pit entries of the team; the form looks one team up
+  const pitEntries = useFormEntries(teamId, { formType: "pit-scout", eventCode: eventCode ?? undefined });
+  const pit = useMemo(() => ({ loaded: pitEntries.loaded, forTeam: (team: number) => pitValuesFromEntries(pitEntries.entries.filter((e) => e.teamNumber === team)) }), [pitEntries]);
+
+  const marksFor = (match: AssignedMatch | null): ReadonlyMap<number, TeamMark> => {
+    if (!match || !eventCode) return new Map();
+    const { type, match: m } = match;
+    return teamMarks({
+      scouted: scoutedTeamsFor(entries, eventCode, type, m.matchNumber),
+      sub: marksForMatch(subIns, eventCode, subInMatchKey(type, m.matchNumber), tick),
+      assigned: assignedTeamsFor(allSlots, type, m.matchNumber),
+    });
+  };
+  /** CS match picker marks: scouted (an entry exists for the match) beats assigned (a robot of mine is in it). */
+  const matchMarkFor = (type: AssignedMatch["type"], matchNumber: number): "scouted" | "assigned" | null => {
+    if (!eventCode) return null;
+    if (entries.some((e) => e.source === "event" && e.eventCode === eventCode && e.matchType === type && e.matchNumber === matchNumber)) return "scouted";
+    return allSlots.some((s) => s.scoutUid === uid && s.matchType === type && s.matchNumber === matchNumber) ? "assigned" : null;
+  };
+  const myTeam = (match: AssignedMatch) => (uid ? myTeamFor(allSlots, claims, uid, match.type, match.match.matchNumber) : null);
+  // slots still to hand over: mine, not scouted yet
+  const handOverable = uid && eventCode ? allSlots.filter((s) => s.scoutUid === uid && !scoutedTeamsFor(entries.filter((e) => e.uid === uid), eventCode, s.matchType, s.matchNumber).has(s.teamNumber)) : [];
+  // P28: the sticky notes written while scouting this robot (saved with the entry; the old Comments column folds them in)
+  // Kept per game, so switching games never deletes them: they are still there when you switch back.
+  const [notesByGame, setNotesByGame] = useState<Record<string, StickyNote[]>>({});
+  const notes = notesByGame[gameId] ?? [];
+  const setNotesOf = (game: string, next: StickyNote[] | ((current: StickyNote[]) => StickyNote[])) =>
+    setNotesByGame((all) => ({ ...all, [game]: typeof next === "function" ? next(all[game] ?? []) : next }));
+  const setNotes = (next: StickyNote[]) => setNotesOf(gameId, next);
+  // A form without sticky notes keeps its own notes field; it moves into the notes box beside the form (large screens) or the notes sheet (phones). Also per game.
+  const [commentsByGame, setCommentsByGame] = useState<Record<string, string>>({});
+  const comments = commentsByGame[gameId] ?? "";
+  const setComments = (value: string) => setCommentsByGame((all) => ({ ...all, [gameId]: value }));
+  const notesInSideBox = !form.stickyNotes?.enabled && !!fieldWithRole(form, "comments");
+  const [loadedAssignment, setLoadedAssignment] = useState<{ match: AssignedMatch; teamNumber: number } | null>(null);
+
+  const nextAssignment = user && activeEvent && allSlots.length > 0 ? findNextAssignment(allSlots, user.uid, activeEvent.code, entries) : null;
+
+  // An explicit load wins; otherwise a `?load=next` link loads the next assignment as soon as it's known.
+  const effectiveLoaded =
+    loadedAssignment ?? (autoLoadNext && nextAssignment ? { match: syntheticAssignedMatch(nextAssignment.matchType, nextAssignment.matchNumber), teamNumber: nextAssignment.teamNumber } : null);
+
+  const handleLoadAssignment = () => {
+    if (!nextAssignment) return;
+    setLoadedAssignment({
+      match: syntheticAssignedMatch(nextAssignment.matchType, nextAssignment.matchNumber),
+      teamNumber: nextAssignment.teamNumber,
+    });
+  };
+
+  // Another game is another form, with its own answers, draft and notes: nothing is deleted when you switch, and each game's come back when you return to it.
+  // (An assignment loaded for the other game's event does not apply here.)
+  const changeGame = (next: string) => {
+    if (next === gameId) return;
+    setLoadedAssignment(null);
+    setAutoLoadNext(false);
+    setGameId(next);
+  };
+
+  const handleSubmit = async (values: ScoutFormValues, score: ScoreResult) => {
+    if (!profile || !user || !activeEvent || !values.match || values.teamNumber === null) return;
+    // CS assertSubmissionsOpen: a locked team takes no new entry (the form already disables Submit; this is the backstop).
+    if (lockout.locked) throw new Error(lockout.reason);
+
+    // Clear the notes BEFORE awaiting the save: offline, the write waits in Firestore's queue and the promise stays pending, and notes left on screen
+    // would be copied into the next robot's entry. A save that fails puts them back (ahead of anything typed since).
+    const submittedNotes = notes;
+    const submittedGame = gameId;
+    setNotesOf(submittedGame, []);
+    try {
+      await saveEntry(profile.teamId, user.uid, {
+        scoutName: name,
+        eventCode: activeEvent.code,
+        matchType: values.match.type,
+        matchNumber: values.match.match.matchNumber,
+        teamNumber: values.teamNumber,
+        ...entryPayloadFor(form, values.values, score, { stickyNotes: notesForSave(submittedNotes) }),
+        // the entry belongs to the game the page is open on; the shared write path refuses it when the team closed that season
+        gate: { seasonId: gameId },
+      }, program);
+    } catch (error) {
+      setNotesOf(submittedGame, (current) => [...submittedNotes, ...current]);
+      throw error;
+    }
+    // Recomputes the whole event's accuracy/flags (not just this entry) so a
+    // different robot's entry can flip from "Needs Robots" to resolved once
+    // its alliance partner is scouted too. Fire-and-forget: it never throws
+    // (every call inside is already error-handled) and shouldn't block reset.
+    // (Only in a program whose accuracy is connected: it reads official results and rewrites entries in the default program's collections.)
+    // A scout's save never shows an error because of it: a skipped or failed recompute is silent (the next admin recompute covers it).
+    if (features.accuracy) recomputeAfterSave({ teamId: profile.teamId, eventCode: activeEvent.code, season: activeEvent.season, resolveForm: forms.currentResolver, program, ownEntryStore, isAdmin: profile.isAdmin });
+    // The just-saved entry's realtime update will advance `nextAssignment` —
+    // clear the loaded override so the form reflects whatever that becomes.
+    setLoadedAssignment(null);
+    setAutoLoadNext(false);
+  };
+
+  return (
+    <div className="flex flex-col gap-4 pb-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">{pageTitle}</h1>
+          <p className="text-sm text-[var(--muted-foreground)]">Log what you see, live, match by match.</p>
+        </div>
+        <div className="flex flex-wrap items-end gap-3">
+          <GameSelect value={gameId} onChange={changeGame} />
+        </div>
+      </div>
+
+      {nextAssignment && !effectiveLoaded && (
+        <GlassPanel className="flex flex-wrap items-center gap-3">
+          <Badge variant="glass" className="gap-1.5">
+            <CalendarRange className="h-3.5 w-3.5" /> Next assignment
+          </Badge>
+          <span className="text-sm">
+            {nextAssignment.matchType} {nextAssignment.matchNumber} &middot; Team {nextAssignment.teamNumber}
+          </span>
+          <Button size="sm" variant="glass" className="ml-auto" onClick={handleLoadAssignment}>
+            Load this assignment
+          </Button>
+        </GlassPanel>
+      )}
+
+      {!formsLoaded ? (
+        <div className="glass-card h-64 animate-pulse" />
+      ) : (
+      <FormNotesLayout stickyEnabled={!!form.stickyNotes?.enabled} defaultOpen={form.stickyNotes?.defaultOpen} notes={notes} onNotesChange={setNotes} comments={notesInSideBox ? { value: comments, onChange: setComments } : undefined}>
+      <ScoutForm
+        key={`${form.id}@${form.version}`}
+        schema={form}
+        {...(notesInSideBox ? { commentsMode: "popout" as const, comments, onCommentsChange: setComments } : {})}
+        mode="event"
+        activeEvent={activeEvent}
+        eventChoices={eventChoices}
+        onEventChange={(event) => {
+          setPickedEventCode(event.code);
+          // An assignment loaded for the previous event doesn't apply to this one.
+          setLoadedAssignment(null);
+          setAutoLoadNext(false);
+        }}
+        prefill={{ scoutName: name, ...effectiveLoaded }}
+        draftUserId={user?.uid}
+        lockout={lockout}
+        teamMarks={marksFor}
+        myTeamFor={myTeam}
+        matchPickerMarks={matchMarkFor}
+        pit={pit}
+        subInControl={
+          features.subIns ? (
+            <RequestSubIn
+              teamId={teamId}
+              eventKey={eventCode}
+              actor={uid ? { uid, name: name || "Scout" } : null}
+              assigned={handOverable}
+              requests={subIns}
+            />
+          ) : undefined
+        }
+        onSubmit={handleSubmit}
+      />
+      </FormNotesLayout>
+      )}
+    </div>
+  );
+}

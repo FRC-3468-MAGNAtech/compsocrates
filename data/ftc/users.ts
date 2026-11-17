@@ -1,0 +1,130 @@
+/**
+ * Adapter between an FTC `programs/ftc/users/{uid}` document and the app's profile (`UserDoc`, lib/auth.tsx) and roster row
+ * (`TeamMember`, lib/team-members.ts). No React, no Firebase.
+ *
+ * The stored doc already uses the app's own field names (`name`, `primaryRole`, `secondaryRoles`, `isAdmin`, `isOwner`), so this is a
+ * tolerant read, not a translation: a missing or unknown value gets a neutral one and nothing throws. Admin and owner status are
+ * exactly the stored flags; there is no allowlist (platform ownership is a mirror the server writes, and the rules read the token).
+ * The members' assigned FTC team ids (`fieldTeamIds`) have no slot on `TeamMember`, so `readMemberFieldTeamIds` returns them.
+ */
+import type { UserDoc } from "@/lib/auth";
+import { plainAvatar, withUpload } from "@/lib/avatar/model";
+import type { AvatarChoice } from "@/lib/profile/config";
+import { parseAvatar } from "@/lib/profile/model";
+import { isRoleId, normalizeLegacyRole, sortRolesCanonical, type RoleId } from "@/lib/roles";
+import type { TeamMember } from "@/lib/team-members";
+import { defaultThemeId, isThemeId } from "@/lib/themes";
+import { finiteNumber, nonEmptyString, str, stringList, toEpochMs } from "@/data/ftc/util";
+
+/** `programs/ftc/users/{uid}` as stored. Everything optional: old docs lack most of it. */
+export type FtcUserDoc = {
+  name?: unknown;
+  email?: unknown;
+  teamId?: unknown;
+  primaryRole?: unknown;
+  secondaryRoles?: unknown;
+  isAdmin?: unknown;
+  isOwner?: unknown;
+  isPlatformOwner?: unknown;
+  themeId?: unknown;
+  colorMode?: unknown;
+  gradientIntensity?: unknown;
+  lastSeenChangelogAt?: unknown;
+  glassLayerLevel?: unknown;
+  workspaceFormWidth?: unknown;
+  workspacePhoneSplit?: unknown;
+  avatar?: unknown;
+  fieldTeamIds?: unknown;
+  createdAt?: unknown;
+  [key: string]: unknown;
+};
+
+/** The stored primary role (anything unknown is a Match Scout) and the secondaries: known roles only, no duplicates, never the primary, in canonical order. */
+export function rolesFromFtcUser(doc: Pick<FtcUserDoc, "primaryRole" | "secondaryRoles">): { primaryRole: RoleId; secondaryRoles: RoleId[] } {
+  const primaryRole = normalizeLegacyRole(str(doc.primaryRole));
+  const secondary = new Set(stringList(doc.secondaryRoles).filter((role): role is RoleId => isRoleId(role) && role !== primaryRole));
+  return { primaryRole, secondaryRoles: sortRolesCanonical(secondary) };
+}
+
+/** The member's assigned FTC team ids, or undefined when the doc has none (an absent list is how the rest of the app reads "all teams"). */
+export function readMemberFieldTeamIds(doc: Pick<FtcUserDoc, "fieldTeamIds">): string[] | undefined {
+  return Array.isArray(doc.fieldTeamIds) ? stringList(doc.fieldTeamIds) : undefined;
+}
+
+function colorModeOf(value: unknown): "light" | "dark" | "system" | undefined {
+  return value === "light" || value === "dark" || value === "system" ? value : undefined;
+}
+
+function gradientOf(value: unknown): "subtle" | "normal" | "vivid" | undefined {
+  return value === "subtle" || value === "normal" || value === "vivid" ? value : undefined;
+}
+
+/** Reads `programs/ftc/users/{uid}` as the app's profile. Never throws on missing fields. */
+export function ftcUserToProfile(uid: string, doc: FtcUserDoc): UserDoc {
+  void uid; // the document id is the account id; the profile type carries no uid (it comes from auth)
+  const { primaryRole, secondaryRoles } = rolesFromFtcUser(doc);
+  const email = str(doc.email);
+  const colorMode = colorModeOf(doc.colorMode);
+  const gradientIntensity = gradientOf(doc.gradientIntensity);
+  const glassLayerLevel = finiteNumber(doc.glassLayerLevel);
+  const workspaceFormWidth = finiteNumber(doc.workspaceFormWidth);
+  const workspacePhoneSplit = finiteNumber(doc.workspacePhoneSplit);
+  const assignedTeamIds = readMemberFieldTeamIds(doc);
+
+  return {
+    name: nonEmptyString(doc.name) ?? email.split("@")[0] ?? "",
+    email,
+    teamId: str(doc.teamId).trim(),
+    primaryRole,
+    secondaryRoles,
+    isAdmin: doc.isAdmin === true,
+    isOwner: doc.isOwner === true,
+    isPlatformOwner: doc.isPlatformOwner === true,
+    ...(assignedTeamIds && assignedTeamIds.length > 0 ? { assignedTeamIds } : {}),
+    themeId: isThemeId(doc.themeId) ? doc.themeId : defaultThemeId,
+    ...(colorMode ? { colorMode } : {}),
+    ...(gradientIntensity ? { gradientIntensity } : {}),
+    ...(doc.lastSeenChangelogAt !== undefined ? { lastSeenChangelogAt: doc.lastSeenChangelogAt } : {}),
+    ...(glassLayerLevel !== null ? { glassLayerLevel } : {}),
+    ...(workspaceFormWidth !== null ? { workspaceFormWidth } : {}),
+    ...(workspacePhoneSplit !== null ? { workspacePhoneSplit } : {}),
+    ...avatarField(uid, doc),
+  };
+}
+
+/** The stored avatar choice with the account's uploaded picture attached when it has one (Session 8; the stored `avatar` field itself is unchanged). */
+function avatarField(uid: string, doc: FtcUserDoc): { avatar?: AvatarChoice } {
+  const avatar = withUpload(doc.avatar ? parseAvatar(doc.avatar) : undefined, uid, doc);
+  return avatar ? { avatar } : {};
+}
+
+/** Reads a roster row (Team Management / People) from a user doc. */
+export function ftcUserToMember(uid: string, doc: FtcUserDoc): TeamMember {
+  const profile = ftcUserToProfile(uid, doc);
+  const joinedAtMs = toEpochMs(doc.createdAt);
+  const assignedTeamIds = readMemberFieldTeamIds(doc);
+  return {
+    uid,
+    name: profile.name,
+    email: profile.email,
+    primaryRole: profile.primaryRole,
+    secondaryRoles: profile.secondaryRoles,
+    isAdmin: profile.isAdmin,
+    isOwner: profile.isOwner,
+    ...avatarField(uid, doc),
+    ...(joinedAtMs ? { joinedAtMs } : {}),
+    ...(assignedTeamIds && assignedTeamIds.length > 0 ? { assignedTeamIds } : {}),
+  };
+}
+
+/** The fields of an account's own profile the app lets a person change (their name, the look of the app, their avatar choice). */
+export type FtcProfilePatch = Partial<Pick<UserDoc, "name" | "themeId" | "colorMode" | "gradientIntensity" | "avatar">>;
+
+const PROFILE_FIELDS = ["name", "themeId", "colorMode", "gradientIntensity", "avatar"] as const satisfies readonly (keyof FtcProfilePatch)[];
+
+/** What to write for a change to one's own profile: only those fields, none of them `undefined`. Roles, team, admin and owner flags are never part of it. */
+export function ftcProfilePatch(patch: FtcProfilePatch): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const key of PROFILE_FIELDS) if (patch[key] !== undefined) out[key] = key === "avatar" ? plainAvatar(patch.avatar as AvatarChoice) : patch[key];
+  return out;
+}

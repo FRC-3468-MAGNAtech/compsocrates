@@ -1,0 +1,179 @@
+"use client";
+
+import { Fragment } from "react";
+import { GlassPanel } from "@/components/ui/glass-panel";
+import { Label } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ROLES, type RoleId } from "@/lib/roles";
+import type { RankingBasisId, RealEventCalculationScope, ScoutCategory } from "@/lib/scout-stats/types";
+import { cn } from "@/lib/utils";
+import { withEventYear } from "@/lib/events/names";
+
+const RANKING_BASIS_LABELS: Record<RankingBasisId, string> = {
+  preserve: "Preserve original ranks",
+  role: "Role Leaderboard",
+  event: "Event Leaderboard",
+  both: "Role + Event Leaderboard",
+};
+
+function ChipToggle({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+        active
+          ? "border-transparent text-[var(--color-primary-foreground)]"
+          : "border-dashed border-[var(--glass-border)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+      )}
+      style={active ? { background: "var(--theme-gradient)" } : undefined}
+    >
+      {children}
+    </button>
+  );
+}
+
+function toggle<T>(list: T[], value: T): T[] {
+  return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
+}
+
+export function FiltersBar({
+  category,
+  roleFilter,
+  onRoleFilterChange,
+  eventOptions,
+  eventFilter,
+  onEventFilterChange,
+  rankingBasis,
+  onRankingBasisChange,
+  realEventScope,
+  onRealEventScopeChange,
+  personal,
+}: {
+  /**
+   * "Only what applies to me" (My Scouting): the roles to offer, and whether the role and event filters show at all (a filter with fewer than two
+   * real options is hidden). The ranking basis select hides while it has only "Preserve original ranks". Absent, every role shows (Scout Accuracy).
+   */
+  personal?: { roles: readonly { id: RoleId; label: string }[]; showRole: boolean; showEvent: boolean };
+  category: ScoutCategory;
+  roleFilter: RoleId[];
+  onRoleFilterChange: (next: RoleId[]) => void;
+  eventOptions: { eventCode: string; eventName: string }[];
+  eventFilter: string[];
+  onEventFilterChange: (next: string[]) => void;
+  rankingBasis: RankingBasisId;
+  onRankingBasisChange: (next: RankingBasisId) => void;
+  realEventScope: RealEventCalculationScope;
+  onRealEventScopeChange: (next: RealEventCalculationScope) => void;
+}) {
+  const roleActive = roleFilter.length > 0;
+  const eventActive = eventFilter.length > 0;
+  const availableBases: RankingBasisId[] = ["preserve"];
+  if (roleActive) availableBases.push("role");
+  if (eventActive) availableBases.push("event");
+  if (roleActive && eventActive) availableBases.push("both");
+
+  const calcValue = `${realEventScope.eventCode ?? "all"}:${realEventScope.variant}`;
+
+  return (
+    <GlassPanel className="flex flex-col gap-4">
+      {(!personal || personal.showRole) && (
+        <div className="flex flex-col gap-2">
+          <Label>Role filter</Label>
+          <div className="flex flex-wrap gap-2">
+            {(personal ? personal.roles : ROLES).map((r) => (
+              <ChipToggle key={r.id} active={roleFilter.includes(r.id)} onClick={() => onRoleFilterChange(toggle(roleFilter, r.id))}>
+                {r.label}
+              </ChipToggle>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {(!personal || personal.showEvent) && (
+      <div className="flex flex-col gap-2">
+        <Label>Event filter</Label>
+        {eventOptions.length === 0 ? (
+          <p className="text-xs text-[var(--muted-foreground)]">
+            No real events with scouted data yet.
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {eventOptions.map((e) => (
+              <ChipToggle
+                key={e.eventCode}
+                active={eventFilter.includes(e.eventCode)}
+                onClick={() => onEventFilterChange(toggle(eventFilter, e.eventCode))}
+              >
+                {withEventYear(e.eventName, e.eventCode)}
+              </ChipToggle>
+            ))}
+          </div>
+        )}
+      </div>
+      )}
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {(!personal || availableBases.length > 1) && (
+        <div>
+          <Label htmlFor="ranking-basis">Ranking basis</Label>
+          <Select value={rankingBasis} onValueChange={(v) => onRankingBasisChange(v as RankingBasisId)}>
+            <SelectTrigger id="ranking-basis">
+              <SelectValue>{RANKING_BASIS_LABELS[rankingBasis]}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {availableBases.map((basis) => (
+                <SelectItem key={basis} value={basis}>
+                  {RANKING_BASIS_LABELS[basis]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        )}
+
+        {category === "real-event" && (
+          <div>
+            <Label htmlFor="real-event-calc">Calculation</Label>
+            <Select
+              value={calcValue}
+              onValueChange={(v) => {
+                const [eventPart, variant] = v.split(":") as [string, "plain" | "trial" | "competitive"];
+                onRealEventScopeChange({ eventCode: eventPart === "all" ? null : eventPart, variant });
+              }}
+            >
+              <SelectTrigger id="real-event-calc">
+                <SelectValue>
+                  {realEventCalculationLabel(realEventScope, eventOptions)}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all:plain">All Events</SelectItem>
+                <SelectItem value="all:trial">All Events (Trial)</SelectItem>
+                <SelectItem value="all:competitive">All Events (Competitive)</SelectItem>
+                {eventOptions.map((e) => (
+                  <Fragment key={e.eventCode}>
+                    <SelectItem value={`${e.eventCode}:plain`}>{withEventYear(e.eventName, e.eventCode)}</SelectItem>
+                    <SelectItem value={`${e.eventCode}:trial`}>{withEventYear(e.eventName, e.eventCode)} (Trial)</SelectItem>
+                    <SelectItem value={`${e.eventCode}:competitive`}>{withEventYear(e.eventName, e.eventCode)} (Competitive)</SelectItem>
+                  </Fragment>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+      </div>
+    </GlassPanel>
+  );
+}
+
+function realEventCalculationLabel(
+  scope: RealEventCalculationScope,
+  eventOptions: { eventCode: string; eventName: string }[]
+): string {
+  const picked = scope.eventCode === null ? undefined : eventOptions.find((e) => e.eventCode === scope.eventCode);
+  const base = scope.eventCode === null ? "All Events" : picked ? withEventYear(picked.eventName, picked.eventCode) : scope.eventCode;
+  if (scope.variant === "plain") return base;
+  return `${base} (${scope.variant === "trial" ? "Trial" : "Competitive"})`;
+}
