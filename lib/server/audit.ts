@@ -28,7 +28,8 @@ export type PlatformAuditAction =
   | "publish-platform-changelog-entry"
   | "unpublish-platform-changelog-entry"
   | "delete-platform-changelog-entry"
-  | "save-platform-credits";
+  | "save-platform-credits"
+  | "verify-team-admins";
 
 /** The platform owner's own log (`platformAuditLog`, readable only by platform owners): it may hold applicant details that must not appear in any team's Audit Log. */
 export function platformAuditDoc(action: PlatformAuditAction, actor: { uid: string; name: string }, details: Record<string, unknown>) {

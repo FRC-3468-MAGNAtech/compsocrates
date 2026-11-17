@@ -11,6 +11,10 @@ import { readTeamIdentity, teamLabel } from "@/lib/team-number";
 import { isAdminFromCsUser } from "@/data/cs/users";
 import { ownerUidOfTeam } from "@/data/cs/join-requests";
 import type { CsRecord } from "@/data/cs/types";
+import { DEFAULT_PROGRAM } from "@/config/programs/types";
+import { getMembershipsEnabled } from "@/lib/server/team-settings";
+import { readOwnerTransferState, writeOwnerTransfer } from "@/lib/server/membership-flows";
+import { teamLabelOfDoc } from "@/lib/memberships/flows";
 import { TRANSFER_TTL_MS, canCancelTransfer, checkTransferRequest, checkTransferResponse, confirmationMatches, isRecentSignIn, isTeamOwner, readPendingTransfer } from "@/lib/team-owner";
 
 /** A user's display name (CS `displayName`, with the app's `name` as a fallback). */
@@ -148,6 +152,8 @@ async function respond(db: Firestore, decoded: Decoded, user: DocumentData, team
   const authRecord = await adminAuth.getUser(decoded.uid).catch(() => null);
   const nowMs = Date.now();
 
+  // Memberships (build 2): with the kill switch ON the new owner's membership becomes verified (and the old owner's loses the owner flag), in the same transaction.
+  const membershipsOn = await getMembershipsEnabled(db, nowMs).catch(() => false);
   const outcome = await db.runTransaction(async (txn) => {
     const teamSnap = await txn.get(teamRef);
     if (!teamSnap.exists) throw new RouteError(404, "no-team", "Team not found.");
@@ -173,6 +179,7 @@ async function respond(db: Firestore, decoded: Decoded, user: DocumentData, team
     const currentOwner = ownerUidOfTeam(team as CsRecord) || pending.fromUid;
     const oldOwnerRef = db.collection("users").doc(currentOwner);
     const oldOwnerSnap = await txn.get(oldOwnerRef);
+    const owners = membershipsOn ? await readOwnerTransferState(db, txn, DEFAULT_PROGRAM, teamRef.id, decoded.uid, currentOwner) : null;
     if (currentOwner !== pending.fromUid) {
       txn.update(teamRef, { pendingTransfer: FieldValue.delete() });
       throw new RouteError(409, "stale", "This request is no longer valid because the account's owner changed.");
@@ -182,6 +189,7 @@ async function respond(db: Firestore, decoded: Decoded, user: DocumentData, team
     txn.update(teamRef, { verifiedOwnerId: decoded.uid, pendingTransfer: FieldValue.delete() });
     txn.update(db.collection("users").doc(decoded.uid), { isOwner: true, isTeamAdmin: true });
     if (oldOwnerSnap.exists && currentOwner !== decoded.uid) txn.update(oldOwnerRef, { isOwner: false }); // stays an admin
+    if (owners) writeOwnerTransfer(txn, DEFAULT_PROGRAM, owners, { teamId: teamRef.id, newUid: decoded.uid, newUser: user, teamLabel: teamLabelOfDoc(team), nowMs });
     txn.set(
       db.collection("auditLog").doc(),
       teamAuditDoc(teamRef.id, decoded.uid, myName, "transfer-ownership", { fromUid: currentOwner, fromName: pending.fromName, toUid: decoded.uid, toName: myName }, { verifiedOwnerId: currentOwner }, { verifiedOwnerId: decoded.uid })
@@ -227,6 +235,7 @@ async function forceTransfer(db: Firestore, decoded: Decoded, body: Record<strin
   const targetAuth = await adminAuth.getUser(toUid).catch(() => null);
   const actor = { uid: decoded.uid, name: sanitizeLine(decoded.name ?? decoded.email ?? "Platform owner", 80) };
 
+  const membershipsOn = await getMembershipsEnabled(db).catch(() => false);
   const done = await db.runTransaction(async (txn) => {
     const teamSnap = await txn.get(teamRef);
     if (!teamSnap.exists) throw new RouteError(404, "no-team", "That account doesn't exist.");
@@ -240,10 +249,12 @@ async function forceTransfer(db: Firestore, decoded: Decoded, body: Record<strin
     if (!targetSnap.exists || targetSnap.data()?.teamId !== teamId) throw new RouteError(400, "no-target", "The new owner must be a member of that account.");
     if (!targetAuth?.emailVerified) throw new RouteError(400, "unverified-email", "The new owner hasn't verified their email.");
     if (oldOwnerUid === toUid) throw new RouteError(400, "self", "They already own this account.");
+    const owners = membershipsOn ? await readOwnerTransferState(db, txn, DEFAULT_PROGRAM, teamId, toUid, oldOwnerUid) : null;
 
     txn.update(teamRef, { verifiedOwnerId: toUid, pendingTransfer: FieldValue.delete() }); // a pending request from the old owner is void
     txn.update(targetRef, { isOwner: true, isTeamAdmin: true });
     if (oldSnap?.exists && oldOwnerUid) txn.update(db.collection("users").doc(oldOwnerUid), { isOwner: false });
+    if (owners) writeOwnerTransfer(txn, DEFAULT_PROGRAM, owners, { teamId, newUid: toUid, newUser: targetSnap.data(), teamLabel: teamLabelOfDoc(team), nowMs: Date.now() });
     const newName = sanitizeLine(nameOf(targetSnap.data()), 80);
     txn.set(
       db.collection("auditLog").doc(),

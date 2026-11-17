@@ -47,6 +47,16 @@ export const FRC_PROGRAM: ProgramConfig = {
     defaultJoinRole: DEFAULT_ROLE_ID,
     userFields: { role: "role", roles: "roles", secondaryRoles: "secondaryRoles", isAdmin: "isTeamAdmin", isOwner: "isOwner" },
     nameFields: ["displayName", "name"],
+    flows: {
+      ownerFields: ["verifiedOwnerId", "ownerUid"],
+      assignableListField: null,
+      legacyAdminRole: "coach",
+      leaveExtras: { specialRole: null, specialRoles: [] },
+      teamLookup: "id",
+      newUser: { storeUid: true, emailField: "email", extras: { profileVisibility: "team", bio: "", photoURL: "", emailVerificationExempt: false, profileComplete: true }, createOnRequest: true },
+      adminFlagLocked: false,
+      requests: { layout: "flat", collection: "teamJoinRequests", userId: "userId", name: "userName", email: "userEmail", teamId: "teamId", role: "requestedRole", alsoRole: "userRole", timeKind: "ms", approvedExtras: { profileSyncPending: false, profileSyncedAt: "@now" }, outcomeFields: { by: "processedBy", at: "processedAt" } },
+    },
   },
   // Team Settings: FRC's page is unchanged (its form choice lives in Admin Panel > Forms, its ownership transfer is the root route's).
   teamSettings: { ownershipTransfer: true },

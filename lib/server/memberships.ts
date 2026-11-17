@@ -44,7 +44,7 @@ export function parseProgram(value: unknown): { ok: true; program: ProgramId } |
 }
 
 /** Counts the account's ACTIVE memberships across every program (the limit is per account), reading at most `MAX` per program. Reads only: call before any write. */
-async function countActive(db: Firestore, txn: Transaction, uid: string): Promise<number> {
+export async function countActive(db: Firestore, txn: Transaction, uid: string): Promise<number> {
   let n = 0;
   for (const program of PROGRAM_IDS) {
     const snap = await txn.get(memberships(db, program).where("uid", "==", uid).where("status", "==", "active").limit(MAX_ACTIVE_MEMBERSHIPS));

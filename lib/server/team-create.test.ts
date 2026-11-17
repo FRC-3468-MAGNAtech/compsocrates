@@ -166,3 +166,36 @@ describe("syncRolesForCaller owner mirror", () => {
     expect(fake.read("users/old")).toMatchObject({ isOwner: false, isTeamAdmin: true });
   });
 });
+
+describe("createTeamForCaller and memberships (kill switch)", () => {
+  const mem = (teamId: string, uid: string) => ({ uid, teamId, role: "match-scout", roles: null, secondaryRoles: [], isAdmin: false, isOwner: false, fieldTeamIds: null, name: "P", status: "active", origin: "pointer", joinedAt: 1, leftAt: null, endedBy: null, updatedAt: 1 });
+
+  it("OFF: no membership is written", async () => {
+    fake.seed("appSettings/global", { teamCreationEnabled: true });
+    const { resetMembershipsEnabledCache } = await import("@/lib/server/team-settings");
+    resetMembershipsEnabledCache();
+    await createTeamForCaller(db(), caller("u1"), { teamNumber: "3468", name: "Ada" }, NOW);
+    expect(fake.ids("memberships")).toEqual([]);
+  });
+
+  it("ON: the creator also gets a VERIFIED owner membership, in the same transaction", async () => {
+    fake.seed("appSettings/global", { teamCreationEnabled: true, membershipsEnabled: true });
+    const { resetMembershipsEnabledCache } = await import("@/lib/server/team-settings");
+    resetMembershipsEnabledCache();
+    const res = await createTeamForCaller(db(), caller("u1"), { teamNumber: "3468", name: "Ada", role: "lead-scout" }, NOW);
+    const code = (res.body as { joinCode: string }).joinCode;
+    expect(fake.read(`memberships/${code}_u1`)).toMatchObject({ uid: "u1", teamId: code, origin: "verified", isAdmin: true, isOwner: true, status: "active", role: "lead-scout", name: "Ada" });
+  });
+
+  it("ON, at five active teams: refuses with 409 membership_limit and creates nothing", async () => {
+    fake.seed("appSettings/global", { teamCreationEnabled: true, membershipsEnabled: true });
+    const { resetMembershipsEnabledCache } = await import("@/lib/server/team-settings");
+    resetMembershipsEnabledCache();
+    for (const t of ["A1", "B1", "C1", "D1", "E1"]) fake.seed(`memberships/${t}_u1`, mem(t, "u1"));
+    const res = await createTeamForCaller(db(), caller("u1"), { teamNumber: "3468", name: "Ada" }, NOW);
+    expect(res.status).toBe(409);
+    expect((res.body as { code: string }).code).toBe("membership_limit");
+    expect(fake.ids("teams")).toEqual([]);
+    expect(fake.read("users/u1")).toBeUndefined();
+  });
+});

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAdminFirestore } from "@/lib/firebase/admin";
 import { avatarStoreHost } from "@/lib/server/avatar-blobs";
-import { getAdminsSeeAllProfiles, getAvatarUploadsEnabled, getTeamCreationEnabled } from "@/lib/server/team-settings";
+import { getAdminsSeeAllProfiles, getAvatarUploadsEnabled, getMembershipsEnabled, getTeamCreationEnabled } from "@/lib/server/team-settings";
 
 /**
  * The one piece of server state the logged-out Signup page needs (whether
@@ -15,6 +15,9 @@ import { getAdminsSeeAllProfiles, getAvatarUploadsEnabled, getTeamCreationEnable
  *
  * Session 8 adds the picture settings: `avatarUploadsEnabled` (the owner's switch, missing = off) and `avatarBlobHost` (the one host the app's uploaded pictures
  * are served from, or null when uploads are not set up on this server). The browser trusts an uploaded picture only on that host.
+ *
+ * Memberships build 2 adds `membershipsEnabled` (a boolean and nothing else, missing or unreadable = false), through the same ~30 s cached helper the server
+ * routes use, so the browser learns the kill switch without a Firestore read of its own.
  */
 export async function GET() {
   const avatarBlobHost = avatarStoreHost();
@@ -22,10 +25,11 @@ export async function GET() {
   if (!db) {
     // Firebase Admin isn't configured — fail closed (no Create option)
     // rather than guessing, same convention as lib/server/require-user.ts.
-    return NextResponse.json({ teamCreationEnabled: false, adminsSeeAllProfiles: true, avatarUploadsEnabled: false, avatarBlobHost });
+    return NextResponse.json({ teamCreationEnabled: false, adminsSeeAllProfiles: true, avatarUploadsEnabled: false, membershipsEnabled: false, avatarBlobHost });
   }
   const teamCreationEnabled = await getTeamCreationEnabled(db);
   const adminsSeeAllProfiles = await getAdminsSeeAllProfiles(db);
   const avatarUploadsEnabled = await getAvatarUploadsEnabled(db);
-  return NextResponse.json({ teamCreationEnabled, adminsSeeAllProfiles, avatarUploadsEnabled, avatarBlobHost });
+  const membershipsEnabled = await getMembershipsEnabled(db).catch(() => false);
+  return NextResponse.json({ teamCreationEnabled, adminsSeeAllProfiles, avatarUploadsEnabled, membershipsEnabled, avatarBlobHost });
 }

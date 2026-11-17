@@ -96,7 +96,7 @@ export const FTC_PROGRAM: ProgramConfig = {
   },
   // Only the tabs whose data layer is ported, in the shared order. Not listed, so they do not exist here: Entries, the two ID tools, Setup Check and the platform-owner tabs
   // (Team Applications, Template Review, Recovery). The team's own templates live inside the Forms tab (as in the other program), without public sharing.
-  admin: { tabs: ["match-library", "forms", "page-access", "sidebar", "achievements", "submissions", "sessions", "rescore", "audit-log", "backups", "platform-changelog", "platform-credits"], platformSettings: false, templateSharing: false },
+  admin: { tabs: ["match-library", "forms", "page-access", "sidebar", "achievements", "submissions", "sessions", "rescore", "audit-log", "backups", "platform-changelog", "platform-credits", "verify-admins"], platformSettings: false, templateSharing: false },
   achievementMetrics: "all",
   multiTeam: true,
   // Memberships: the program's own user-document field names (`primaryRole`, `isAdmin`, `fieldTeamIds`; no `roles` array).
@@ -104,6 +104,16 @@ export const FTC_PROGRAM: ProgramConfig = {
     defaultJoinRole: DEFAULT_ROLE_ID,
     userFields: { role: "primaryRole", roles: null, secondaryRoles: "secondaryRoles", isAdmin: "isAdmin", isOwner: "isOwner", fieldTeamIds: "fieldTeamIds" },
     nameFields: ["name"],
+    flows: {
+      ownerFields: ["ownerUid"],
+      assignableListField: "fieldTeamIdList",
+      legacyAdminRole: null,
+      leaveExtras: {},
+      teamLookup: "idOrJoinCode",
+      newUser: { storeUid: false, emailField: null, extras: {}, createOnRequest: false },
+      adminFlagLocked: true,
+      requests: { layout: "perTeam", collection: "joinRequests", userId: "uid", name: "name", email: null, teamId: null, role: "requestedRole", alsoRole: null, timeKind: "timestamp", approvedExtras: {}, outcomeFields: null },
+    },
   },
   // Team Settings: the season's form is chosen in Admin Panel > Forms (as in the other program); ownership transfer is a root-only server route, so its card is not shown.
   teamSettings: { ownershipTransfer: false },

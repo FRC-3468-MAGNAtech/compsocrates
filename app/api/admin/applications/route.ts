@@ -8,6 +8,11 @@ import { DEFAULT_ROLE_ID, type RoleId } from "@/lib/roles";
 import { buildBaseUserDoc, buildCreatorUserPatch, buildNewTeamDoc, normalizeTeamCode } from "@/data/cs/join-requests";
 import type { CsUserDoc } from "@/data/cs/types";
 import { claimFreeTeamCode } from "@/lib/server/team-create";
+import { DEFAULT_PROGRAM } from "@/config/programs/types";
+import { MembershipError } from "@/lib/memberships/model";
+import { readCreationState, writeCreatorMembership } from "@/lib/server/membership-flows";
+import { teamLabelOfDoc } from "@/lib/memberships/flows";
+import { getMembershipsEnabled } from "@/lib/server/team-settings";
 import { platformAuditDoc, teamAuditDoc } from "@/lib/server/audit";
 import { appBaseUrl, sendEmail } from "@/lib/server/email";
 import { emailTemplates } from "@/lib/server/email-templates";
@@ -110,6 +115,8 @@ export async function POST(request: Request) {
 type Actor = { uid: string; name: string };
 
 async function approve(db: Firestore, applicationId: string, actor: Actor): Promise<{ teamId: string; email: string; name: string; teamNumber: number }> {
+  // Memberships (build 2): with the kill switch ON the applicant also gets a VERIFIED owner membership in the same transaction. OFF: nothing extra happens.
+  const membershipsOn = await getMembershipsEnabled(db).catch(() => false);
   return db.runTransaction(async (txn) => {
     const appRef = db.collection("teamApplications").doc(applicationId);
     const appSnap = await txn.get(appRef);
@@ -130,6 +137,7 @@ async function approve(db: Firestore, applicationId: string, actor: Actor): Prom
     if (applicant && normalizeTeamCode(applicant.teamId) !== "") throw new RouteError(409, "already-member", "The applicant has already joined a team account.");
     if (!numberSnap.empty) throw new RouteError(409, "account-exists", `An account for team ${app.teamNumber} already exists.`);
     if (!code) throw new RouteError(503, "code-collision", "Couldn't pick a free join code. Try again.");
+    const created = membershipsOn ? await readCreationState(db, txn, DEFAULT_PROGRAM, code, app.applicantUid) : null;
 
     const teamRef = db.collection("teams").doc(code);
     const role: RoleId = (app.role as RoleId) ?? DEFAULT_ROLE_ID;
@@ -139,6 +147,14 @@ async function approve(db: Firestore, applicationId: string, actor: Actor): Prom
     const creatorPatch = buildCreatorUserPatch({ teamId: code, role });
     if (applicant) txn.set(userRef, creatorPatch, { merge: true });
     else txn.set(userRef, { ...buildBaseUserDoc({ uid: app.applicantUid, email: app.applicantEmail, displayName: app.applicantName, role }, Date.now()), ...creatorPatch });
+    if (created) {
+      try {
+        writeCreatorMembership(txn, DEFAULT_PROGRAM, created, { uid: app.applicantUid, teamId: code, name: String(app.applicantName ?? applicant?.displayName ?? ""), teamLabel: teamLabelOfDoc({ teamNumber: String(app.teamNumber), teamName: app.teamName || "" }), role, nowMs: Date.now() });
+      } catch (err) {
+        if (err instanceof MembershipError) throw new RouteError(err.status, err.code, err.message);
+        throw err;
+      }
+    }
     txn.update(appRef, { status: "approved", decidedAt: FieldValue.serverTimestamp(), decidedBy: actor.uid, teamId: teamRef.id });
     // The new account's own log gets a minimal entry (no applicant details); the platform log gets the full one.
     txn.set(db.collection("auditLog").doc(), teamAuditDoc(teamRef.id, actor.uid, actor.name, "approve-team-application", { applicationId }, null, { verifiedOwnerId: app.applicantUid, teamNumber: app.teamNumber }));

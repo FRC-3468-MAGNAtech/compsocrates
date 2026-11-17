@@ -116,6 +116,7 @@ export const ADMIN_TAB_IDS = [
   "recovery",
   "platform-changelog",
   "platform-credits",
+  "verify-admins",
   "setup-check",
 ] as const;
 export type AdminTabId = (typeof ADMIN_TAB_IDS)[number];
@@ -207,4 +208,46 @@ export type ProgramMembership = {
   };
   /** The user-document fields the display-name snapshot is read from, first non-empty wins. */
   nameFields: readonly string[];
+  /** Build 2 (join, leave, removal): how this program stores what the shared server flows touch. Data only. */
+  flows: MembershipFlows;
+};
+
+/**
+ * Where and how the shared membership flows (lib/server/membership-flows.ts) read and write this program's documents. Every name here is DATA: the flows
+ * never ask which program they are serving.
+ */
+export type MembershipFlows = {
+  /** Team-document fields that name the owner's uid, first non-empty wins. */
+  ownerFields: readonly string[];
+  /** The team-document field listing the units a new member is assigned to (copied onto a new member), or null when the program has none. */
+  assignableListField: string | null;
+  /** A raw role value the program's rules treat as an admin (legacy), or null. */
+  legacyAdminRole: string | null;
+  /** Extra user-document fields reset when a person's LAST team ends (besides the mapped role, admin, owner and field-team fields). */
+  leaveExtras: Readonly<Record<string, string | number | boolean | null | readonly never[]>>;
+  /** How a team is found from a typed code: by document id only, or by id and then by its `joinCode` field. */
+  teamLookup: "id" | "idOrJoinCode";
+  /** The user document a person with no profile gets when their first request here is approved. */
+  newUser: { storeUid: boolean; emailField: string | null; extras: Readonly<Record<string, string | number | boolean>>; createOnRequest: boolean };
+  /** Is the admin flag on a user document locked against the person's own writes by this program's rules? Only says so in the "Verify admins" evidence note; it proves nothing by itself. */
+  adminFlagLocked: boolean;
+  /** The join-request documents. `flat`: one collection, an auto id, the team in a field. `perTeam`: `teams/{teamId}/joinRequests/{uid}`. */
+  requests: {
+    layout: "flat" | "perTeam";
+    collection: string;
+    userId: string;
+    name: string;
+    email: string | null;
+    teamId: string | null;
+    /** The field that holds the role the person asked for. */
+    role: string;
+    /** A second field that mirrors the asked-for role (written with it), or null. */
+    alsoRole: string | null;
+    /** `ms`: epoch milliseconds. `timestamp`: a Firestore Timestamp. */
+    timeKind: "ms" | "timestamp";
+    /** Extra fields every approved request carries (the program's own outcome fields). The value "@now" stands for the decision time. */
+    approvedExtras: Readonly<Record<string, string | number | boolean>>;
+    /** The program's own "who decided and when" fields (written beside the shared `decidedBy` / `decidedAt`), or null. */
+    outcomeFields: { by: string; at: string } | null;
+  };
 };

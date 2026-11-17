@@ -78,7 +78,9 @@ async function fileRequest(db: Firestore, caller: Caller, input: { joinCode: unk
   const teamId = await within("the team lookup", findFtcTeamIdByCode(db, code));
   if (!teamId) return fail(404, "team-not-found", "That join code doesn't match any team.");
 
-  if ((await within("the account check", db.collection(programPath("ftc", "users")).doc(caller.uid).get())).exists) {
+  // A profile with an EMPTY team id (a person who left their only team) is not "a team": they may ask to join another.
+  const account = await within("the account check", db.collection(programPath("ftc", "users")).doc(caller.uid).get());
+  if (account.exists && typeof account.data()?.teamId === "string" && (account.data()?.teamId as string).trim() !== "") {
     return fail(409, "already-member", "This account already has a team here.");
   }
 

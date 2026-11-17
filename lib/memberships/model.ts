@@ -46,6 +46,13 @@ export type MembershipDoc = RoleSnapshot & {
   leftAt: number | null;
   endedBy: MembershipEndedBy;
   updatedAt: number;
+  /** Build 2, additive: set when a past membership of the same team is restored (the original `joinedAt` is kept). */
+  rejoinedAt?: number;
+  /** Build 2, additive: who verified an existing admin's membership (the platform owner's uid) and when (epoch ms). Absent on memberships verified by a join flow. */
+  verifiedBy?: string;
+  verifiedAt?: number;
+  /** Build 2, additive: the team's label ("Team 3468 · Name") when a build 2 flow made or changed the membership, so the team switcher can name a team the person is not on right now (their rules cannot read it). Absent on older ones. */
+  teamLabel?: string;
 };
 
 export const MEMBERSHIP_LIMITS = { idPart: 128, name: 120, role: 64, listItems: 50, listItem: 100 } as const;
@@ -187,7 +194,7 @@ export function buildMembershipFromUser(program: ProgramId, uid: string, userDoc
   };
 }
 
-const KEYS: readonly string[] = ["uid", "teamId", "role", "roles", "secondaryRoles", "isAdmin", "isOwner", "fieldTeamIds", "name", "status", "origin", "joinedAt", "leftAt", "endedBy", "updatedAt"];
+const KEYS: readonly string[] = ["uid", "teamId", "role", "roles", "secondaryRoles", "isAdmin", "isOwner", "fieldTeamIds", "name", "status", "origin", "joinedAt", "leftAt", "endedBy", "updatedAt", "rejoinedAt", "verifiedBy", "verifiedAt", "teamLabel"];
 
 /** Shape and size check of a membership document before it is written. Returns the first problem, or null. Rejects unknown keys (so an email can never ride along). */
 export function membershipProblem(doc: Record<string, unknown>): string | null {
@@ -200,6 +207,10 @@ export function membershipProblem(doc: Record<string, unknown>): string | null {
   if (!Number.isFinite(doc.joinedAt) || !Number.isFinite(doc.updatedAt)) return "timestamps";
   if (doc.leftAt !== null && !Number.isFinite(doc.leftAt)) return "leftAt";
   if (doc.endedBy !== null && doc.endedBy !== "self" && doc.endedBy !== "admin" && doc.endedBy !== "deleted") return "endedBy";
+  if (doc.rejoinedAt !== undefined && !Number.isFinite(doc.rejoinedAt)) return "rejoinedAt";
+  if (doc.verifiedBy !== undefined && !isKeyPart(doc.verifiedBy)) return "verifiedBy";
+  if (doc.verifiedAt !== undefined && !Number.isFinite(doc.verifiedAt)) return "verifiedAt";
+  if (doc.teamLabel !== undefined && (typeof doc.teamLabel !== "string" || doc.teamLabel.length > MEMBERSHIP_LIMITS.name)) return "teamLabel";
   if (doc.role !== null && stringOrNull(doc.role, MEMBERSHIP_LIMITS.role) === null) return "role";
   for (const k of ["roles", "secondaryRoles", "fieldTeamIds"] as const) if (doc[k] !== null && listOrNull(doc[k]) === null) return k;
   for (const k of ["isAdmin", "isOwner"] as const) if (doc[k] !== null && typeof doc[k] !== "boolean") return k;
@@ -221,5 +232,9 @@ export function readMembership(data: Record<string, unknown> | undefined | null)
     leftAt: typeof data.leftAt === "number" ? data.leftAt : null,
     endedBy: data.endedBy === "self" || data.endedBy === "admin" || data.endedBy === "deleted" ? data.endedBy : null,
     updatedAt: num(data.updatedAt),
+    ...(typeof data.rejoinedAt === "number" ? { rejoinedAt: data.rejoinedAt } : {}),
+    ...(typeof data.verifiedBy === "string" ? { verifiedBy: data.verifiedBy } : {}),
+    ...(typeof data.verifiedAt === "number" ? { verifiedAt: data.verifiedAt } : {}),
+    ...(typeof data.teamLabel === "string" && data.teamLabel !== "" ? { teamLabel: data.teamLabel } : {}),
   };
 }

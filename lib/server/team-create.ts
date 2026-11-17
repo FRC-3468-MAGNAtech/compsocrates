@@ -4,7 +4,11 @@ import type { CsUserDoc } from "@/data/cs/types";
 import { buildBaseUserDoc, buildCreatorUserPatch, buildNewTeamDoc, generateTeamCode, normalizeTeamCode } from "@/data/cs/join-requests";
 import { str } from "@/data/cs/util";
 import { parseTeamNumber } from "@/lib/team-number";
-import { APP_SETTINGS_PATH, getTeamCreationEnabledInTransaction } from "@/lib/server/team-settings";
+import { APP_SETTINGS_PATH, getMembershipsEnabled, getTeamCreationEnabledInTransaction } from "@/lib/server/team-settings";
+import { DEFAULT_PROGRAM } from "@/config/programs/types";
+import { MembershipError } from "@/lib/memberships/model";
+import { readCreationState, writeCreatorMembership } from "@/lib/server/membership-flows";
+import { teamLabelOfDoc } from "@/lib/memberships/flows";
 import type { Caller, RouteResult } from "@/lib/server/join-requests";
 
 const fail = (status: number, code: string, error: string): RouteResult => ({ status, body: { ok: false, code, error } });
@@ -42,7 +46,10 @@ export async function createTeamForCaller(
   const teamName = str(input.teamName).trim().slice(0, 80);
   const displayName = str(input.name).trim() || str(caller.name).trim() || str(caller.email).split("@")[0] || "";
 
-  return db.runTransaction(async (txn): Promise<RouteResult> => {
+  // Memberships (build 2): with the kill switch ON the creator also gets a VERIFIED owner membership, in the same transaction. OFF: nothing below changes.
+  const membershipsOn = await getMembershipsEnabled(db, nowMs).catch(() => false);
+  try {
+  return await db.runTransaction(async (txn): Promise<RouteResult> => {
     const userRef = db.collection("users").doc(caller.uid);
     // Reads must happen before any writes in a Firestore transaction.
     const [userSnap, creationEnabled, code] = await Promise.all([txn.get(userRef), getTeamCreationEnabledInTransaction(db, txn), claimFreeTeamCode(db, txn, random)]);
@@ -52,6 +59,7 @@ export async function createTeamForCaller(
     if (!creationEnabled) return fail(403, "creation-disabled", "Team creation is currently disabled.");
 
     if (!code) return fail(503, "code-collision", "Couldn't pick a free join code. Try again.");
+    const created = membershipsOn ? await readCreationState(db, txn, DEFAULT_PROGRAM, code, caller.uid) : null;
 
     txn.set(db.collection("teams").doc(code), buildNewTeamDoc({ teamNumber, teamName, ownerUid: caller.uid }, nowMs));
     const patch = buildCreatorUserPatch({ teamId: code, role: input.role ?? user?.role });
@@ -61,6 +69,11 @@ export async function createTeamForCaller(
       txn.set(userRef, { ...buildBaseUserDoc({ uid: caller.uid, email: caller.email ?? "", displayName, role: input.role }, nowMs), ...patch });
     }
     txn.set(db.doc(APP_SETTINGS_PATH), { teamCreationEnabled: false }, { merge: true });
+    if (created) writeCreatorMembership(txn, DEFAULT_PROGRAM, created, { uid: caller.uid, teamId: code, name: displayName || str(user?.displayName), teamLabel: teamLabelOfDoc(buildNewTeamDoc({ teamNumber, teamName, ownerUid: caller.uid }, nowMs)), role: String(patch.role ?? "match-scout"), nowMs });
     return { status: 200, body: { ok: true, joinCode: code, teamId: code } };
   });
+  } catch (err) {
+    if (err instanceof MembershipError) return fail(err.status, err.code, err.message);
+    throw err;
+  }
 }

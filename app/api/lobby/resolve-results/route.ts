@@ -36,7 +36,9 @@ export async function POST(request: Request) {
     const lobbySnap = await db.collection(store.paths.lobbies).doc(lobbyId).get();
     if (!lobbySnap.exists) return NextResponse.json({ ok: false, error: "Lobby not found." }, { status: 404 });
     const userSnap = await db.collection(store.paths.users).doc(user.uid).get();
-    if (!userSnap.exists || userSnap.data()?.teamId !== lobbySnap.data()?.teamId) {
+    // An empty team id (a person who left their team) never matches, not even a lobby with an empty team id.
+    const myTeam = userSnap.exists ? userSnap.data()?.teamId : null;
+    if (typeof myTeam !== "string" || myTeam.trim() === "" || myTeam !== lobbySnap.data()?.teamId) {
       return NextResponse.json({ ok: false, error: "Not your team's lobby." }, { status: 403 });
     }
 

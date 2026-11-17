@@ -23,6 +23,8 @@ beforeAll(async () => {
   // a team brought over from the old site: its document id is not its join code
   await db.collection(P("teams")).doc("legacyDocId").set({ joinCode: "KEEP42", name: "Brought over" });
   await db.collection(P("users")).doc("already-member").set({ name: "Mem", teamId: "ABCD2345" });
+  // a person who left their only team (memberships build 2): the profile stays, the team id is empty
+  await db.collection(P("users")).doc("left-member").set({ name: "Lee", teamId: "", themeId: "midnight" });
 });
 
 afterAll(async () => {
@@ -59,6 +61,13 @@ describe("requestToJoinFtcTeam", () => {
     expect(await requestToJoinFtcTeam(db, { uid: "j-noname", email: null, name: null }, { joinCode: "ABCD2345", name: "" })).toMatchObject({ status: 400, body: { code: "bad-name" } });
     expect(await requestToJoinFtcTeam(db, caller("already-member"), { joinCode: "ABCD2345", name: "Mem" })).toMatchObject({ status: 409, body: { code: "already-member" } });
     expect(await requestDoc("ABCD2345", "already-member")).toBeUndefined();
+  });
+
+  it("a profile with an EMPTY team id (left its only team) is not 'a team': that person may ask to join another", async () => {
+    const res = await requestToJoinFtcTeam(db, caller("left-member"), { joinCode: "ABCD2345", name: "Lee" });
+    expect(res).toEqual({ status: 200, body: { ok: true, alreadyPending: false, teamId: "ABCD2345" } });
+    expect(await requestDoc("ABCD2345", "left-member")).toMatchObject({ uid: "left-member", status: "pending" });
+    expect((await db.collection(P("users")).doc("left-member").get()).data()).toMatchObject({ teamId: "", themeId: "midnight" });
   });
 
   it("a repeat while pending changes nothing, and a new request replaces a denied one", async () => {

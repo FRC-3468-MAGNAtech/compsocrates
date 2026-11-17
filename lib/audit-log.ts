@@ -25,6 +25,11 @@ export type AuditAction =
   | "refresh-official-scores"
   | "export-backup"
   | "edit-member-roles"
+  // Memberships build 2: join decisions, leaving and removal
+  | "approve-join-request"
+  | "deny-join-request"
+  | "leave-team"
+  | "remove-member"
   | "approve-team-application"
   | "request-ownership-transfer"
   | "transfer-ownership"
