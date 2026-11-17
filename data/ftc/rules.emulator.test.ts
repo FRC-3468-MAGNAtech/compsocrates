@@ -50,7 +50,7 @@ const P = (name: string) => programPath("ftc", name);
  * The platform owner's switch, root `appSettings/global` (clients never read or write it; the rules read it with get()). `"no-document"` deletes the document, `"no-field"`
  * leaves it without the field, anything else is the value of `teamCreationEnabled`.
  */
-async function setCreationSwitch(value: boolean | string | "no-document" | "no-field") {
+async function setCreationSwitch(value: boolean | string | number) {
   await testEnv.withSecurityRulesDisabled(async (ctx) => {
     const ref = doc(ctx.firestore(), "appSettings", "global");
     if (value === "no-document") await deleteDoc(ref);
