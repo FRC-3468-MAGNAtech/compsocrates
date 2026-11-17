@@ -3,6 +3,7 @@ import { getAdminAuth, getAdminFirestore } from "@/lib/firebase/admin";
 import { verifyBearerToken } from "@/lib/server/require-user";
 import { isOwnerEmail } from "@/lib/server/owner-admin";
 import { syncRolesForCaller } from "@/lib/server/sync-roles";
+import { ensureMembershipsOnSignIn } from "@/lib/server/memberships";
 
 /**
  * Called by the client right after every sign-in (see lib/auth.tsx): the CS-shaped role/owner sync. All logic lives in
@@ -27,6 +28,9 @@ export async function POST(request: Request) {
       claims: decoded as unknown as { platformOwner?: unknown; admin?: unknown; owner?: unknown },
       setClaims: (claims) => adminAuth.setCustomUserClaims(decoded.uid, claims),
     });
+    // Memberships (additive): with the kill switch ON, make sure each program's active team has a membership. It never throws and never changes the answer
+    // above; OFF costs only the cached switch read (lib/server/memberships.ts).
+    await ensureMembershipsOnSignIn(db, decoded.uid).catch((err: unknown) => console.error("ensureMembershipsOnSignIn failed:", err instanceof Error ? err.message : err));
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {
     console.error("sync-roles failed:", err instanceof Error ? err.message : err);

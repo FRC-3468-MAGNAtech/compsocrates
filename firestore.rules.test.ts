@@ -1453,3 +1453,193 @@ describe("program isolation", () => {
     });
   });
 });
+
+// =====================================================================================================================
+// 6. Memberships (build 1, additive): memberships/{teamId}_{uid}. No client write; reads by own uid, active teammates, a VERIFIED active admin (past roster), the platform owner.
+// =====================================================================================================================
+describe("memberships/{teamId}_{uid} (additive, server-written)", () => {
+  const PAST1 = "past-member-1"; // left team 1 (no user document needed: nobody reads it as a user)
+  const PAST2 = "past-member-2"; // left team 2
+  const POINTER_ONLY = "pointer-only-1"; // a CS-style user doc with a pointer and NO membership (live CS compatibility)
+  const m = (teamId: string, uid: string, over: Record<string, unknown> = {}) => ({
+    uid,
+    teamId,
+    role: "match-scout",
+    roles: null,
+    secondaryRoles: [],
+    isAdmin: false,
+    isOwner: false,
+    fieldTeamIds: null,
+    name: uid,
+    status: "active",
+    origin: "pointer",
+    joinedAt: 1,
+    leftAt: null,
+    endedBy: null,
+    updatedAt: 1,
+    ...over,
+  });
+  const ids = (snap: { docs: { id: string }[] }) => snap.docs.map((d) => d.id).sort();
+  const col = (db: Db) => collection(db, "memberships");
+  const active = (db: Db, team: string) => getDocs(query(col(db), where("teamId", "==", team), where("status", "==", "active")));
+  const past = (db: Db, team: string) => getDocs(query(col(db), where("teamId", "==", team), where("status", "==", "past")));
+  const mine = (db: Db, uid: string) => getDocs(query(col(db), where("uid", "==", uid)));
+
+  beforeEach(async () => {
+    await seed(async (db) => {
+      await setDoc(doc(db, "users", POINTER_ONLY), user({ displayName: "Pointer Only", teamId: TEAM1 }));
+      const put = (x: ReturnType<typeof m>) => setDoc(doc(db, "memberships", `${x.teamId}_${x.uid}`), x);
+      await put(m(TEAM1, SCOUT));
+      await put(m(TEAM1, SCOUT2, { role: "lead-scout" }));
+      await put(m(TEAM1, ADMIN, { isAdmin: true, origin: "verified" })); // a verified admin of team 1
+      await put(m(TEAM1, ADMIN2, { isAdmin: true, origin: "pointer" })); // an admin by pointer only
+      await put(m(TEAM1, PAST1, { status: "past", leftAt: 5, endedBy: "self" }));
+      await put(m(TEAM2, OTHER_SCOUT));
+      await put(m(TEAM2, OTHER_ADMIN, { isAdmin: true, origin: "verified" }));
+      await put(m(TEAM2, PAST2, { status: "past", leftAt: 6, endedBy: "admin" }));
+      await put(m(TEAM2, SCOUT, { status: "past", leftAt: 7, endedBy: "self" })); // scout-1 once belonged to team 2 and left
+    });
+  });
+
+  describe("no client write at all", () => {
+    it("a user cannot create a membership: their own, a team they are not on, or anyone's", async () => {
+      await assertFails(setDoc(doc(as(SCOUT), "memberships", `${TEAM1}_${SCOUT2}x`), m(TEAM1, SCOUT)));
+      await assertFails(setDoc(doc(as(SCOUT), "memberships", `${TEAM2}_${SCOUT}z`), m(TEAM2, SCOUT)));
+      await assertFails(setDoc(doc(as(NO_TEAM), "memberships", `${TEAM1}_${NO_TEAM}`), m(TEAM1, NO_TEAM))); // cannot add themselves to a team
+      await assertFails(setDoc(doc(as(NO_DOC), "memberships", `${TEAM1}_${NO_DOC}`), m(TEAM1, NO_DOC, { isAdmin: true, origin: "verified" })));
+      await assertFails(addDoc(col(as(SCOUT)), m(TEAM1, SCOUT)));
+    });
+    it("a user cannot change a role, the admin flag, the origin or the status through a membership, or delete one", async () => {
+      const own = doc(as(SCOUT), "memberships", `${TEAM1}_${SCOUT}`);
+      await assertFails(updateDoc(own, { role: "lead-scout" }));
+      await assertFails(updateDoc(own, { isAdmin: true }));
+      await assertFails(updateDoc(own, { origin: "verified" }));
+      await assertFails(updateDoc(doc(as(SCOUT), "memberships", `${TEAM2}_${SCOUT}`), { status: "active" })); // cannot rejoin by themselves
+      await assertFails(deleteDoc(own));
+    });
+    it("not even a team admin, a verified admin or the platform owner can write", async () => {
+      await assertFails(updateDoc(doc(as(ADMIN), "memberships", `${TEAM1}_${SCOUT}`), { role: "lead-scout" }));
+      await assertFails(setDoc(doc(as(ADMIN), "memberships", `${TEAM1}_new-member`), m(TEAM1, "new-member")));
+      await assertFails(deleteDoc(doc(as(ADMIN), "memberships", `${TEAM1}_${SCOUT}`)));
+      await assertFails(updateDoc(doc(as(CS_OWNER), "memberships", `${TEAM1}_${SCOUT}`), { role: "x" }));
+      await assertFails(updateDoc(doc(as(NO_DOC, { platformOwner: true }), "memberships", `${TEAM1}_${SCOUT}`), { role: "x" }));
+    });
+  });
+
+  describe("reads", () => {
+    it("a member reads their own memberships (the `uid ==` query), active and past", async () => {
+      expect(ids(await assertSucceeds(mine(as(SCOUT), SCOUT)))).toEqual([`${TEAM1}_${SCOUT}`, `${TEAM2}_${SCOUT}`]);
+      await assertSucceeds(getDoc(doc(as(SCOUT), "memberships", `${TEAM2}_${SCOUT}`))); // their own past one too
+    });
+    it("a person with no user document at all can still read their own memberships (and none of anyone else's)", async () => {
+      expect(ids(await assertSucceeds(mine(as(NO_DOC), NO_DOC)))).toEqual([]);
+      await assertFails(mine(as(NO_DOC), SCOUT));
+    });
+    it("no one can query somebody else's memberships by uid", async () => {
+      await assertFails(mine(as(SCOUT), SCOUT2));
+      await assertFails(mine(as(ADMIN), SCOUT));
+    });
+    it("a teammate reads the ACTIVE roster of their own team (`teamId ==` + `status == active`) and not another team's", async () => {
+      expect(ids(await assertSucceeds(active(as(SCOUT), TEAM1)))).toEqual([`${TEAM1}_${ADMIN}`, `${TEAM1}_${ADMIN2}`, `${TEAM1}_${SCOUT}`, `${TEAM1}_${SCOUT2}`]);
+      await assertFails(active(as(SCOUT), TEAM2));
+      await assertFails(active(as(OTHER_SCOUT), TEAM1));
+      await assertFails(getDoc(doc(as(SCOUT), "memberships", `${TEAM2}_${OTHER_SCOUT}`)));
+      await assertSucceeds(getDoc(doc(as(SCOUT), "memberships", `${TEAM1}_${SCOUT2}`)));
+    });
+    it("a person with no team, or no user document, reads no team's roster", async () => {
+      await assertFails(active(as(NO_TEAM), TEAM1));
+      await assertFails(active(as(NO_DOC), TEAM1));
+      await assertFails(past(as(NO_TEAM), TEAM1));
+    });
+    it("the roster query that omits the status filter is refused (the app never runs it)", async () => {
+      await assertFails(getDocs(query(col(as(SCOUT)), where("teamId", "==", TEAM1))));
+    });
+    it("signed out cannot read anything", async () => {
+      await assertFails(active(anon(), TEAM1));
+      await assertFails(getDoc(doc(anon(), "memberships", `${TEAM1}_${SCOUT}`)));
+      await assertFails(getDocs(col(anon())));
+    });
+    it("the platform owner reads active and past rosters of any team", async () => {
+      const owner = as(NO_DOC, { platformOwner: true });
+      expect(ids(await assertSucceeds(past(owner, TEAM1)))).toEqual([`${TEAM1}_${PAST1}`]);
+      expect(ids(await assertSucceeds(past(owner, TEAM2)))).toEqual([`${TEAM2}_${PAST2}`, `${TEAM2}_${SCOUT}`]);
+      expect(ids(await assertSucceeds(active(owner, TEAM2)))).toEqual([`${TEAM2}_${OTHER_ADMIN}`, `${TEAM2}_${OTHER_SCOUT}`]);
+      await assertSucceeds(active(as(CS_OWNER), TEAM1));
+    });
+  });
+
+  describe("the past roster (`teamId ==` + `status == past`)", () => {
+    it("a non-admin member cannot read it", async () => {
+      await assertFails(past(as(SCOUT), TEAM1));
+      await assertFails(past(as(SCOUT2), TEAM1));
+    });
+    it("an admin whose membership is only pointer-origin cannot read it (a pointer-origin membership grants nothing the pointer did not)", async () => {
+      await assertFails(past(as(ADMIN2), TEAM1)); // isTeamAdmin on the user document AND isAdmin on a pointer-origin membership
+    });
+    it("a verified ACTIVE admin of the team can read it", async () => {
+      expect(ids(await assertSucceeds(past(as(ADMIN), TEAM1)))).toEqual([`${TEAM1}_${PAST1}`]);
+      expect(ids(await assertSucceeds(past(as(OTHER_ADMIN), TEAM2)))).toEqual([`${TEAM2}_${PAST2}`, `${TEAM2}_${SCOUT}`]);
+    });
+    it("an admin of team A cannot read team B's past members", async () => {
+      await assertFails(past(as(ADMIN), TEAM2));
+      await assertFails(past(as(OTHER_ADMIN), TEAM1));
+    });
+    it("a user who never belonged to the team cannot read its past roster, nor can a past member of it (scout-1 left team 2)", async () => {
+      await assertFails(past(as(NO_TEAM), TEAM2));
+      await assertFails(past(as(SCOUT), TEAM2));
+    });
+    it("the verified admin test uses the reader's own membership, never the pointer: no membership, or an ended or non-admin one, opens nothing", async () => {
+      await seed(async (db) => {
+        await setDoc(doc(db, "users", "pointer-admin-1"), user({ displayName: "Pointer Admin", isTeamAdmin: true })); // an admin by user document only
+        await setDoc(doc(db, "memberships", `${TEAM1}_${SCOUT2}`), m(TEAM1, SCOUT2, { isAdmin: true, origin: "verified", status: "past", leftAt: 8 })); // a verified admin who LEFT
+        await setDoc(doc(db, "memberships", `${TEAM1}_${COACH}`), m(TEAM1, COACH, { isAdmin: false, origin: "verified" })); // a verified member, not an admin
+      });
+      await assertFails(past(as("pointer-admin-1"), TEAM1));
+      await assertFails(past(as(SCOUT2), TEAM1));
+      await assertFails(past(as(COACH), TEAM1));
+    });
+    it("a membership whose stored uid is not the reader's cannot prove admin (the rule compares fields, not the id)", async () => {
+      await seed(async (db) => {
+        await setDoc(doc(db, "memberships", `${TEAM1}_${SCOUT}`), m(TEAM1, ADMIN, { isAdmin: true, origin: "verified" })); // id says scout-1, fields say admin-1
+      });
+      await assertFails(past(as(SCOUT), TEAM1));
+    });
+  });
+
+  describe("a forged pointer or admin flag on the user document grants nothing new through memberships", () => {
+    it("scout-2 (CS-OPEN: may write their own user document) sets teamId to team 2 and isTeamAdmin: the past roster stays closed", async () => {
+      // KNOWN, unchanged by this build: the root user document is self-writable (docs/SECURITY-NOTES.md).
+      await assertSucceeds(updateDoc(doc(as(SCOUT2), "users", SCOUT2), { teamId: TEAM2, isTeamAdmin: true }));
+      await assertFails(past(as(SCOUT2), TEAM2)); // no verified admin membership in team 2
+      await assertFails(past(as(SCOUT2), TEAM1)); // and the pointer left team 1
+      await assertFails(mine(as(SCOUT2), SCOUT)); // still only their own uid
+      // The active roster of team 2 is readable by pointer, exactly like `users where teamId == TEAM2` already is: nothing new.
+      await assertSucceeds(getDocs(query(collection(as(SCOUT2), "users"), where("teamId", "==", TEAM2))));
+      await assertSucceeds(active(as(SCOUT2), TEAM2));
+    });
+    it("a membership with an admin flag cannot be forged from a client, and a server-made pointer-origin admin still opens nothing", async () => {
+      await assertFails(setDoc(doc(as(NO_TEAM), "memberships", `${TEAM2}_${NO_TEAM}`), m(TEAM2, NO_TEAM, { isAdmin: true, origin: "verified" })));
+      await assertFails(past(as(ADMIN2), TEAM1));
+    });
+  });
+
+  describe("a pointer-only account (no membership) behaves exactly as before under every existing rule (live CS compatibility)", () => {
+    it("still reads its own user document, its team document and its teammates, and nothing of another team", async () => {
+      const db = as(POINTER_ONLY);
+      await assertSucceeds(getDoc(doc(db, "users", POINTER_ONLY)));
+      await assertSucceeds(getDoc(doc(db, "teams", TEAM1)));
+      await assertSucceeds(getDocs(query(collection(db, "users"), where("teamId", "==", TEAM1))));
+      await assertFails(getDoc(doc(db, "teams", TEAM2)));
+      await assertFails(getDocs(query(collection(db, "users"), where("teamId", "==", TEAM2))));
+    });
+    it("still writes its own user document (CS-OPEN, unchanged) and nothing of another account's", async () => {
+      const db = as(POINTER_ONLY);
+      await assertSucceeds(updateDoc(doc(db, "users", POINTER_ONLY), { bio: "hello" }));
+      await assertFails(updateDoc(doc(db, "users", SCOUT), { bio: "hello" }));
+    });
+    it("has no memberships of its own, and the new collection does not change what it may read elsewhere", async () => {
+      expect(ids(await assertSucceeds(mine(as(POINTER_ONLY), POINTER_ONLY)))).toEqual([]);
+      await assertFails(past(as(POINTER_ONLY), TEAM1));
+    });
+  });
+});

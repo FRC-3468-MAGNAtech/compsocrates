@@ -78,6 +78,12 @@ Only `brand.label`/`brand.fullName` come from config; all other strings are hard
 6. **Account deletion (L, high):** job, registry and guard test, dialog, cron sweeper, Blob hook. Last (needs 1-4). Needs: your deletion defaults and adult-lead sign-off.
 7. **Optional: relink (M)** only if approved.
 
+## 8b. Build 1 as built (deviations from sections 2, 7 and 8; `docs/MEMBERSHIP_BUILD1_RESULTS.md`)
+- Membership fields: also `secondaryRoles`, `origin` ("pointer" | "verified") and one field-name set for both programs (`ProgramConfig.membership.userFields` maps them to each user document). Role values are stored raw, an absent field is null and is restored by deleting it (`defaultJoinRole` applies only to NEW memberships of future join flows). Timestamps are epoch milliseconds. Ids reject "_" and "/".
+- The limit of 5 is per account across both programs. A switch into a program with no user document is 409 `no_profile`.
+- Rules: the past roster needs the reader's OWN membership to be `origin == "verified"` and admin, because the pointer is client-writable on the root user document (CS-OPEN); build 1 creates only pointer-origin memberships, so no one can read a past roster yet. Build session 2 creates the verified ones.
+- Added beyond the plan: the kill switch `appSettings/global.membershipsEnabled` (off by default), the quota-aware sign-in hook and backfill (counts first, read and write caps, Pacific-day ledger).
+
 ## 9. Decisions (owner answered 2026-11-15: item 2 changed, item 10 answered; every other item takes the default listed)
 1. Teams per account: max 5 active memberships (enforced on approve/apply).
 2. DECIDED: default role Match Scout in both programs, plus a per-team toggle (default off) for whether joiners may choose their role (section 2).

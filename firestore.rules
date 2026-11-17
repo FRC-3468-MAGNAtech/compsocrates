@@ -1508,6 +1508,40 @@ service cloud.firestore {
         allow delete: if false;
       }
 
+      // Memberships (build 1, ADDITIVE; nothing else reads or depends on this block): programs/ftc/memberships/{teamId}_{uid}. NO client write at all: the server routes
+      // (Admin SDK) create and change them. Read:
+      //  - your own memberships (the stored `uid` is yours: the query is `uid ==` you), any status, even before you have a profile in this program;
+      //  - an ACTIVE membership of a team you are on now (the roster query is `teamId ==` and `status == 'active'`; same pointer test as every other FTC rule, so a
+      //    forged pointer reads no more here than it already reads in users);
+      //  - a PAST membership (the past roster) only for an ACTIVE ADMIN of that team proved through the reader's OWN membership document for that team, which must
+      //    have origin 'verified' (a server flow that checked the join). A membership derived from a pointer ('pointer') never opens it, and the user pointer is not
+      //    consulted at all, so a forged pointer plus an admin flag gets nothing new;
+      //  - the platform owner.
+      // The rules compare the stored `uid` and `teamId` fields, not the document id.
+      match /memberships/{membershipId} {
+        function ftc_hasProfile() {
+          return exists(/databases/$(database)/documents/programs/ftc/users/$(request.auth.uid));
+        }
+
+        function ftc_verifiedMembershipAdmin(teamId) {
+          return teamId is string && teamId != ''
+            && exists(/databases/$(database)/documents/programs/ftc/memberships/$(teamId + '_' + request.auth.uid))
+            && get(/databases/$(database)/documents/programs/ftc/memberships/$(teamId + '_' + request.auth.uid)).data.uid == request.auth.uid
+            && get(/databases/$(database)/documents/programs/ftc/memberships/$(teamId + '_' + request.auth.uid)).data.teamId == teamId
+            && get(/databases/$(database)/documents/programs/ftc/memberships/$(teamId + '_' + request.auth.uid)).data.status == 'active'
+            && get(/databases/$(database)/documents/programs/ftc/memberships/$(teamId + '_' + request.auth.uid)).data.get('origin', 'pointer') == 'verified'
+            && get(/databases/$(database)/documents/programs/ftc/memberships/$(teamId + '_' + request.auth.uid)).data.get('isAdmin', false) == true;
+        }
+
+        allow read: if ftc_isSignedIn() && (
+          resource.data.uid == request.auth.uid
+          || (resource.data.status == 'active' && ftc_hasProfile() && ftc_sameTeam(resource.data.teamId))
+          || (resource.data.status == 'past' && ftc_verifiedMembershipAdmin(resource.data.teamId))
+          || ftc_isPlatformOwner()
+        );
+        allow write: if false;
+      }
+
       // P25: profiles/{uid} — a member's public/private profile (display name, bio, pronouns, avatar, visibility).
       // Readable by (Session G): the member themself; a teammate when the profile is public; a same-team admin while
       // appSettings/global.adminsSeeAllProfiles is on; the platform owner. Admins may set their own profile private.
@@ -2261,6 +2295,39 @@ service cloud.firestore {
           allow delete: if ftc_isSignedIn() && request.auth.uid == uid;
         }
       }
+    }
+
+    // =================================================================================================================
+    // Memberships (build 1, ADDITIVE): memberships/{teamId}_{uid}. Nothing existing reads or depends on it, and no existing rule changed. NO client write at
+    // all: the server routes (Admin SDK) create and change them, so this adds no client write path and does NOT fix the CS-OPEN self-write on users/{uid}.
+    // Read:
+    //  - your own memberships (the stored `uid` is yours: the query is `uid ==` you), any status;
+    //  - an ACTIVE membership of the team you are on now (the roster query is `teamId ==` and `status == 'active'`; the same pointer test sameTeam() applies
+    //    everywhere, so a forged pointer reads no more here than it already reads in users);
+    //  - a PAST membership (the past roster) only for an ACTIVE ADMIN of that team proved through the reader's OWN membership document for that team, which
+    //    must have origin 'verified' (a server flow that checked the join). A membership derived from a pointer ('pointer') never opens it, and the user
+    //    pointer is not consulted, so a forged teamId plus an admin flag on the user document gets nothing new through memberships;
+    //  - the platform owner.
+    // The rules compare the stored `uid` and `teamId` fields, not the document id.
+    // =================================================================================================================
+    match /memberships/{membershipId} {
+      function verifiedMembershipAdmin(teamId) {
+        return signedIn() && teamId is string && teamId != ''
+          && exists(/databases/$(database)/documents/memberships/$(teamId + '_' + request.auth.uid))
+          && get(/databases/$(database)/documents/memberships/$(teamId + '_' + request.auth.uid)).data.uid == request.auth.uid
+          && get(/databases/$(database)/documents/memberships/$(teamId + '_' + request.auth.uid)).data.teamId == teamId
+          && get(/databases/$(database)/documents/memberships/$(teamId + '_' + request.auth.uid)).data.status == 'active'
+          && get(/databases/$(database)/documents/memberships/$(teamId + '_' + request.auth.uid)).data.get('origin', 'pointer') == 'verified'
+          && get(/databases/$(database)/documents/memberships/$(teamId + '_' + request.auth.uid)).data.get('isAdmin', false) == true;
+      }
+
+      allow read: if signedIn() && (
+        resource.data.uid == request.auth.uid
+        || (resource.data.status == 'active' && sameTeam(resource.data.teamId))
+        || (resource.data.status == 'past' && verifiedMembershipAdmin(resource.data.teamId))
+        || isPlatformOwner()
+      );
+      allow write: if false;
     }
 
     // =================================================================================================================

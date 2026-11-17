@@ -68,7 +68,9 @@ export type AuditAction =
   | "edit-member-teams"
   // Session 8: a team admin changed the team's achievements (renamed or hid a built-in, made or edited a custom one) or removed a member's uploaded photo
   | "edit-achievements"
-  | "remove-member-photo";
+  | "remove-member-photo"
+  // Memberships build 1: an account switched its active team (server route /api/team/switch)
+  | "switch-team";
 
 export type AuditLogEntry = {
   id: string;

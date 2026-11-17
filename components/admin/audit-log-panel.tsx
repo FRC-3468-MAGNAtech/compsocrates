@@ -51,6 +51,7 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   "edit-page-access": "Edit Page Access",
   "edit-achievements": "Edit Achievements",
   "remove-member-photo": "Remove Member Photo",
+  "switch-team": "Switch Team",
   "decide-page-access-request": "Decide Page Access Request",
   "edit-sidebar": "Edit Sidebar",
   "edit-form-entry": "Edit Form Entry",
