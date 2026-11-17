@@ -141,7 +141,7 @@ test.describe("your own profile", () => {
   test("has Edit and a “View as others see it” toggle that shows the limited card when you're private", async ({ page }) => {
     await open(page, "?viewer=self&private=1");
     await expect(page.getByTestId("edit-profile")).toBeVisible();
-    await expect(page.getByTestId("edit-profile").locator("xpath=ancestor::a")).toHaveAttribute("href", "/account#privacy-profile");
+    await expect(page.getByTestId("edit-profile").locator("xpath=ancestor::a")).toHaveAttribute("href", "/frc/account#privacy-profile");
     await expect(page.getByTestId("profile-header")).toBeVisible();
     await expect(page.getByTestId("preview-banner")).toHaveCount(0);
 

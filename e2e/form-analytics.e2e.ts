@@ -38,7 +38,7 @@ test.describe("raw table", () => {
   test("a match-based form has Match and Alliance and no Team column", async ({ page }) => {
     await open(page, "page=lead-scout");
     await expect(page.getByRole("button", { name: /^Match/ })).toBeVisible();
-    await expect(page.getByRole("button", { name: /^Alliance/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Alliance", exact: true })).toBeVisible(); // not the "Alliance Color / Team" field column
     await expect(page.getByRole("button", { name: /^Team$/ })).toHaveCount(0);
     await expect(rows(page)).toHaveCount(2);
   });
@@ -63,7 +63,7 @@ test.describe("raw table", () => {
 
   test("an empty page and a loading page say so", async ({ page }) => {
     await open(page, "page=helper&entries=none");
-    await expect(page.getByTestId("analytics-empty")).toContainText("No Helper entries yet for this event");
+    await expect(page.getByTestId("analytics-empty")).toContainText("No REBUILT Helper Form entries yet for this event"); // the form's display name (lib/forms/form-display-name.ts)
     await open(page, "page=helper&loaded=0");
     await expect(page.getByTestId("analytics-skeleton")).toBeVisible();
   });

@@ -42,7 +42,7 @@ test.describe("one event", () => {
     await expect(q3.getByTestId("red-score")).toHaveText("83");
     await expect(q3.getByTestId("blue-score")).toHaveText("73");
     await expect(q3.getByLabel("Winner")).toHaveCount(1);
-    await expect(q3.getByTestId("match-breakdown-link")).toHaveAttribute("href", "/analytics/match-breakdown?event=USWABON1&match=Q3");
+    await expect(q3.getByTestId("match-breakdown-link")).toHaveAttribute("href", "/frc/analytics/match-breakdown?event=USWABON1&match=Q3");
     // an unplayed match has no score and no breakdown link
     await expect(page.getByTestId("match-Q20").getByTestId("red-score")).toHaveCount(0);
     await expect(page.getByTestId("match-Q20").getByTestId("match-breakdown-link")).toHaveCount(0);

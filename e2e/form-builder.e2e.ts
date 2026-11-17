@@ -176,7 +176,8 @@ test.describe("builder (desktop)", () => {
     await preview.getByRole("switch", { name: /Successful Climb/i }).first().click();
     await expect(page.getByTestId("preview-score")).not.toContainText(/Test score\s*0\b/);
     await preview.getByRole("button", { name: "Check required fields" }).click();
-    await expect(preview.getByRole("status")).toBeVisible();
+    // timers and sliders are <output> elements (an implicit status role), so pick the required-fields notice by its text
+    await expect(preview.getByRole("status").filter({ hasText: /required/i })).toBeVisible();
     // switching the frame, and clearing the fill
     await preview.getByRole("button", { name: "Tablet" }).click();
     await expect(page.getByTestId("preview-frame-tablet")).toBeVisible();

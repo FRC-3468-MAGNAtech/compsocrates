@@ -21,7 +21,7 @@ const pickTeam = async (page: Page, n: number) => {
 };
 
 test.describe("Pit Scout Form", () => {
-  test("has the fields in order, and the capabilities grid doesn't offer Leave in Teleop/Endgame", async ({ page }) => {
+  test("has the fields in order, and the capabilities grid doesn't offer Leave in Teleop/Endgame", async ({ page, isMobile }) => {
     await open(page, "form=pit");
     const labels = await page.locator("[data-field-key]").evaluateAll((els) => els.map((e) => e.getAttribute("data-field-key")));
     expect(labels).toEqual(expect.arrayContaining(["eventCode", "teamNumber", "scoutName", "weight", "weightUnit", "rookie", "photos", "friendlyPit", "friendlyDrive", "capabilities", "capacity", "preloaded", "cycleTime", "autoCycle"]));
@@ -36,7 +36,7 @@ test.describe("Pit Scout Form", () => {
       await expect(grid.getByRole("checkbox", { name: `${row}, Autonomous` })).toBeVisible();
       await expect(grid.getByRole("checkbox", { name: `${row}, Teleop/Endgame` })).toBeVisible();
     }
-    await expect(page.getByTestId("notes-tab")).toBeVisible(); // sticky notes are on
+    if (isMobile) await expect(page.getByTestId("notes-tab")).toBeVisible(); // sticky notes are on (the phone sheet has a tab; wide screens show the panel always open)
   });
 
   test("suggests the rookie checkbox from FIRST's rookie year, and lets the scout change it", async ({ page }) => {
@@ -64,7 +64,7 @@ test.describe("Pit Scout Form", () => {
     await expect(seq.getByTestId("seq-summary")).toHaveText("Leave → Score → Collect → Score → Park");
     await expect(seq.getByTestId("seq-add-leave")).toBeDisabled();
     await expect(seq.getByTestId("seq-add-park")).toBeDisabled();
-    await seq.getByRole("button", { name: /Move Grab Pollen\/Nectar From Garden \(step 3\) earlier/ }).click();
+    await seq.getByRole("button", { name: /Move Collect From The Station \(step 3\) earlier/ }).click();
     await expect(seq.getByTestId("seq-summary")).toHaveText("Leave → Collect → Score → Score → Park");
     await expect(seq.getByTestId("seq-chip-0").getByRole("button", { name: /later/ })).toHaveCount(0); // Leave is pinned
     await pickTeam(page, 222);
@@ -79,7 +79,7 @@ test.describe("Pit Scout Form", () => {
     await page.getByLabel("Robot weight").fill("11.5");
     await page.getByRole("radio", { name: "kg" }).click();
     await page.getByLabel(/Approximate cycle time/).fill("12.5");
-    await page.getByLabel(/how many pollen\/nectar can the robot hold/).fill("6");
+    await page.getByLabel(/how many game pieces can the robot hold/).fill("6");
     await page.getByLabel(/how many are preloaded/).fill("2");
     await page.getByRole("checkbox", { name: "Friendly and easy to work with in the pit" }).click();
     await pickTeam(page, 333);

@@ -1,4 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
+import { accessPageGroups } from "@/lib/page-access/page-list";
+import { normalizeEntries } from "@/lib/sidebar/layout";
 
 // P26: Admin Panel > Page Access and the no-access screen in a real browser, on /e2e/page-access (the real components on in-memory data). What the database
 // lets each person write is proved by the emulator rules tests; who can open what is proved by lib/page-access/access.test.ts. This checks the screens.
@@ -12,6 +14,9 @@ async function expectNoHorizontalScroll(page: Page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
 }
 
+// The row count is whatever the app's own registry lists for the fixture's program (FRC, the default), never a hardcoded number.
+const expectedPageRows = () => accessPageGroups("frc", normalizeEntries(null)).reduce((n, g) => n + g.rows.length, 0);
+
 declare global {
   interface Window {
     __pa?: { type: string; [key: string]: unknown }[];
@@ -22,7 +27,7 @@ test.describe("the role matrix", () => {
   test("rows are every page (grouped), columns the roles, ticked from the defaults; open pages are fully ticked", async ({ page }) => {
     await open(page, "?tab=roles");
     const matrix = page.getByTestId("role-matrix");
-    await expect(matrix.locator("tbody tr[data-page]")).toHaveCount(25);
+    await expect(matrix.locator("tbody tr[data-page]")).toHaveCount(expectedPageRows());
     await expect(page.getByTestId("matrix-media-match-list")).toHaveAttribute("data-state", "checked");
     await expect(page.getByTestId("matrix-media-dashboard")).toBeDisabled();
     await expect(matrix.locator("thead th")).toHaveCount(10); // the page column + 9 roles
@@ -174,7 +179,7 @@ test.describe("the no-access screen", () => {
     await open(page, "?view=no-access");
     await expect(page.getByRole("heading")).toHaveText("You don't have access to Assignments");
     await expect(page.getByTestId("request-access")).toBeVisible();
-    await expect(page.getByRole("link", { name: "Back to the dashboard" })).toHaveAttribute("href", "/dashboard");
+    await expect(page.getByRole("link", { name: "Back to the dashboard" })).toHaveAttribute("href", "/frc/dashboard");
     await page.getByTestId("request-access").click();
     await expect(page.getByTestId("request-pending")).toContainText("Request sent");
     await expect(page.getByTestId("request-access")).toHaveCount(0); // no second request while one is pending
