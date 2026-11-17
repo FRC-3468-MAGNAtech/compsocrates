@@ -1664,3 +1664,155 @@ describe("FTC live practice presence and lobbies (Batch 6): the replacement quer
     });
   });
 });
+
+// =====================================================================================================================
+// Memberships (build 1, additive): programs/ftc/memberships/{teamId}_{uid}. No client write; reads by own uid, active teammates, a VERIFIED active admin (past roster), the platform owner.
+// =====================================================================================================================
+describe("programs/ftc/memberships/{teamId}_{uid} (additive, server-written)", () => {
+  const MP = (name: string) => programPath("ftc", name);
+  const ADMIN_T2 = "ftc-admin-b3"; // an FTC admin of team 2 (seeded by the practice describe above)
+  const LEAD = "ftc-lead-1"; // a member of team 1 that other tests seed
+  const PAST_T1 = "ftc-past-1";
+  const PAST_T2 = "ftc-past-2";
+  const NO_PROFILE = "ftc-noprofile-1"; // signed in, no profile in this program
+  const m = (teamId: string, uid: string, over: Record<string, unknown> = {}) => ({
+    uid,
+    teamId,
+    role: "match-scout",
+    roles: null,
+    secondaryRoles: [],
+    isAdmin: false,
+    isOwner: false,
+    fieldTeamIds: ["ft-1"],
+    name: uid,
+    status: "active",
+    origin: "pointer",
+    joinedAt: 1,
+    leftAt: null,
+    endedBy: null,
+    updatedAt: 1,
+    ...over,
+  });
+  const ids = (snap: { docs: { id: string }[] }) => snap.docs.map((d) => d.id).sort();
+  const col = (db: ReturnType<typeof as>) => collection(db, MP("memberships"));
+  const active = (db: ReturnType<typeof as>, team: string) => getDocs(query(col(db), where("teamId", "==", team), where("status", "==", "active")));
+  const past = (db: ReturnType<typeof as>, team: string) => getDocs(query(col(db), where("teamId", "==", team), where("status", "==", "past")));
+  const mine = (db: ReturnType<typeof as>, uid: string) => getDocs(query(col(db), where("uid", "==", uid)));
+  const owner = () => testEnv.authenticatedContext("ftc-platform-owner", { platformOwner: true }).firestore();
+  const anon = () => testEnv.unauthenticatedContext().firestore();
+
+  beforeAll(async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore();
+      const put = (x: ReturnType<typeof m>) => setDoc(doc(db, MP("memberships"), `${x.teamId}_${x.uid}`), x);
+      await put(m(T1, SCOUT));
+      await put(m(T1, LEAD, { isAdmin: true, origin: "pointer" })); // an admin by pointer only
+      await put(m(T1, ADMIN, { isAdmin: true, origin: "verified" })); // a verified admin of team 1
+      await put(m(T1, PIT));
+      await put(m(T1, PAST_T1, { status: "past", leftAt: 5, endedBy: "self" }));
+      await put(m(T2, OTHER));
+      await put(m(T2, ADMIN_T2, { isAdmin: true, origin: "verified" }));
+      await put(m(T2, PAST_T2, { status: "past", leftAt: 6, endedBy: "admin" }));
+      await put(m(T2, SCOUT, { status: "past", leftAt: 7, endedBy: "self" })); // the team-1 scout once belonged to team 2
+      // a verified admin who has LEFT team 1, and a verified member (not an admin) of team 1: neither opens the past roster
+      await put(m(T1, "ftc-ended-admin", { isAdmin: true, origin: "verified", status: "past", leftAt: 8 }));
+      await put(m(T1, "ftc-verified-member", { isAdmin: false, origin: "verified" }));
+      // the stored uid is not the id's uid: cannot prove admin
+      await setDoc(doc(db, MP("memberships"), `${T1}_ftc-id-spoof`), m(T1, ADMIN, { isAdmin: true, origin: "verified" }));
+    });
+  });
+
+  describe("no client write at all", () => {
+    it("a user cannot create a membership: their own, in a team they are not on, or anyone's", async () => {
+      await assertFails(setDoc(doc(as(SCOUT), MP("memberships"), `${T1}_new-1`), m(T1, SCOUT)));
+      await assertFails(setDoc(doc(as(SCOUT), MP("memberships"), `${T2}_${SCOUT}x`), m(T2, SCOUT)));
+      await assertFails(setDoc(doc(as(NO_PROFILE), MP("memberships"), `${T1}_${NO_PROFILE}`), m(T1, NO_PROFILE, { isAdmin: true, origin: "verified" })));
+      await assertFails(addDoc(col(as(SCOUT)), m(T1, SCOUT)));
+    });
+    it("a user cannot change a role, the admin flag, the field teams, the origin or the status, or delete a membership", async () => {
+      const own = doc(as(SCOUT), MP("memberships"), `${T1}_${SCOUT}`);
+      await assertFails(updateDoc(own, { role: "lead-scout" }));
+      await assertFails(updateDoc(own, { isAdmin: true }));
+      await assertFails(updateDoc(own, { fieldTeamIds: ["ft-1", "ft-2"] }));
+      await assertFails(updateDoc(own, { origin: "verified" }));
+      await assertFails(updateDoc(doc(as(SCOUT), MP("memberships"), `${T2}_${SCOUT}`), { status: "active" }));
+      await assertFails(deleteDoc(own));
+    });
+    it("not even a team admin, a verified admin or the platform owner can write", async () => {
+      await assertFails(updateDoc(doc(as(ADMIN), MP("memberships"), `${T1}_${SCOUT}`), { role: "lead-scout" }));
+      await assertFails(setDoc(doc(as(ADMIN), MP("memberships"), `${T1}_new-2`), m(T1, "new-2")));
+      await assertFails(deleteDoc(doc(as(ADMIN), MP("memberships"), `${T1}_${SCOUT}`)));
+      await assertFails(updateDoc(doc(owner(), MP("memberships"), `${T1}_${SCOUT}`), { role: "x" }));
+    });
+    it("the pointer, the roles and the admin flags on the user document stay locked against self-writes (the FTC pointer cannot be forged)", async () => {
+      await assertFails(updateDoc(doc(as(SCOUT), MP("users"), SCOUT), { teamId: T2 }));
+      await assertFails(updateDoc(doc(as(SCOUT), MP("users"), SCOUT), { isAdmin: true }));
+      await assertFails(updateDoc(doc(as(SCOUT), MP("users"), SCOUT), { primaryRole: "team-coach" }));
+    });
+  });
+
+  describe("reads", () => {
+    it("a member reads their own memberships (the `uid ==` query), active and past", async () => {
+      expect(ids(await assertSucceeds(mine(as(SCOUT), SCOUT)))).toEqual([`${T1}_${SCOUT}`, `${T2}_${SCOUT}`]);
+      await assertSucceeds(getDoc(doc(as(SCOUT), MP("memberships"), `${T2}_${SCOUT}`)));
+    });
+    it("a person with NO profile in this program can still read their own memberships, and none of anyone else's", async () => {
+      expect(ids(await assertSucceeds(mine(as(NO_PROFILE), NO_PROFILE)))).toEqual([]);
+      await assertFails(mine(as(NO_PROFILE), SCOUT));
+    });
+    it("no one can query somebody else's memberships by uid", async () => {
+      await assertFails(mine(as(SCOUT), LEAD));
+      await assertFails(mine(as(ADMIN), SCOUT));
+    });
+    it("a teammate reads the ACTIVE roster of their own team and not another team's", async () => {
+      expect(ids(await assertSucceeds(active(as(SCOUT), T1)))).toEqual([`${T1}_${ADMIN}`, `${T1}_ftc-id-spoof`, `${T1}_${LEAD}`, `${T1}_${PIT}`, `${T1}_${SCOUT}`, `${T1}_ftc-verified-member`]);
+      await assertFails(active(as(SCOUT), T2));
+      await assertFails(active(as(OTHER), T1));
+      await assertFails(getDoc(doc(as(SCOUT), MP("memberships"), `${T2}_${OTHER}`)));
+      await assertSucceeds(getDoc(doc(as(SCOUT), MP("memberships"), `${T1}_${PIT}`)));
+    });
+    it("a person with no profile reads no team's roster", async () => {
+      await assertFails(active(as(NO_PROFILE), T1));
+      await assertFails(past(as(NO_PROFILE), T1));
+    });
+    it("signed out cannot read anything", async () => {
+      await assertFails(active(anon(), T1));
+      await assertFails(getDoc(doc(anon(), MP("memberships"), `${T1}_${SCOUT}`)));
+    });
+    it("the platform owner reads active and past rosters of any team", async () => {
+      expect(ids(await assertSucceeds(past(owner(), T2)))).toEqual([`${T2}_${PAST_T2}`, `${T2}_${SCOUT}`]);
+      await assertSucceeds(active(owner(), T1));
+    });
+    it("an FRC (root) account is not on any FTC team: it reads no FTC roster", async () => {
+      await assertFails(active(as("a-root-only-account"), T1));
+    });
+  });
+
+  describe("the past roster (`teamId ==` + `status == past`)", () => {
+    it("a non-admin member cannot read it", async () => {
+      await assertFails(past(as(SCOUT), T1));
+      await assertFails(past(as(PIT), T1));
+    });
+    it("an admin whose membership is only pointer-origin cannot read it (nor can an admin by user document alone)", async () => {
+      await assertFails(past(as(LEAD), T1)); // isAdmin on a pointer-origin membership
+      await assertFails(past(as(ADMIN_T2), T1)); // isAdmin on the user document, another team
+    });
+    it("a verified ACTIVE admin of the team can read it, and only the past rows", async () => {
+      expect(ids(await assertSucceeds(past(as(ADMIN), T1)))).toEqual([`${T1}_ftc-ended-admin`, `${T1}_${PAST_T1}`]);
+      expect(ids(await assertSucceeds(past(as(ADMIN_T2), T2)))).toEqual([`${T2}_${PAST_T2}`, `${T2}_${SCOUT}`]);
+    });
+    it("an admin of team A cannot read team B's past members", async () => {
+      await assertFails(past(as(ADMIN), T2));
+      await assertFails(past(as(ADMIN_T2), T1));
+    });
+    it("a user who never belonged, or who left, cannot read the team's past roster", async () => {
+      await assertFails(past(as(NO_PROFILE), T2));
+      await assertFails(past(as(SCOUT), T2)); // the team-1 scout left team 2
+      await assertFails(past(as("ftc-ended-admin"), T1)); // a verified admin whose membership ended
+      await assertFails(past(as("ftc-verified-member"), T1)); // verified but not an admin
+    });
+    it("the admin test compares the stored uid, not the document id", async () => {
+      await assertFails(past(as("ftc-id-spoof"), T1));
+    });
+  });
+});
