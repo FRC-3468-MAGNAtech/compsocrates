@@ -75,7 +75,7 @@ export function EntryCard({
           <motion.div id={bodyId} key="body" initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={spring} className="overflow-hidden">
             <div className="flex flex-col gap-4 pt-4">
               {groups.map((group) => (
-                <section key={group.category} className="flex flex-col gap-2">
+                <section key={group.category} className={cn("flex flex-col gap-2", typeMeta(group.category).box)}>
                   <ChangePill type={group.category} className="self-start" />
                   <ul className="flex flex-col gap-1.5">
                     {group.items.map((item, i) => {

@@ -307,7 +307,7 @@ export function filterPlatformEntries(entries: readonly PlatformEntry[], filter:
 
 /** How many entries have at least one item of each category (for the filter chips). */
 export function countByCategory(entries: readonly PlatformEntry[]): Record<ChangeType, number> {
-  const counts: Record<ChangeType, number> = { new: 0, improved: 0, fixed: 0, removed: 0 };
+  const counts: Record<ChangeType, number> = { note: 0, new: 0, improved: 0, fixed: 0, removed: 0 };
   for (const e of entries) for (const c of new Set(e.items.map((i) => i.category))) counts[c] += 1;
   return counts;
 }

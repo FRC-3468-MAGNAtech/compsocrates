@@ -52,6 +52,18 @@ describe("the changelog entry card", () => {
     expect(render({ ...entry, status: "draft" }, { showDraftNote: true })).toContain("Draft");
   });
 
+  it("shows Notes first, in their own violet box, and no box on the other sections", () => {
+    const withNotes: PlatformEntry = {
+      ...entry,
+      items: [{ category: "new", text: "A shared item" }, { category: "note", text: "You are likely to find bugs" }, { category: "note", text: "Another heads-up" }],
+    };
+    const html = render(withNotes);
+    expect(html.indexOf("Notes")).toBeLessThan(html.indexOf("New"));
+    expect(html.indexOf("You are likely to find bugs")).toBeLessThan(html.indexOf("A shared item"));
+    expect(html.match(/border-violet-400\/30 bg-violet-500\/10 p-3/g)?.length).toBe(1); // only the notes section is boxed
+    expect(render(entry)).not.toContain("bg-violet-500/10 p-3");
+  });
+
   it("omits the version badge when an entry has none", () => {
     const html = render({ ...entry, version: "" });
     expect(html).toContain("Synthetic release");

@@ -96,21 +96,22 @@ describe("filtering", () => {
   });
 
   it("counts entries per change type", () => {
-    expect(countByType([e1, e2])).toEqual({ new: 1, improved: 0, fixed: 1, removed: 1 });
+    expect(countByType([e1, e2])).toEqual({ note: 0, new: 1, improved: 0, fixed: 1, removed: 1 });
   });
 });
 
 describe("groupChanges / initiallyExpanded", () => {
-  it("groups in New, Improved, Fixed, Removed order and drops empty groups", () => {
+  it("groups in Notes, New, Improved, Fixed, Removed order and drops empty groups", () => {
     const groups = groupChanges([
       { type: "removed", text: "r" },
+      { type: "note", text: "heads-up" },
       { type: "new", text: "n1" },
       { type: "fixed", text: "f" },
       { type: "new", text: "n2" },
     ]);
-    expect(groups.map((g) => g.type)).toEqual(["new", "fixed", "removed"]);
-    expect(groups[0].items.map((i) => i.text)).toEqual(["n1", "n2"]);
-    expect(CHANGE_TYPES.map((t) => t.id)).toEqual(["new", "improved", "fixed", "removed"]);
+    expect(groups.map((g) => g.type)).toEqual(["note", "new", "fixed", "removed"]);
+    expect(groups[1].items.map((i) => i.text)).toEqual(["n1", "n2"]);
+    expect(CHANGE_TYPES.map((t) => t.id)).toEqual(["note", "new", "improved", "fixed", "removed"]);
   });
 
   it("starts the newest two expanded", () => {

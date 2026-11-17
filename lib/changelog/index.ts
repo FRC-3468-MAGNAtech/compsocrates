@@ -4,10 +4,14 @@ import { findUnsafeLinks, richTextToPlain } from "@/lib/rich-text";
 // starter drafts are seed.ts. Nothing here touches Firebase, so all of it is
 // unit tested.
 
-export type ChangeType = "new" | "improved" | "fixed" | "removed";
+export type ChangeType = "note" | "new" | "improved" | "fixed" | "removed";
 
-/** The four kinds of change, in display order, each with a colour-coded pill and bullet. */
-export const CHANGE_TYPES: { id: ChangeType; label: string; pill: string; bullet: string }[] = [
+/**
+ * The kinds of item, in display order, each with a colour-coded pill and bullet. "Notes" come first: a heads-up to read before the changes (for
+ * example "you are likely to find bugs"), not a change. `box` is an optional tinted frame for the section's list, so a type can stand out.
+ */
+export const CHANGE_TYPES: { id: ChangeType; label: string; pill: string; bullet: string; box?: string }[] = [
+  { id: "note", label: "Notes", pill: "bg-violet-500/15 text-violet-300 border border-violet-400/30", bullet: "bg-violet-400", box: "rounded-xl border border-violet-400/30 bg-violet-500/10 p-3" },
   { id: "new", label: "New", pill: "bg-emerald-500/15 text-emerald-300 border border-emerald-400/30", bullet: "bg-emerald-400" },
   { id: "improved", label: "Improved", pill: "bg-sky-500/15 text-sky-300 border border-sky-400/30", bullet: "bg-sky-400" },
   { id: "fixed", label: "Fixed", pill: "bg-amber-500/15 text-amber-300 border border-amber-400/30", bullet: "bg-amber-400" },
@@ -141,14 +145,14 @@ export function filterEntries(entries: ChangelogEntry[], filter: ChangelogFilter
   return entries.filter((e) => entryMatches(e, filter));
 }
 
-/** Changes grouped by type in display order (New, Improved, Fixed, Removed), skipping empty groups. */
+/** Changes grouped by type in display order (Notes, New, Improved, Fixed, Removed), skipping empty groups. */
 export function groupChanges(changes: ChangeItem[]): { type: ChangeType; items: ChangeItem[] }[] {
   return CHANGE_TYPE_IDS.map((type) => ({ type, items: changes.filter((c) => c.type === type) })).filter((g) => g.items.length > 0);
 }
 
 /** How many entries have at least one change of each type (for the filter chips). */
 export function countByType(entries: ChangelogEntry[]): Record<ChangeType, number> {
-  const counts: Record<ChangeType, number> = { new: 0, improved: 0, fixed: 0, removed: 0 };
+  const counts: Record<ChangeType, number> = { note: 0, new: 0, improved: 0, fixed: 0, removed: 0 };
   for (const e of entries) for (const t of new Set(e.changes.map((c) => c.type))) counts[t] += 1;
   return counts;
 }
