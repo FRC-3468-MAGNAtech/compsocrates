@@ -83,7 +83,7 @@ Harmless to CS (it ignores them) but not part of CS's schema. Drop them if the s
 - `teams/{id}`: `selectedEventNames` (`{ [eventKey]: name }`, written by Event Select beside `selectedEvents` with a merge write so event names survive a data-API outage; read in `data/cs/teams.ts`, the "stored" step of the name chain in `lib/events/names.ts`).
 - `teams/{id}` (FRC) and `programs/ftc/teams/{id}` (FTC): `archivedEvents` (`string[]` of event codes, Session D; written by Event Select with a merge write / `updateDoc` of that one field, admins and owners only; read in `data/cs/teams.ts` and `data/ftc/teams.ts`). Archived codes stay in `selectedEvents`; only the event pickers skip them. No data read is filtered by it.
 - `teams/{id}` (FRC) and the second program's team doc: `formSubmissionSettings` (`{ enabled: boolean, seasons: { [seasonId]: boolean }, updatedBy?: { uid, name }, updatedAtMs?: number }`, Session E; written by Admin Panel > Form Submissions with a merge write / `updateDoc` of that one field, admins and owners by the rules). Missing means every form is open. A client-side control: the rules do not enforce it (`lib/forms/submission-guard.ts`).
-- `appSettings/global`: `adminsSeeAllProfiles` (boolean, Session G; written only by the platform-owner route `/api/admin/admins-see-profiles`; missing means on; read by the profile rules and `/api/public/config`).
+- `appSettings/global`: `adminsSeeAllProfiles` (boolean, Session G; written only by the platform-owner route `/api/admin/admins-see-profiles`; missing means ON; read by the profile rules and `/api/public/config`), `teamCreationEnabled` (missing = OFF, Session I: reading it never writes) and `avatarUploadsEnabled` (missing = OFF, Session I: uploads only when explicitly `true`). The owner sets the last two by hand before release.
 - `changelog/{id}` (FRC): `legacy` (boolean, Session G; set only by `scripts/import-cs-changelog.ts` and kept by edits; legacy entries list below the current ones and never light the unread dot).
 - `scoutingFlagStates`: `manualReasonText` and `manualNoteText` (the extra manual-flag reason and note).
 - Entries and form docs: `stickyNotes` (and `linkedEntryId`, `planDifferences` where a form has them); `alliance` on match-strategy plan and drive-reflection docs; `eventKey` on helper docs; `teleop.humanPlayerFuelByShift` on REBUILT entries (D8).
@@ -96,21 +96,18 @@ Harmless to CS (it ignores them) but not part of CS's schema. Drop them if the s
 
 ## Program merge (docs/MERGE_PLAN.md)
 - **FTC program status** (D22; the connected paths are `connection.paths` in `config/programs/ftc.ts`; `pagesConnected` is true and any other path shows `UnconnectedPage`). Shared pages reach FTC data through the port (`lib/program/data.ts`, `lib/ftc/program-data.ts`, over `data/ftc/`) or a store that builds its path with `programPath`.
-  - **Connected:**
-    - Scouting: the scout page, Active Events, Match List, Assignments (match, pit and team-strategy schedules: publish, undo and slot edits for an admin or lead scout; the shell's assignment watcher and the scout page prompt are on).
-    - Forms: the six other form pages and their analytics tables.
-    - People and team: Dashboard, My Scouting, People, Team Management, Account, Profile, Credits.
-    - Analytics: Match Scout, Pick List, Scout Status, Match Breakdown, Teams (team profile), Team Averages, Team Breakdown, Rankings.
-    - Features on: `assignments`, `pickList`.
-  - **Not connected (shows the notice):**
-    - Scout Accuracy and Practice Scouting (no FTC data layer).
-    - The single-event page `/events/[eventKey]` (its season is derived from the FRC key prefix).
-    - Team Settings (field teams, active forms) and Admin.
-    - Changelog: its starter entries describe the FRC app, so FTC needs its own seed text, and the `users` rule must allow `lastSeenChangelogAt`.
-    - Features off, so the parts they cover are hidden: sub-ins, practice, live, library, accuracy (post-save accuracy, "Recalculate Accuracy"), CSV import, changelog, applications, join requests, announcements, event lookup.
-    - The six FRC-only pages stay greyed out (listed below).
+  - **Connected** (the list is `connection.paths` in `config/programs/ftc.ts`; the 2026-11-16 re-check matches it; any other path shows `UnconnectedPage`):
+    - Scouting: Scout, Event, Assignments, Match List, Practice Scouting, Scout Accuracy.
+    - Forms: Lead Scout, Pit Scout, Team Strategy, Match Strategy, Drive Reflection and Helper forms, and their analytics tables.
+    - People and team: Dashboard, My Scouting, People, Account, Profile, Achievements, Credits, Team Management, Team Settings, Admin Panel, Changelog.
+    - Analytics: the hub, Match Scout, Pick List, Match Breakdown, Teams, Scout Status, Team Averages, Team Breakdown, Rankings, Performance Reliability, Robot Radar; and the single-event page `/events/[eventKey]`.
+    - Features on: assignments, practice, live, lobby, library, pickList, accuracy, csvImport, changelog, joinRequests, eventLookup.
+  - **Not connected or off:**
+    - Features off, so the parts they cover are hidden: sub-ins, applications, announcements.
+    - Greyed-out (`FTC_UNAVAILABLE_PATHS`, FRC-only pages): Accuracy Compare, Accuracy Verification, Match Prediction, Judge Book.
+    - Admin tabs FTC does not list: Entries, the two ID tools, Setup Check, Team Applications, Template Review, Recovery.
   - **Known gaps:**
-    - Setup (Session A, `docs/SESSION_A_RESULTS.md`): an FTC person with no profile now gets a create-a-team / request-to-join screen in the gate (`components/program/team-setup.tsx`, port `enrollment`). Not built: the approval of a join request (needs a rule letting a team admin create the applicant's profile, plus a Team Management panel; `features.joinRequests` stays off), showing a pending request again after a reload, adding more teams to an account from Settings, and any announcement UI. Team creation has no `appSettings` gate (the FTC rules and code never used one).
+    - Setup (Session A, `docs/SESSION_A_RESULTS.md`): an FTC person with no profile now gets a create-a-team / request-to-join screen in the gate (`components/program/team-setup.tsx`, port `enrollment`). Not built: the approval of a join request (needs a rule letting a team admin create the applicant's profile, plus a Team Management panel; `features.joinRequests` stays off), showing a pending request again after a reload, adding more teams to an account from Settings, and any announcement UI. Team creation (Session I, beta): the setup screen and the FTC rules now honor `appSettings/global.teamCreationEnabled` (missing = closed; one shared card state, `creationMode` in `lib/team-setup.ts`; rule `ftc_teamCreationOpen`). The FRC root rules are unchanged and still allow a client team create and a self-write of `users.teamId` (inherited CS-OPEN).
     - Multi-team: the switcher and `lib/our-team.ts` work (`accountTeams`, `assignedTeamIds`). Not built: adding, renaming or removing an account's teams and assigning members (Settings), filtering events or entries by the selected team (entries belong to the account, not a team), and a check against real multi-team accounts.
     - A failed read in the shared hooks still shows an empty list (reported to the console; the port passes the `FirestoreFailure` through for a page to show).
     - Event and team names, schedules, match pickers and photos need FTC Events API credentials and Blob config; without them the pickers fall back to manual entry.
@@ -154,3 +151,4 @@ Harmless to CS (it ignores them) but not part of CS's schema. Drop them if the s
 - Session 9 (additive fields on `platformChangelog/{id}`, none on existing documents): `postedAt` (epoch ms; null = cleared by the owner), `editedAt`, `editedBy` (uid). New audit details on `platformAuditLog`: `times {before, after}` and `date {before, after}` (shapes in `docs/SESSION9_RESULTS.md`). No rule change.
 - Session 7 left for later: accounts with no team still land on the apply-to-team screen inside the program shell (the data and components do not need a team; routing is a later session); dead pure helpers in `lib/changelog/index.ts` (the old per-team entry model) could be trimmed.
 - Session 8 (additive, written only by Admin SDK routes, no rules): `users/{uid}` (and the other program's user doc) `avatarUrl`, `avatarBlobPath`, `avatarSource`; `appSettings/global.avatarUploadsEnabled`; `{prefix}teams/{id}/achievementConfig/main`; audit actions `edit-achievements`, `remove-member-photo`. Shapes and the left-for-later list in `docs/SESSION8_RESULTS.md`.
+- Session I (release prep, branch `release-prep`): defaults and the FTC creation gate above; `docs/SESSION_I_RESULTS.md`, `docs/GO_LIVE_CHECKLIST.md`, `docs/SMOKE_TEST.md`. FRC team creation and the FRC self-write of `users.teamId` stay open at the rules level; tightening them is the first post-release rules task.
