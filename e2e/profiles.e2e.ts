@@ -20,6 +20,10 @@ async function expectNoHorizontalScroll(page: Page) {
 
 const saves = (page: Page) => page.evaluate(() => window.__saves ?? []);
 
+// Built-in achievement ids (lib/achievements/builtins.ts). On the fixture Ada has earned six of the eight; "10 Sessions" is the closest (6 of 10).
+const EARNED_BADGES = ["first-session", "perfect-session", "excellent", "streak", "event-veteran", "perfect-alliance"];
+const UNEARNED_BADGES = ["ten-sessions", "fifty-sessions"];
+
 test.describe("a public profile, seen by a teammate", () => {
   test("shows the header, accuracy, practice, events, target and achievements", async ({ page }, info) => {
     await open(page, "?viewer=teammate");
@@ -70,9 +74,14 @@ test.describe("a public profile, seen by a teammate", () => {
     await expect(target).toContainText("3 of 6 · 50%");
     await expect(target.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "50");
 
-    // achievements: computed from one config; earned ones lit, the rest dimmed
-    for (const id of ["first-session", "perfect-session", "excellent", "streak", "event-veteran", "perfect-alliance"]) await expect(page.getByTestId(`badge-${id}`)).toHaveAttribute("data-earned", "true");
-    for (const id of ["ten-sessions", "fifty-sessions"]) await expect(page.getByTestId(`badge-${id}`)).toHaveAttribute("data-earned", "false");
+    // achievements: computed from one config; a teammate (full access) sees the EARNED ones only. No tile for an unearned one, no progress, no count.
+    for (const id of EARNED_BADGES) await expect(page.getByTestId(`badge-${id}`)).toHaveAttribute("data-earned", "true");
+    await expect(page.getByTestId("profile-badges").locator("li")).toHaveCount(EARNED_BADGES.length);
+    for (const id of UNEARNED_BADGES) await expect(page.getByTestId(`badge-${id}`)).toHaveCount(0);
+    await expect(page.getByTestId("profile-next-achievement")).toHaveCount(0);
+    await expect(page.getByTestId("profile-achievements").getByRole("progressbar")).toHaveCount(0);
+    await expect(page.getByTestId("profile-achievements")).not.toContainText("Next up");
+    await expect(page.getByTestId("profile-achievements")).not.toContainText(/\d+ of \d+/);
 
     await expectNoHorizontalScroll(page);
     await page.screenshot({ path: `${SHOTS}/profile-public-${info.project.name}.png`, fullPage: true });
@@ -117,7 +126,9 @@ test.describe("a private profile", () => {
     await expect(card).toContainText("Ada Lovelace"); // the account name; the display name lives in the profile they can't read
     await expect(card).toContainText("Match Scout");
     await expect(card).toContainText("This profile is private");
-    for (const id of ["profile-header", "profile-bio", "profile-pronouns", "profile-activity", "profile-accuracy-trial", "profile-badges", "profile-events"]) await expect(page.getByTestId(id)).toHaveCount(0);
+    for (const id of ["profile-header", "profile-bio", "profile-pronouns", "profile-activity", "profile-accuracy-trial", "profile-badges", "profile-events", "profile-achievements", "profile-next-achievement", "profile-no-badges"]) await expect(page.getByTestId(id)).toHaveCount(0);
+    for (const id of [...EARNED_BADGES, ...UNEARNED_BADGES]) await expect(page.getByTestId(`badge-${id}`)).toHaveCount(0); // a limited viewer sees no badges at all
+    await expect(page.getByRole("progressbar")).toHaveCount(0);
     const html = await page.content();
     for (const secret of ["Counts everything twice", "she/her", "Ada L.", "Pit Scout", "Bonney Lake"]) expect(html).not.toContain(secret);
     await expectNoHorizontalScroll(page);
@@ -168,6 +179,22 @@ test.describe("your own profile", () => {
     // a teammate with a refused read still gets the limited card
     await open(page, "?viewer=teammate&private=1&denied=1");
     await expect(page.getByTestId("profile-limited")).toBeVisible();
+  });
+
+  test("the owner sees the earned badges, the count and a progress bar for the closest unearned one (and no tile for the unearned ones)", async ({ page }) => {
+    await open(page, "?viewer=self");
+    const section = page.getByTestId("profile-achievements");
+    await expect(section).toContainText(`${EARNED_BADGES.length} of ${EARNED_BADGES.length + UNEARNED_BADGES.length}`);
+    for (const id of EARNED_BADGES) await expect(page.getByTestId(`badge-${id}`)).toHaveAttribute("data-earned", "true");
+    await expect(page.getByTestId("profile-badges").locator("li")).toHaveCount(EARNED_BADGES.length);
+    for (const id of UNEARNED_BADGES) await expect(page.getByTestId(`badge-${id}`)).toHaveCount(0);
+    const next = page.getByTestId("profile-next-achievement");
+    await expect(next).toContainText("Next up: 10 Sessions");
+    await expect(next).toContainText("6 / 10 sessions");
+    const bar = next.getByRole("progressbar");
+    await expect(bar).toHaveAttribute("aria-valuenow", "6");
+    await expect(bar).toHaveAttribute("aria-valuemax", "10");
+    await expectNoHorizontalScroll(page);
   });
 
   test("a public profile previews as the full page, and your own empty bio invites you to write one", async ({ page }) => {
