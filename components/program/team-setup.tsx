@@ -5,6 +5,9 @@ import { useAuth } from "@/lib/auth";
 import { ApiError } from "@/lib/api-client";
 import { useProgramConfig } from "@/lib/program/context";
 import { useProgramData } from "@/lib/program/data";
+import { useProgram } from "@/lib/program/context";
+import { friendlyMembershipError } from "@/lib/memberships/strings";
+import { membershipApi, useMembershipsEnabled } from "@/lib/memberships/client";
 import { TeamSetupCard } from "@/components/auth/team-setup-card";
 import { fetchTeamCreationEnabled } from "@/lib/team-enrollment";
 import { creationMode } from "@/lib/team-setup";
@@ -18,10 +21,13 @@ const isDenied = (err: unknown) => (err as { code?: string } | null)?.code === "
  * a new team and the person's profile through the port. When the profile is written, the shell's own subscription picks it up and replaces this
  * screen, so nothing here navigates.
  */
-export function TeamSetup() {
+export function TeamSetup({ hasProfile = false }: { hasProfile?: boolean } = {}) {
   const config = useProgramConfig();
   const data = useProgramData();
+  const program = useProgram();
   const { user } = useAuth();
+  // Memberships (kill switch): ON, a join goes through the program-aware route, and the card asks about the code first (a team may let joiners pick a role).
+  const memberships = useMembershipsEnabled();
   const [sentTo, setSentTo] = useState<string | null>(null);
   // The same switch FRC's setup screen reads (appSettings/global.teamCreationEnabled, through the public config route): off, the Create tab says applications
   // are not open yet. The program's Firestore rules enforce it too (team create).
@@ -56,9 +62,21 @@ export function TeamSetup() {
     <TeamSetupCard
       programLabel={label}
       greeting={user.displayName ? `Hi, ${user.displayName}` : undefined}
-      creation={creationMode(creationEnabled, config.connection.features.applications)}
+      // A person who left their only team still has a profile, and the program's rules only let a client create a team (with its profile, in one batch) when there is no
+      // profile yet: so they join with a code, and creating a team goes through an application (no Create tab here).
+      creation={hasProfile ? "none" : creationMode(creationEnabled, config.connection.features.applications)}
       defaultName={user.displayName ?? (user.email ?? "").split("@")[0] ?? ""}
-      onJoin={async ({ code, name }) => {
+      joinLookup={memberships ? (code) => membershipApi.joinLookup(program, code) : undefined}
+      onJoin={async ({ code, name, role }) => {
+        if (memberships) {
+          try {
+            await membershipApi.requestJoin(program, { code, name, ...(role ? { requestedRole: role } : {}) });
+          } catch (err) {
+            throw new Error(friendlyMembershipError(err));
+          }
+          setSentTo(code);
+          return;
+        }
         try {
           await enrollment.requestToJoin(code, { uid: user.uid, name });
         } catch (err) {

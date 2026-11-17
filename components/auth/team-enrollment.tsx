@@ -12,6 +12,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cardEntranceVariants } from "@/lib/motion";
 import { useAuth } from "@/lib/auth";
+import { useProgram } from "@/lib/program/context";
+import { friendlyMembershipError } from "@/lib/memberships/strings";
+import { membershipApi, useMembershipsEnabled } from "@/lib/memberships/client";
 import { createTeam, fetchTeamCreationEnabled, joinTeam, syncRoles, type JoinRequestResult } from "@/lib/team-enrollment";
 import { cancelJoinRequest, fetchTeamLabel, useMyJoinRequests } from "@/lib/join-requests-client";
 import { isFallbackCodeLabel, type JoinRequest } from "@/data/cs/join-requests";
@@ -259,6 +262,9 @@ export function TeamEnrollmentScreen({
   const router = useRouter();
   const { profile, user } = useAuth();
   const enrollment = useTeamEnrollment();
+  const program = useProgram();
+  // Memberships (kill switch): ON, a join goes through the program-aware route and the card asks about the code first (a team may let joiners pick a role).
+  const memberships = useMembershipsEnabled();
   const { requests, loaded: requestsLoaded } = useMyJoinRequests(user?.uid ?? null);
   // P20: anyone who has applied sees their Application status here whenever they sign in, instead of the join form.
   const { applications, loaded: applicationsLoaded } = useMyApplications(user?.uid ?? null);
@@ -292,8 +298,17 @@ export function TeamEnrollmentScreen({
   }, [approvedUnsynced, hasTeam]);
 
   // What happens on submit, for the shared setup card (components/auth/team-setup-card.tsx): a join request, or a new team.
-  const handleJoin = async ({ code, name }: { code: string; name: string }) => {
+  const handleJoin = async ({ code, name, role }: { code: string; name: string; role?: RoleId }) => {
     setNotice(null);
+    if (memberships) {
+      try {
+        const sent = await membershipApi.requestJoin(program, { code, name, ...(role ? { requestedRole: role } : {}) });
+        setJustRequested({ id: sent.requestId, teamId: sent.teamId, label: sent.teamId, role: role ?? DEFAULT_ROLE_ID, atMs: Date.now() });
+      } catch (err) {
+        throw new Error(friendlyMembershipError(err));
+      }
+      return;
+    }
     const requested = await joinTeam(code, { name });
     setJustRequested({ id: requested.requestId, teamId: requested.teamId, label: requested.teamLabel, role: DEFAULT_ROLE_ID, atMs: Date.now() });
   };
@@ -384,6 +399,7 @@ export function TeamEnrollmentScreen({
       defaultName={user?.displayName ?? (user?.email ?? "").split("@")[0] ?? ""}
       notice={notice ?? (lastClosed ? (lastClosed.status === "denied" ? "Your last join request was denied. Check the code with your team admin and try again." : "You canceled your last join request.") : null)}
       onJoin={handleJoin}
+      joinLookup={memberships ? (code) => membershipApi.joinLookup(program, code) : undefined}
       onCreate={handleCreate}
       onApply={() => router.push("/apply")}
     />,

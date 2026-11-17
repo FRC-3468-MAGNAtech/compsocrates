@@ -45,3 +45,28 @@ describe("TeamSetupCard (the one setup screen of both programs)", () => {
     expect(html(<TeamSetupCard {...props({ programLabel: undefined })} />)).toContain("Set up your team");
   });
 });
+
+describe("TeamSetupCard for a person who already has (or had) a team (memberships build 2)", () => {
+  it("creation 'none' is joining only: no Create tab, the same join form, in both programs alike", () => {
+    const a = html(<TeamSetupCard {...props({ programLabel: "AAA", creation: "none" })} />).replaceAll("AAA", "<label>");
+    const b = html(<TeamSetupCard {...props({ programLabel: "BBB", creation: "none" })} />).replaceAll("BBB", "<label>");
+    expect(a).toBe(b);
+    expect(a).not.toContain("Create a team");
+    expect(a).not.toContain("Apply to create a team");
+    expect(a).toContain("Team join code");
+    expect(a).toContain("Send request");
+  });
+
+  it("a heading and description may replace the setup wording (Join another team)", () => {
+    const out = html(<TeamSetupCard {...props({ creation: "none", heading: "Join another team", description: "Ask with a code." })} />);
+    expect(out).toContain("Join another team");
+    expect(out).toContain("Ask with a code.");
+    expect(out).not.toContain("Set up your");
+  });
+
+  it("without a code lookup (switch OFF) the join form is exactly as before: no role select", () => {
+    const out = html(<TeamSetupCard {...props()} />);
+    expect(out).not.toContain("join-role-choice");
+    expect(out).not.toContain("Your role on this team");
+  });
+});

@@ -12,7 +12,12 @@ import { useAuth } from "@/lib/auth";
 import type { FirestoreFailure } from "@/lib/firestore-errors";
 import { approveJoinRequest, denyJoinRequest, usePendingJoinRequests } from "@/lib/join-requests-client";
 import { useProgramData } from "@/lib/program/data";
-import { getRole } from "@/lib/roles";
+import { DEFAULT_ROLE_ID, getRole, ROLES, type RoleId } from "@/lib/roles";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { isRequestableRole } from "@/lib/memberships/flows";
+import { membershipApi, useMembershipsEnabled } from "@/lib/memberships/client";
+import { friendlyMembershipError, MEMBERSHIP_TEXT } from "@/lib/memberships/strings";
+import { useProgram } from "@/lib/program/context";
 
 const fmt = (ms: number | null) => (ms && ms > 0 ? new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "recently");
 
@@ -36,7 +41,7 @@ function usePendingRows(teamId: string): { rows: Row[]; loaded: boolean; failure
     if (!port) return;
     return port.joinRequests.subscribePending(
       teamId,
-      (requests) => setPorted({ teamId, rows: requests.map((r) => ({ id: r.uid, name: r.name, email: "", roleId: null, requestedAtMs: r.requestedAtMs })), failure: null }),
+      (requests) => setPorted({ teamId, rows: requests.map((r) => ({ id: r.uid, name: r.name, email: "", roleId: r.requestedRole ?? null, requestedAtMs: r.requestedAtMs })), failure: null }),
       (failure) => setPorted({ teamId, rows: [], failure }) // already reported by the port
     );
   }, [port, teamId]);
@@ -53,19 +58,29 @@ function usePendingRows(teamId: string): { rows: Row[]; loaded: boolean; failure
  * Deny closes the request. Both ask first. Shown to team admins only; the server and the rules check it again. Realtime, so a request someone
  * else handles disappears here.
  */
-export function JoinRequestsPanel({ teamId }: { teamId: string }) {
+export function JoinRequestsPanel({ teamId, allowRoleChoice = false }: { teamId: string; /** The team's "let joiners choose their role" switch: when ON (and memberships are ON) the card shows the role asked for and lets the admin change it. */ allowRoleChoice?: boolean }) {
   const port = useProgramData();
+  const program = useProgram();
+  const memberships = useMembershipsEnabled();
   const { user } = useAuth();
+  const [chosen, setChosen] = useState<Record<string, RoleId>>({});
   const { rows, loaded, failure } = usePendingRows(teamId);
   const [pending, setPending] = useState<Pending>(null);
   const [busy, setBusy] = useState<Busy>(null);
   const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
 
+  // The role the admin will approve with (only used while memberships are ON and the team lets joiners choose): the one picked here, else the one asked for, else Match Scout.
+  const roleFor = (row: Row): RoleId => chosen[row.id] ?? (row.roleId && isRequestableRole(row.roleId) ? (row.roleId as RoleId) : DEFAULT_ROLE_ID);
+
   const act = async (row: Row, action: Action) => {
     setBusy({ id: row.id, action });
     setMessage(null);
     try {
-      if (port) {
+      if (memberships) {
+        // Memberships ON: one program-aware server route decides (it also checks the role: only a valid non-admin role, and only when the team lets joiners choose).
+        const res = await membershipApi.decide(program, { teamId, requestId: row.id, action, ...(action === "approve" && allowRoleChoice ? { role: roleFor(row) } : {}) });
+        setMessage({ kind: "ok", text: action === "approve" ? `${res.userName || row.name} has been added to the team.` : `Denied ${row.name}'s request.` });
+      } else if (port) {
         if (!user) throw new Error("Sign in again to decide this request.");
         if (action === "approve") await port.joinRequests.approve(teamId, { uid: row.id, name: row.name }, user.uid);
         else await port.joinRequests.deny(teamId, row.id, user.uid);
@@ -79,7 +94,7 @@ export function JoinRequestsPanel({ teamId }: { teamId: string }) {
       }
     } catch (err) {
       // One message for every program: the reason when there is one, else the usual causes.
-      const reason = err instanceof Error && err.message ? ` ${err.message}` : " It may have been handled already, or you may not be allowed to.";
+      const reason = memberships ? ` ${friendlyMembershipError(err, "It may have been handled already, or you may not be allowed to.")}` : err instanceof Error && err.message ? ` ${err.message}` : " It may have been handled already, or you may not be allowed to.";
       setMessage({ kind: "error", text: `Couldn't ${action === "approve" ? "approve" : "deny"} ${row.name}'s request.${reason}` });
     } finally {
       setBusy(null);
@@ -119,9 +134,25 @@ export function JoinRequestsPanel({ teamId }: { teamId: string }) {
                     <div className="truncate font-medium">{r.name}</div>
                     {(r.email || !port) && <div className="truncate text-xs text-[var(--muted-foreground)]">{r.email || "No email on file"}</div>}
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[var(--muted-foreground)]">
-                      {role && <Badge className={role.className}>{role.label}</Badge>}
+                      {role && <Badge className={role.className}>{memberships && allowRoleChoice ? `${MEMBERSHIP_TEXT.members.requestedRole}: ${role.label}` : role.label}</Badge>}
                       <span>Asked {fmt(r.requestedAtMs)}</span>
                     </div>
+                    {memberships && allowRoleChoice && (
+                      <div className="mt-2 max-w-[16rem]">
+                        <Select value={roleFor(r)} onValueChange={(v) => setChosen((c) => ({ ...c, [r.id]: v as RoleId }))} disabled={busy !== null}>
+                          <SelectTrigger aria-label={`Role for ${r.name}`} className="min-h-11">
+                            <SelectValue>{getRole(roleFor(r)).label}</SelectValue>
+                          </SelectTrigger>
+                          <SelectContent>
+                            {ROLES.filter((x) => isRequestableRole(x.id)).map((x) => (
+                              <SelectItem key={x.id} value={x.id} className="py-2.5">
+                                {x.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="flex shrink-0 gap-2">
@@ -145,7 +176,9 @@ export function JoinRequestsPanel({ teamId }: { teamId: string }) {
         description={
           pending?.action === "deny"
             ? "They will not join the team. They can send a new request later."
-            : "They join your team as a regular member. You can change their role afterwards in the member list."
+            : memberships && allowRoleChoice && pending
+              ? `They join your team as ${getRole(roleFor(pending.row)).label}. You can change their role afterwards in the member list.`
+              : "They join your team as a regular member. You can change their role afterwards in the member list."
         }
         confirmLabel={pending?.action === "deny" ? "Deny request" : "Approve request"}
         cancelLabel="Cancel"

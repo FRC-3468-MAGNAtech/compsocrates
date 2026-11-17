@@ -54,6 +54,8 @@ export type TeamDoc = {
   archivedEvents?: string[];
   /** ADDITIVE (Session E, both programs): the team's form-submission switches (master and per season). Absent: everything is open. See lib/forms/submission-settings.ts. */
   formSubmissionSettings?: FormSubmissionSettings;
+  /** ADDITIVE (memberships build 2, both programs): may people who ask to join pick a role? Default OFF (absent = off). The server decides again at approval and never grants an admin role. */
+  allowMemberRoleChoice?: boolean;
   /** D1: CS `submissionControls` as stored. Use `submissionLockout` to gate a new submission. */
   submissionControls?: CsSubmissionControls;
   /** D1: the lockout CS's `assertSubmissionsOpen` enforces on every NEW submission (edit mode bypasses it). */
@@ -162,6 +164,16 @@ export async function setFormSubmissionSettings(teamId: string, settings: FormSu
   const data = programData(program);
   if (data) return data.team.setFormSubmissionSettings(teamId, settings);
   await setDoc(doc(db, "teams", teamId), { formSubmissionSettings: settings }, { merge: true });
+}
+
+/**
+ * Memberships build 2: the team's "Let joiners choose their role" switch (ADDITIVE field `allowMemberRoleChoice`, merge write, nothing else on the team doc is touched).
+ * Team admins and owners only, by the rules and at the call site. A namespaced program writes its own team path through its data port.
+ */
+export async function setAllowMemberRoleChoice(teamId: string, value: boolean, program: ProgramId = DEFAULT_PROGRAM) {
+  const data = programData(program);
+  if (data) return data.team.setAllowMemberRoleChoice(teamId, value);
+  await setDoc(doc(db, "teams", teamId), { allowMemberRoleChoice: value }, { merge: true });
 }
 
 /** Single-event convenience over setActiveEvents() — replaces the whole selection with this one event (or clears it). */

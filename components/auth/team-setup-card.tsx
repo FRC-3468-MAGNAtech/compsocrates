@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { isRequestableRole } from "@/lib/memberships/flows";
+import { MEMBERSHIP_TEXT } from "@/lib/memberships/strings";
 
 type Mode = "join" | "create";
 
@@ -27,14 +29,23 @@ export type TeamSetupCardProps = {
    * "open": anyone may create a team. "apply": creating needs an application (the Create tab becomes "Apply to create a team" and goes on to it).
    * "closed": creating is switched off and there is no application to go on to (the Create tab shows a notice, nothing else). "loading": not known yet
    * (the Create tab waits). `creationMode` (lib/team-setup.ts) picks one from `appSettings/global.teamCreationEnabled`.
+   * "none": there is no Create tab at all (joining only: a person who already has, or had, a team here asking for another).
    */
-  creation: "open" | "apply" | "closed" | "loading";
+  creation: "open" | "apply" | "closed" | "loading" | "none";
   /** The name sent with a join request or a new team: the account's own name (shown in, and editable on, the join form). */
   defaultName: string;
+  /** Replaces the heading and the line under it (a person who already has a team asking to join another). */
+  heading?: string;
+  description?: string;
   /** A line above the form (for example, why the last request was closed). */
   notice?: string | null;
   /** Sends a join request. Throw an Error with the words to show if it fails. Resolve once it is sent; the caller then replaces the card. */
-  onJoin: (input: { code: string; name: string }) => Promise<void>;
+  onJoin: (input: { code: string; name: string; role?: RoleId }) => Promise<void>;
+  /**
+   * Memberships ON only: asks the server about a typed code BEFORE the request is sent (the server answers just `{ exists, allowsRoleChoice, alreadyMember, atLimit }`).
+   * When the team lets joiners choose, a role select appears and the person sends again. Absent (kill switch OFF): the join form is exactly as it always was.
+   */
+  joinLookup?: (code: string) => Promise<{ exists: boolean; allowsRoleChoice: boolean; alreadyMember: boolean; atLimit: boolean }>;
   /** Creates the team. Throw an Error with the words to show if it fails. Resolve once it is created; the caller then replaces the card. */
   onCreate: (input: { teamNumber: number; teamName: string; role: RoleId; name: string }) => Promise<void>;
   /** "apply" creation only: the person asked to go on to the application. */
@@ -48,13 +59,16 @@ export type TeamSetupCardProps = {
  * Create form is a team number, an optional team name and your role. Each program supplies only what happens on submit (`onJoin`, `onCreate`), so
  * the two screens cannot drift apart. Created teams ask for no location here.
  */
-export function TeamSetupCard({ programLabel, greeting, creation, defaultName, notice, onJoin, onCreate, onApply, footnote }: TeamSetupCardProps) {
+export function TeamSetupCard({ programLabel, greeting, heading, description, creation, defaultName, notice, onJoin, joinLookup, onCreate, onApply, footnote }: TeamSetupCardProps) {
   const [mode, setMode] = useState<Mode>("join");
   const [joinCode, setJoinCode] = useState("");
   const [displayName, setDisplayName] = useState(defaultName);
   const [teamNumber, setTeamNumber] = useState("");
   const [teamName, setTeamName] = useState("");
   const [role, setRole] = useState<RoleId>(DEFAULT_ROLE_ID);
+  // Memberships ON: the code the server said lets joiners choose a role, and the role picked for it.
+  const [roleChoiceFor, setRoleChoiceFor] = useState<string | null>(null);
+  const [joinRole, setJoinRole] = useState<RoleId>(DEFAULT_ROLE_ID);
   const [errors, setErrors] = useState<{ joinCode?: string; displayName?: string; teamNumber?: string; teamName?: string }>({});
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -67,11 +81,12 @@ export function TeamSetupCard({ programLabel, greeting, creation, defaultName, n
     setFailure(null);
   }
 
-  async function run(work: () => Promise<void>, fallback: string) {
+  async function run(work: () => Promise<void | false>, fallback: string) {
     setBusy(true);
     try {
-      await work();
-      // Stay busy on success: the caller replaces this card (a pending-request view, the join code, or the shell once the profile arrives).
+      // `false` means the step did not finish the form (the role select appeared): give the button back.
+      if ((await work()) === false) setBusy(false);
+      // Otherwise stay busy on success: the caller replaces this card (a pending-request view, the join code, or the shell once the profile arrives).
     } catch (err) {
       setFailure(err instanceof Error && err.message ? err.message : fallback);
       setBusy(false);
@@ -85,7 +100,19 @@ export function TeamSetupCard({ programLabel, greeting, creation, defaultName, n
     setErrors(found);
     setFailure(null);
     if (!code || Object.keys(found).length > 0) return;
-    await run(() => onJoin({ code, name: displayName.trim() }), "Could not send your request. Check your connection and try again.");
+    await run(async () => {
+      if (joinLookup && roleChoiceFor !== code) {
+        // The first press asks the server about the code; a team that lets joiners choose shows the role select and waits for the second press.
+        const info = await joinLookup(code);
+        if (info.alreadyMember) throw new Error(MEMBERSHIP_TEXT.join.alreadyMember);
+        if (info.atLimit) throw new Error(MEMBERSHIP_TEXT.join.atLimit);
+        if (info.exists && info.allowsRoleChoice) {
+          setRoleChoiceFor(code);
+          return false;
+        }
+      }
+      await onJoin({ code, name: displayName.trim(), ...(joinLookup && roleChoiceFor === code ? { role: joinRole } : {}) });
+    }, "Could not send your request. Check your connection and try again.");
   }
 
   async function submitCreate(e: React.FormEvent) {
@@ -105,9 +132,9 @@ export function TeamSetupCard({ programLabel, greeting, creation, defaultName, n
   return (
     <div className="glass-card flex flex-col gap-4 p-5 sm:p-6">
       <div className="flex flex-col gap-1">
-        <h1 className="text-xl font-semibold">Set up your {programLabel ? `${programLabel} ` : ""}team</h1>
+        <h1 className="text-xl font-semibold">{heading ?? `Set up your ${programLabel ? `${programLabel} ` : ""}team`}</h1>
         {greeting && <p className="text-sm font-medium">{greeting}</p>}
-        <p className="text-sm text-[var(--muted-foreground)]">Start a team for your {programLabel ? `${programLabel} ` : ""}scouts, or ask to join one that already exists.</p>
+        <p className="text-sm text-[var(--muted-foreground)]">{description ?? `Start a team for your ${programLabel ? `${programLabel} ` : ""}scouts, or ask to join one that already exists.`}</p>
       </div>
 
       {notice && (
@@ -116,20 +143,22 @@ export function TeamSetupCard({ programLabel, greeting, creation, defaultName, n
         </p>
       )}
 
-      <Tabs value={mode} onValueChange={(v) => switchMode(v as Mode)}>
-        <TabsList>
-          <TabsTrigger value="join">Join a team</TabsTrigger>
-          <TabsTrigger value="create" disabled={creation === "loading"}>
-            {applying ? "Apply to create a team" : "Create a team"}
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
+      {creation !== "none" && (
+        <Tabs value={mode} onValueChange={(v) => switchMode(v as Mode)}>
+          <TabsList>
+            <TabsTrigger value="join">Join a team</TabsTrigger>
+            <TabsTrigger value="create" disabled={creation === "loading"}>
+              {applying ? "Apply to create a team" : "Create a team"}
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+      )}
 
-      {mode === "join" ? (
+      {mode === "join" || creation === "none" ? (
         <form onSubmit={submitJoin} className="flex flex-col gap-3" noValidate>
           <div>
             <Label htmlFor="setup-join-code">Team join code</Label>
-            <Input id="setup-join-code" autoCapitalize="characters" autoComplete="off" value={joinCode} onChange={(e) => setJoinCode(e.target.value.toUpperCase())} placeholder="Ask your team admin" aria-invalid={!!errors.joinCode} aria-describedby={errors.joinCode ? "setup-join-code-error" : undefined} />
+            <Input id="setup-join-code" autoCapitalize="characters" autoComplete="off" value={joinCode} onChange={(e) => { setJoinCode(e.target.value.toUpperCase()); setRoleChoiceFor(null); }} placeholder="Ask your team admin" aria-invalid={!!errors.joinCode} aria-describedby={errors.joinCode ? "setup-join-code-error" : undefined} />
             <FieldError id="setup-join-code-error" message={errors.joinCode} />
           </div>
           <div>
@@ -137,13 +166,31 @@ export function TeamSetupCard({ programLabel, greeting, creation, defaultName, n
             <Input id="setup-display-name" autoComplete="name" maxLength={80} value={displayName} onChange={(e) => setDisplayName(e.target.value)} aria-invalid={!!errors.displayName} aria-describedby={errors.displayName ? "setup-display-name-error" : undefined} />
             <FieldError id="setup-display-name-error" message={errors.displayName} />
           </div>
+          {roleChoiceFor && (
+            <div data-testid="join-role-choice">
+              <Label htmlFor="setup-join-role">{MEMBERSHIP_TEXT.join.roleLabel}</Label>
+              <Select value={joinRole} onValueChange={(v) => setJoinRole(v as RoleId)}>
+                <SelectTrigger id="setup-join-role" className="h-12">
+                  <SelectValue>{getRole(joinRole).label}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {ROLES.filter((r) => isRequestableRole(r.id)).map((r) => (
+                    <SelectItem key={r.id} value={r.id} className="py-2.5">
+                      {r.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="mt-1 text-xs text-[var(--muted-foreground)]">{MEMBERSHIP_TEXT.join.roleNote}</p>
+            </div>
+          )}
           {failure && (
             <p role="alert" className="text-sm text-red-400">
               {failure}
             </p>
           )}
           <Button type="submit" className="min-h-11 w-full" disabled={busy}>
-            {busy ? "Sending…" : "Send request"}
+            {busy ? (joinLookup && roleChoiceFor === null ? MEMBERSHIP_TEXT.join.checking : "Sending…") : "Send request"}
           </Button>
         </form>
       ) : creation === "closed" ? (

@@ -54,6 +54,8 @@ const FTC_ALLOWED: Record<string, string> = {
   "lib/events/matches-internal.ts": "the session-less match fetch: dispatches to the FTC provider like actions.ts (live-score poller)",
   "lib/platform-changelog/v2-entry.ts": "the approved v2.0.0 release notes: user-facing text that names both programs and the games on purpose (one module shared by the editor template and the seed script)",
   "lib/memberships/model.ts": "the membership model: names the stored per-member robot-team list once (the stored field is part of the membership document); every other shared file goes through this model and the program config",
+  "components/program/field-team-switcher.tsx": "the robot-team switcher; its name is fixed by the membership build (the new membership switcher takes the name TeamSwitcher), and it renders only where the program config allows it",
+  "components/layout/sidebar.tsx": "mounts the robot-team switcher (FieldTeamSwitcher) next to the membership TeamSwitcher; both decide for themselves whether to render",
   "lib/server/live-program.ts": "the one server place that maps a program id to its live and lobby data store, and validates the program a live route is asked for",
   "app/api/ftc/templates/route.ts": "the server route for form templates of an FTC account; hands the call to the FTC-scoped server module",
   "config/platform.ts": "platform-level footer credit: the one place that names the teams behind both programs (not a program file; the FRC scope stays strict)",

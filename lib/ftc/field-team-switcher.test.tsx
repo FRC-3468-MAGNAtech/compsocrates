@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { TeamSwitcher } from "@/components/program/team-switcher";
+import { FieldTeamSwitcher } from "@/components/program/field-team-switcher";
 import type { ProgramId } from "@/config/programs/types";
 import { AccountTeamContext, OurTeamContext, ourTeamFrom, type AccountTeamChoice } from "@/lib/our-team";
 import { ProgramProvider } from "@/lib/program/context";
@@ -16,7 +16,7 @@ function render(program: ProgramId, choice: AccountTeamChoice): string {
     <ProgramProvider program={program}>
       <OurTeamContext.Provider value={ourTeamFrom({ number: 111, name: "Alpha" })}>
         <AccountTeamContext.Provider value={choice}>
-          <TeamSwitcher />
+          <FieldTeamSwitcher />
         </AccountTeamContext.Provider>
       </OurTeamContext.Provider>
     </ProgramProvider>
@@ -26,7 +26,7 @@ function render(program: ProgramId, choice: AccountTeamChoice): string {
 
 const choice = (teams = TEAMS, selectedId: string | null = "t1"): AccountTeamChoice => ({ teams, selectedId, select: () => {} });
 
-describe("TeamSwitcher", () => {
+describe("FieldTeamSwitcher", () => {
   it("shows the selected team in a program that allows several teams per account", () => {
     const html = render("ftc", choice());
     expect(html).toContain('data-testid="team-switcher"');

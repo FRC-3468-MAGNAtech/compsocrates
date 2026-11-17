@@ -6,6 +6,10 @@ import { GlassPanel } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { MemberRow } from "@/components/team/member-row";
 import { JoinRequestsPanel } from "@/components/team/join-requests-panel";
+import { ConfirmDialog } from "@/components/scout/confirm-dialog";
+import { membershipApi, useMembershipsEnabled } from "@/lib/memberships/client";
+import { friendlyMembershipError, MEMBERSHIP_TEXT } from "@/lib/memberships/strings";
+import { invalidateRoster } from "@/lib/team-roster";
 import { AnnouncementsPanel } from "@/components/announcements/announcements-panel";
 import { MemberEditorDialog } from "@/components/team/member-editor-dialog";
 import { MemberAccessDialog } from "@/components/page-access/page-access-panel";
@@ -35,6 +39,11 @@ export default function TeamManagementPage() {
   const [savedUid, setSavedUid] = useState<string | null>(null);
   // P26: the member whose page access is open (the same editor as Admin Panel > Page Access).
   const [accessUid, setAccessUid] = useState<string | null>(null);
+  // Memberships build 2 (kill switch): ON, an admin can remove a member (a server route; the last-admin and owner rules answer in words).
+  const memberships = useMembershipsEnabled();
+  const [removing, setRemoving] = useState<TeamMember | null>(null);
+  const [removeBusy, setRemoveBusy] = useState(false);
+  const [removeNote, setRemoveNote] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
 
   const adminCount = members.filter((m) => m.isAdmin).length;
 
@@ -62,6 +71,24 @@ export default function TeamManagementPage() {
     setEditorOpen(true);
   };
 
+  const canRemove = (m: TeamMember) => memberships && isAdmin && m.uid !== user?.uid && !m.isOwner;
+
+  const handleRemove = async (member: TeamMember) => {
+    if (!profile) return;
+    setRemoveBusy(true);
+    setRemoveNote(null);
+    try {
+      await membershipApi.remove(program, { teamId: profile.teamId, uid: member.uid });
+      invalidateRoster();
+      setRemoveNote({ kind: "ok", text: MEMBERSHIP_TEXT.members.removed(member.name) });
+    } catch (err) {
+      setRemoveNote({ kind: "error", text: friendlyMembershipError(err, "Couldn't remove that member.") });
+    } finally {
+      setRemoveBusy(false);
+      setRemoving(null);
+    }
+  };
+
   const handleSave = async (member: TeamMember, changes: Partial<MemberAccess>) => {
     if (!user || !profile) return;
     // Re-checked here, not just by the button: the roster is realtime, so the
@@ -70,6 +97,8 @@ export default function TeamManagementPage() {
 
     // One atomic batch: the role change and its audit entry land together or not at all.
     await updateMemberAccess({ teamId: profile.teamId, uid: user.uid, name: profile.name }, member, changes, program);
+    // Memberships ON: the edit went through the server route; a roster row that comes from a membership is read again.
+    if (memberships) invalidateRoster();
     setSavedUid(member.uid);
     setTimeout(() => setSavedUid((current) => (current === member.uid ? null : current)), 1500);
   };
@@ -120,7 +149,7 @@ export default function TeamManagementPage() {
       </GlassPanel>
 
       {/* CS's approval queue: people who asked to join with the team code wait here for an admin. */}
-      {isAdmin && profile?.teamId && features.joinRequests && <JoinRequestsPanel teamId={profile.teamId} />}
+      {isAdmin && profile?.teamId && features.joinRequests && <JoinRequestsPanel teamId={profile.teamId} allowRoleChoice={team?.allowMemberRoleChoice === true} />}
 
       {/* CS's Team Communication hub (announcements, strategy notes, match alerts): every teammate reads and posts, a team admin deletes. */}
       {profile?.teamId && features.announcements && <AnnouncementsPanel teamId={profile.teamId} />}
@@ -131,6 +160,11 @@ export default function TeamManagementPage() {
             Members {membersLoaded && `(${members.length})`}
           </h2>
         </div>
+        {removeNote && (
+          <p role={removeNote.kind === "error" ? "alert" : "status"} className={removeNote.kind === "error" ? "text-sm text-red-300" : "text-sm text-emerald-300"}>
+            {removeNote.text}
+          </p>
+        )}
         <div className="flex flex-col gap-2">
           {!membersLoaded ? (
             <div className="glass-card h-16 animate-pulse" />
@@ -145,11 +179,25 @@ export default function TeamManagementPage() {
                 highlight={savedUid === m.uid}
                 onEdit={() => openEditor(m)}
                 onPageAccess={isAdmin ? () => setAccessUid(m.uid) : undefined}
+                onRemove={canRemove(m) ? () => setRemoving(m) : undefined}
               />
             ))
           )}
         </div>
       </GlassPanel>
+
+      <ConfirmDialog
+        open={removing !== null}
+        onOpenChange={(open) => !open && !removeBusy && setRemoving(null)}
+        title={MEMBERSHIP_TEXT.members.confirmTitle(removing?.name ?? "")}
+        description={MEMBERSHIP_TEXT.members.confirmBody}
+        confirmLabel={removeBusy ? MEMBERSHIP_TEXT.members.removing : MEMBERSHIP_TEXT.members.confirmAction}
+        cancelLabel="Cancel"
+        onConfirm={() => {
+          if (removing && !removeBusy) void handleRemove(removing);
+        }}
+        testId="remove-member-confirm"
+      />
 
       {isAdmin && accessUid && members.some((m) => m.uid === accessUid) && (
         <MemberAccessDialog key={accessUid} member={members.find((m) => m.uid === accessUid)!} open onOpenChange={(o) => !o && setAccessUid(null)} />

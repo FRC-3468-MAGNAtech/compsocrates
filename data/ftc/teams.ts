@@ -153,6 +153,7 @@ export function ftcTeamToTeamDoc(id: string, doc: FtcTeamDoc): TeamDoc {
     activeEvents: events,
     ...(archivedEvents.length > 0 ? { archivedEvents } : {}),
     ...(isRecord(doc.formSubmissionSettings) ? { formSubmissionSettings: readFormSubmissionSettings(doc.formSubmissionSettings) } : {}),
+    ...(doc.allowMemberRoleChoice === true ? { allowMemberRoleChoice: true } : {}),
     ...(typeof doc.usePlaceholderVideo === "boolean" ? { usePlaceholderVideo: doc.usePlaceholderVideo } : {}),
     ...(typeof doc.changelogSeeded === "boolean" ? { changelogSeeded: doc.changelogSeeded } : {}),
     ...(typeof doc.libraryBackfilled === "boolean" ? { libraryBackfilled: doc.libraryBackfilled } : {}),

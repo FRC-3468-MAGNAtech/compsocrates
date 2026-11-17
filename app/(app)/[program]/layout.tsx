@@ -30,6 +30,10 @@ import { PageAccessProvider } from "@/lib/page-access/store";
 import { SidebarConfigProvider } from "@/lib/sidebar/store";
 import { FormsProvider } from "@/lib/forms/forms-context";
 import { OwnershipTransferBanner } from "@/components/layout/ownership-transfer-banner";
+import { JoinAnotherTeam } from "@/components/team/join-another-team";
+import { useMembershipsEnabled } from "@/lib/memberships/client";
+import { TeamSwitchProvider, isHolding, useTeamSwitch } from "@/lib/memberships/switching";
+import { MEMBERSHIP_TEXT } from "@/lib/memberships/strings";
 import { ImmersiveContext, useImmersiveValue } from "@/lib/shell-immersive";
 
 function AppShell({ children }: { children: React.ReactNode }) {
@@ -47,6 +51,9 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const { features } = config.connection;
   // One subscription for the offline / unsynced badge, shared by the sidebar and the mobile top bar.
   const connection = useConnectionNotice();
+  // Memberships (kill switch): ON, a person with a team may open the join screen again, and a team switch holds the shell on "Switching…" until the new team shows up.
+  const memberships = useMembershipsEnabled();
+  const { target: switchTarget } = useTeamSwitch();
   // Both programs send an account with no team to the same place, `/<program>/apply-to-team`: the root program's own join-or-create screen, or a program
   // with a data port's setup screen (create a team, or ask to join with a code). Once the account has a team, that route goes on to the dashboard.
   const onSetupRoute = pathname === "/apply-to-team";
@@ -54,11 +61,21 @@ function AppShell({ children }: { children: React.ReactNode }) {
     if (loading) return;
     if (!user) router.replace("/login");
     else if (!profile?.teamId && !onSetupRoute) router.replace("/apply-to-team");
-    else if (profile?.teamId && onSetupRoute) router.replace("/dashboard");
-  }, [loading, user, profile, router, onSetupRoute]);
+    else if (profile?.teamId && onSetupRoute && !memberships) router.replace("/dashboard");
+  }, [loading, user, profile, router, onSetupRoute, memberships]);
+
+  // A team switch is in progress: nothing of the old team (pages, forms, permissions) stays on screen while the new team id arrives.
+  if (isHolding(switchTarget, profile?.teamId)) {
+    return (
+      <div className="flex min-h-[70vh] flex-col items-center justify-center gap-3" role="status" data-testid="team-switching">
+        <div className="glass-card h-10 w-10 animate-pulse rounded-full" />
+        <p className="text-sm text-[var(--muted-foreground)]">{MEMBERSHIP_TEXT.switcher.switching}</p>
+      </div>
+    );
+  }
 
   // (An account that already has a team and lands on the setup route sees the spinner while the effect above moves it to the dashboard.)
-  if (loading || !user || !profile?.teamId || onSetupRoute) {
+  if (loading || !user || !profile?.teamId || (onSetupRoute && !memberships)) {
     if (!loading && user && onSetupRoute && !profile?.teamId) {
       return ported ? (
         <ProgramGate />
@@ -77,7 +94,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     // One shared subscription to the team doc (our team's number and name) for the whole signed-in app.
-    <OurTeamProvider>
+    <OurTeamProvider key={profile.teamId}>
       {/* P26: one shared subscription to the account's page access, for the nav, the route guard and the permissions. */}
       <PageAccessProvider>
       {/* Session F: the team's sidebar layout (cached on the device, live from Firestore), read by the sidebar through lib/sidebar/resolve.ts. */}
@@ -95,7 +112,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
             {features.live && <LiveMatchPill />}
             <PageTransition>
               {/* A path whose data layer is not connected for this program shows a notice, never the shared page (it would read another program's data). */}
-              {isPathConnected(program, pathname) ? <PageGuard>{children}</PageGuard> : <UnconnectedPage />}
+              {onSetupRoute ? <JoinAnotherTeam /> : isPathConnected(program, pathname) ? <PageGuard>{children}</PageGuard> : <UnconnectedPage />}
             </PageTransition>
           </main>
           <SiteFooter className="mt-10" />
@@ -126,7 +143,9 @@ export default function ProgramLayout({ children }: { children: React.ReactNode 
 function ProgramRoute({ program, children }: { program: ProgramId; children: React.ReactNode }) {
   return PROGRAMS[program].pagesConnected ? (
     <ProgramAuth>
-      <AppShell>{children}</AppShell>
+      <TeamSwitchProvider>
+        <AppShell>{children}</AppShell>
+      </TeamSwitchProvider>
     </ProgramAuth>
   ) : (
     <ProgramGate />

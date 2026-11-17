@@ -7,10 +7,10 @@ import { teamLabel } from "@/lib/team-number";
 import { cn } from "@/lib/utils";
 
 /**
- * Which of the account's teams the person is viewing as (`lib/our-team.ts`). Shown only in a program that allows several teams per account
+ * Which of the account's FIELD teams (robot teams inside one team, `ProgramConfig.multiTeam`) the person is viewing as (`lib/our-team.ts`). Shown only in a program that allows several teams per account
  * (`ProgramConfig.multiTeam`) and only when the person can pick between at least two; everywhere else it renders nothing.
  */
-export function TeamSwitcher({ className }: { className?: string }) {
+export function FieldTeamSwitcher({ className }: { className?: string }) {
   const { multiTeam } = useProgramConfig();
   const { teams, selectedId, select } = useAccountTeamChoice();
   if (!multiTeam || teams.length < 2) return null;

@@ -14,6 +14,7 @@ import { useOurTeam } from "@/lib/our-team";
 import { usePermissions } from "@/lib/permissions";
 import { useProgramConfig } from "@/lib/program/context";
 import { parseTeamNumber } from "@/lib/team-number";
+import { RoleChoiceSection } from "@/components/team/role-choice-section";
 
 const MAX_TEAM_NAME = 80;
 
@@ -128,6 +129,7 @@ export default function TeamSettingsPage() {
       ) : (
         <TeamIdentitySection teamId={teamId} initialName={name ?? ""} initialNumber={number !== null ? String(number) : ""} canEdit={isAdmin} />
       )}
+      {teamId && <RoleChoiceSection teamId={teamId} canEdit={isAdmin} />}
       {teamSettings.ownershipTransfer && <OwnershipSection />}
     </div>
   );

@@ -5,13 +5,14 @@ import { activeAdminTab, resolveAdminTabs } from "@/lib/admin/tabs";
 
 // FRC's Admin Panel tab list as it was before the per-program config (the order of the page's label table).
 const FRC_BEFORE = ["match-library", "forms", "page-access", "sidebar", "achievements", "submissions", "entries", "sessions", "match-scout-ids", "practice-session-ids", "rescore", "audit-log", "backups", "applications", "templates", "recovery", "platform-changelog", "platform-credits", "setup-check"];
-const PLATFORM = ["applications", "templates", "recovery", "platform-changelog", "platform-credits"];
+const PLATFORM = ["applications", "templates", "recovery", "platform-changelog", "platform-credits", "verify-admins"];
 const owner = { isPlatformOwner: true, canManageForms: true };
 const plainAdmin = { isPlatformOwner: false, canManageForms: true };
 
 describe("admin tab resolver", () => {
   it("FRC is unchanged: every tab in the old order for an owner, platform tabs hidden for an admin, Forms by permission", () => {
-    expect([...ADMIN_TAB_IDS]).toEqual(FRC_BEFORE);
+    // Memberships build 2 adds ONE id ("verify-admins", a platform tab); with the memberships switch OFF the list an owner sees is exactly the old one.
+    expect([...ADMIN_TAB_IDS].filter((t) => t !== "verify-admins")).toEqual(FRC_BEFORE);
     expect(resolveAdminTabs(PROGRAMS.frc.admin, owner)).toEqual(FRC_BEFORE);
     expect(resolveAdminTabs(PROGRAMS.frc.admin, plainAdmin)).toEqual(FRC_BEFORE.filter((t) => !PLATFORM.includes(t)));
     expect(resolveAdminTabs(PROGRAMS.frc.admin, { isPlatformOwner: false, canManageForms: false })).not.toContain("forms");
@@ -51,6 +52,18 @@ describe("admin tab resolver", () => {
       const plain = resolveAdminTabs(PROGRAMS[id].admin, plainAdmin);
       expect(plain).not.toContain("platform-changelog");
       expect(plain).not.toContain("platform-credits");
+    }
+  });
+
+  it("Memberships build 2: 'Verify admins' is a platform tab in BOTH programs' lists, shown to the platform owner only and only while the memberships switch is ON", () => {
+    for (const id of ["frc", "ftc"] as const) {
+      expect(PROGRAMS[id].admin.tabs, id).toContain("verify-admins");
+      expect(resolveAdminTabs(PROGRAMS[id].admin, owner), id).not.toContain("verify-admins"); // switch missing = OFF
+      expect(resolveAdminTabs(PROGRAMS[id].admin, { ...owner, membershipsEnabled: false }), id).not.toContain("verify-admins");
+      const on = resolveAdminTabs(PROGRAMS[id].admin, { ...owner, membershipsEnabled: true });
+      expect(on, id).toContain("verify-admins");
+      expect(on.indexOf("verify-admins"), id).toBe(on.indexOf("platform-credits") + 1);
+      expect(resolveAdminTabs(PROGRAMS[id].admin, { ...plainAdmin, membershipsEnabled: true }), id).not.toContain("verify-admins");
     }
   });
 

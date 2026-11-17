@@ -124,6 +124,16 @@ export async function setArchivedEvents(teamId: string, codes: string[]): Promis
   }
 }
 
+/** Sets the team's "joiners may choose their role" switch (ADDITIVE field `allowMemberRoleChoice`; admins and the owner, by the rules, which also require a boolean). Writes that field and nothing else. */
+export async function setAllowMemberRoleChoice(teamId: string, value: boolean): Promise<void> {
+  try {
+    await updateDoc(programDoc(db, PROGRAM, TEAMS, teamId), { allowMemberRoleChoice: value === true });
+  } catch (err) {
+    reportFirestoreError("Couldn't save the join setting", err, `${programPath(PROGRAM, TEAMS)}/${teamId}`);
+    throw err;
+  }
+}
+
 /** Sets the team's form-submission switches (ADDITIVE field `formSubmissionSettings`; admins and the owner, by the rules). Writes that field and nothing else. */
 export async function setFormSubmissionSettings(teamId: string, settings: FormSubmissionSettings): Promise<void> {
   try {

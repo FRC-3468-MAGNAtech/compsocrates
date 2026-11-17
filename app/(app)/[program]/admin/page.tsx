@@ -34,6 +34,8 @@ import { AdminsSeeProfilesSetting } from "@/components/admin/admins-see-profiles
 import { AvatarUploadsSetting } from "@/components/admin/avatar-uploads-setting";
 import { PlatformChangelogPanel } from "@/components/admin/platform-changelog-panel";
 import { PlatformCreditsPanel } from "@/components/admin/platform-credits-panel";
+import { VerifyAdminsPanel } from "@/components/admin/verify-admins-panel";
+import { useMembershipsEnabled } from "@/lib/memberships/client";
 
 type AdminTab = AdminTabId;
 
@@ -65,6 +67,8 @@ const TAB_LABELS: Record<AdminTab, string> = {
   // Session 7: the ONE changelog and the ONE set of credits for the whole site; the same two tabs in every program
   "platform-changelog": "Changelog",
   "platform-credits": "Credits",
+  // Memberships build 2: the platform owner verifies a team's existing admins (shown only while the memberships switch is ON)
+  "verify-admins": "Verify admins",
   // Which environment variables the server cannot find (names only); admin-only
   "setup-check": "Setup Check",
 };
@@ -74,7 +78,8 @@ export default function AdminPanelPage() {
   const { isAdmin, isPlatformOwner, can } = usePermissions();
   const { admin } = useProgramConfig();
   // The program's own tab list (config), then who is looking: a tab the program does not list is not rendered, not just hidden.
-  const tabs = resolveAdminTabs(admin, { isPlatformOwner, canManageForms: can("manageForms") });
+  const membershipsEnabled = useMembershipsEnabled();
+  const tabs = resolveAdminTabs(admin, { isPlatformOwner, canManageForms: can("manageForms"), membershipsEnabled });
   const showPlatformSettings = isPlatformOwner && admin.platformSettings;
   const pendingApplications = usePendingApplicationCount(isPlatformOwner && admin.tabs.includes("applications"));
   const [teamCreationEnabled, setTeamCreationEnabledState] = useState<boolean | null>(null);
@@ -182,6 +187,7 @@ export default function AdminPanelPage() {
       {tab === "recovery" && isPlatformOwner && <RecoveryPanel />}
       {tab === "platform-changelog" && isPlatformOwner && <PlatformChangelogPanel />}
       {tab === "platform-credits" && isPlatformOwner && <PlatformCreditsPanel />}
+      {tab === "verify-admins" && isPlatformOwner && <VerifyAdminsPanel />}
       {tab === "setup-check" && <SetupCheckPanel />}
     </div>
   );

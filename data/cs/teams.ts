@@ -100,6 +100,7 @@ export function csTeamToTeamDoc(id: string, doc: CsTeamDoc): TeamDoc {
     ...(Object.keys(selectedEventNames).length > 0 ? { selectedEventNames } : {}),
     ...(archivedEvents.length > 0 ? { archivedEvents } : {}),
     ...(isRecord(record.formSubmissionSettings) ? { formSubmissionSettings: readFormSubmissionSettings(record.formSubmissionSettings) } : {}),
+    ...(record.allowMemberRoleChoice === true ? { allowMemberRoleChoice: true } : {}),
     ...(controls ? { submissionControls: controls } : {}),
     submissionLockout: readSubmissionLockout(controls),
     ...(isRecord(doc.eventAttendees) ? { eventAttendees: doc.eventAttendees as Record<string, string[]> } : {}),

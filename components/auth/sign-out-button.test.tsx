@@ -32,7 +32,7 @@ describe("Sign out on team setup and gate screens", () => {
   // Each screen a signed-in person can be stuck on reaches the control through the frame or the standalone enrollment shell.
   it("the gate and setup screens are all inside the frame or the enrollment shell", () => {
     // ProgramGate (no team yet, connecting notice, request sent via TeamSetup) is wrapped in the frame.
-    expect(read("components/program/program-gate.tsx")).toMatch(/<ProgramSetupFrame>[\s\S]*<TeamSetup \/>[\s\S]*<\/ProgramSetupFrame>/);
+    expect(read("components/program/program-gate.tsx")).toMatch(/<ProgramSetupFrame>[\s\S]*<TeamSetup[^>]*\/>[\s\S]*<\/ProgramSetupFrame>/);
     // The shell's own setup route: the enrollment screen sits inside the frame.
     expect(read("app/(app)/[program]/layout.tsx")).toMatch(/<ProgramSetupFrame>\s*<TeamEnrollmentScreen/);
     // The standalone enrollment screen (signup page, signed in with no team): create/join form, "Request sent" and application states all go through shell().

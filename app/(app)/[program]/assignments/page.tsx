@@ -34,6 +34,7 @@ import { DIFFICULTY_LABELS, type Difficulty } from "@/lib/difficulty";
 import { eventMatchesToInputs, libraryMatchesToInputs } from "@/lib/scheduler/sources";
 import type { MatchInput, ScheduleResult, SlotId } from "@/lib/scheduler/types";
 import { useEventName } from "@/lib/events/use-event-names";
+import { PastMembersSection } from "@/components/assignments/past-members-section";
 import { eventTitle } from "@/lib/events/names";
 
 /** P31: the three kinds of assignment. Match Scouting is the original schedule; Pit Scouting and Team Strategy hand out teams. */
@@ -384,6 +385,9 @@ export default function AssignmentsPage() {
           )}
         </>
       )}
+
+      {/* Memberships build 2: people who left or were removed (collapsed, active admins only, hidden while the memberships switch is OFF). */}
+      {teamId && <PastMembersSection teamId={teamId} />}
 
       <RandomizeModal
         open={randomizeOpen}

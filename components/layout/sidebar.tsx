@@ -25,7 +25,8 @@ import { usePlatformChangelogUnread } from "@/lib/platform-changelog/client";
 import { BRAND, storageKey } from "@/config/brand";
 import { useProgram, useProgramConfig } from "@/lib/program/context";
 import { ProgramSwitcher } from "@/components/program/program-switcher";
-import { TeamSwitcher } from "@/components/program/team-switcher";
+import { FieldTeamSwitcher } from "@/components/program/field-team-switcher";
+import { TeamSwitcher } from "@/components/team/team-switcher";
 
 function NavLink({
   item,
@@ -359,6 +360,7 @@ function SidebarInner({
 
       {!collapsed && <ProgramSwitcher className="mb-1" />}
       {!collapsed && <TeamSwitcher className="mb-1" />}
+      {!collapsed && <FieldTeamSwitcher className="mb-1" />}
       <nav className="flex flex-1 flex-col gap-1 overflow-y-auto py-1">
         {resolved.main.map(renderNode)}
         {resolved.footer.length > 0 && <div className="my-2 h-px bg-[var(--glass-border)]" />}

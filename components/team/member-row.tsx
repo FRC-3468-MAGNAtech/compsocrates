@@ -1,6 +1,7 @@
 "use client";
 
-import { KeyRound, Pencil, ShieldCheck } from "lucide-react";
+import { KeyRound, Pencil, ShieldCheck, UserMinus } from "lucide-react";
+import { MEMBERSHIP_TEXT } from "@/lib/memberships/strings";
 import { motion } from "framer-motion";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +28,7 @@ export function MemberRow({
   highlight,
   onEdit,
   onPageAccess,
+  onRemove,
 }: {
   member: TeamMember;
   editState: MemberEditState;
@@ -35,6 +37,8 @@ export function MemberRow({
   onEdit?: () => void;
   /** P26: opens the member's page-access editor (admins only; omitted for everyone else). */
   onPageAccess?: () => void;
+  /** Memberships build 2: removes the member from the team (admins only, never the owner or yourself; omitted while the memberships switch is OFF). */
+  onRemove?: () => void;
 }) {
   const primaryRole = getRole(member.primaryRole);
 
@@ -80,6 +84,12 @@ export function MemberRow({
         {onPageAccess && (
           <Button size="sm" variant="glass" className="gap-1.5" onClick={onPageAccess} aria-label={`Page access for ${member.name}`} data-testid={`page-access-${member.uid}`}>
             <KeyRound className="h-3.5 w-3.5" /> Page access
+          </Button>
+        )}
+
+        {onRemove && (
+          <Button size="sm" variant="glass" className="min-h-11 gap-1.5 text-red-300 sm:min-h-0" onClick={onRemove} aria-label={`${MEMBERSHIP_TEXT.members.remove}: ${member.name}`} data-testid={`remove-member-${member.uid}`}>
+            <UserMinus className="h-3.5 w-3.5" /> {MEMBERSHIP_TEXT.members.remove}
           </Button>
         )}
 

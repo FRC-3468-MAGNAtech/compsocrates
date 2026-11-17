@@ -16,6 +16,8 @@ export type JoinRequest = {
   status: JoinRequestStatus;
   /** When the request was sent (ms), or null while the server time has not arrived. */
   requestedAtMs: number | null;
+  /** The role the person asked for (memberships build 2; absent on older requests). A REQUEST FIELD only: the server decides the real role at approval. */
+  requestedRole?: string;
 };
 
 const statusOf = (value: unknown): JoinRequestStatus => (value === "approved" || value === "denied" ? value : "pending");
@@ -27,7 +29,8 @@ export function ftcDocsToJoinRequests(rows: ReadonlyArray<{ id: string; data: un
     if (!isRecord(row.data)) continue;
     const name = nonEmptyString(row.data.name);
     if (!name) continue;
-    out.push({ uid: str(row.data.uid) || row.id, name, status: statusOf(row.data.status), requestedAtMs: toEpochMs(row.data.createdAt) || null });
+    const requestedRole = nonEmptyString(row.data.requestedRole);
+    out.push({ uid: str(row.data.uid) || row.id, name, status: statusOf(row.data.status), requestedAtMs: toEpochMs(row.data.createdAt) || null, ...(requestedRole ? { requestedRole } : {}) });
   }
   return out.sort((a, b) => (a.requestedAtMs ?? Number.MAX_SAFE_INTEGER) - (b.requestedAtMs ?? Number.MAX_SAFE_INTEGER) || a.name.localeCompare(b.name));
 }

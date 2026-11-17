@@ -12,7 +12,16 @@ import { ProgramSetupFrame } from "@/components/program/setup-frame";
 import { TeamSetup } from "@/components/program/team-setup";
 import { useProgramData } from "@/lib/program/data";
 
-type Membership = "loading" | "none" | "member" | { error: string };
+type Membership = "loading" | "none" | "left" | "member" | { error: string };
+
+/**
+ * What a program profile snapshot means for the team gate. A profile whose `teamId` is empty (a person who left their only team keeps the profile and its
+ * preferences) is NOT a member: it gets the setup screen, like an account with no profile at all ("left" only tells the setup screen the profile exists).
+ */
+export function membershipOfProfile(exists: boolean, data: { teamId?: unknown } | undefined): "none" | "left" | "member" {
+  if (!exists) return "none";
+  return typeof data?.teamId === "string" && data.teamId.trim() !== "" ? "member" : "left";
+}
 
 /**
  * The signed-in shell for a program whose data layer is not wired into the shared pages yet. It reads the account's
@@ -36,7 +45,7 @@ export function ProgramGate() {
     if (!user || !isFirebaseConfigured()) return;
     return onSnapshot(
       programDoc(db, program, "users", user.uid),
-      (snap) => setMembership(snap.exists() ? "member" : "none"),
+      (snap) => setMembership(membershipOfProfile(snap.exists(), snap.data())),
       // The rules deny a read when the account has no profile in this program: that is "no team yet", not a failure.
       (err) => setMembership((err as { code?: string }).code === "permission-denied" ? "none" : { error: failureDetails(reportFirestoreError("program membership", err, programPath(program, `users/${user.uid}`))) }),
     );
@@ -44,13 +53,13 @@ export function ProgramGate() {
 
   return (
     <ProgramSetupFrame>
-      {membership === "none" && data ? (
-        <TeamSetup />
+      {(membership === "none" || membership === "left") && data ? (
+        <TeamSetup hasProfile={membership === "left"} />
       ) : (
       <div className="glass-card flex flex-col gap-2 p-6">
         <h1 className="text-xl font-semibold">{config.brand.fullName}</h1>
         {membership === "loading" && <p className="text-sm text-[var(--muted-foreground)]">Checking your {config.brand.label} team...</p>}
-        {membership === "none" && (
+        {(membership === "none" || membership === "left") && (
           <p className="text-sm text-[var(--muted-foreground)]">
             This account has no {config.brand.label} team yet. Accounts moved from the previous {config.brand.label} site appear here once the data import has run.
           </p>

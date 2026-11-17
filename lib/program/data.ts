@@ -46,7 +46,7 @@ import type { LobbyDoc, LobbyPlayer } from "@/lib/lobby";
 export type DataError = (failure: FirestoreFailure) => void;
 
 /** A request to join the viewer's team, waiting for a decision. `requestedAtMs` is null until the server time has arrived. */
-export type PendingJoinRequest = { uid: string; name: string; requestedAtMs: number | null };
+export type PendingJoinRequest = { uid: string; name: string; requestedAtMs: number | null; /** The role the person asked for (a request field only; the server decides the real one). */ requestedRole?: string };
 
 /** A season (a game the program scouts), as the form picker and the form resolver need it. */
 export type ProgramSeason = {
@@ -80,6 +80,8 @@ export type ProgramData = {
     setArchivedEvents(teamId: string, codes: string[]): Promise<void>;
     /** Writes the team's form-submission switches (ADDITIVE `formSubmissionSettings`; admins and the owner). Writes that one field and nothing else. */
     setFormSubmissionSettings(teamId: string, settings: FormSubmissionSettings): Promise<void>;
+    /** Memberships build 2: the team's "joiners may choose their role" switch (ADDITIVE `allowMemberRoleChoice`; admins and the owner). Writes that one field and nothing else. */
+    setAllowMemberRoleChoice(teamId: string, value: boolean): Promise<void>;
     /** Team Settings: saves the account's teams and/or members' team assignments with one audit entry, in one batch (admins and the owner, by the rules). */
     saveAccountTeams(actor: { teamId: string; uid: string; name: string }, change: AccountTeamsChange): Promise<void>;
     /** Team Settings: asks the program's events API (on the server, keys never reach the browser) for a team's name by number. Rejects with a message to show; "found: false" for an unknown number. */
