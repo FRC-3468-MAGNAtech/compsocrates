@@ -71,7 +71,7 @@ const isRealEntry = (e: FilterEntry) => e.source === "event" || e.source === "li
 
 /**
  * The role an entry evidences. `scoutEntries` hold only Match Scout form entries (the other forms live in `formEntries`, which this page does not
- * read), and a BIOBUZZ alliance role (Hive/Garden) is not an account role, so any own entry shows a Match Scout.
+ * read), and a game's alliance role (a per-match assignment, not something the account holds) is not an account role, so any own entry shows a Match Scout.
  */
 const ENTRY_ROLE: RoleId = "match-scout";
 

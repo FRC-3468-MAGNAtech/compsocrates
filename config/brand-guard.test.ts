@@ -7,13 +7,22 @@ import { describe, expect, it } from "vitest";
  * Guard: CompSocrates is one site with two programs (FRC and FTC). Each program's names live behind the program layer
  * (`config/programs/<id>.ts` plus the program's own scoped files); shared code reads `ProgramConfig`.
  *
- *   1. FTC NAMES (the program's short and full name, API host and variables, its game, its multi-team model) may appear
- *      only in FTC-scoped files (FTC_SCOPE) or in a file listed in FTC_ALLOWED with a reason. They may NEVER appear in an
- *      FRC-scoped file (FRC_SCOPE), which is also where the user-visible FRC strings (brand and program config) live.
- *      `docs/` is not scanned for them: a doc may name either program, it ships nothing to a user.
+ *   0. THE TEST RULE (read this before adding an allowlist entry). A test or fixture file may use program ids and
+ *      program names as DATA: it renders a screen under each program id, builds `programs/<id>/...` paths, asserts that
+ *      one program's behavior is unchanged. So every `*.test.ts(x)`, `*.spec.*`, `*.e2e.ts(x)`, `e2e/**`, `app/e2e/**`
+ *      (the Playwright fixture pages) and fixture folder (`fixtures/`, `__fixtures__/`, `test-stubs/`) is exempt from
+ *      the FTC-name rules (TEST_DATA below), in every scope. Do NOT list a test file in FTC_ALLOWED: it is redundant
+ *      and the guard fails on such an entry. The rule covers FTC names only. The sister app's name is never exempt,
+ *      tests included. What stays strict is non-test SOURCE: shipped code and the user-visible strings in it.
+ *   1. FTC NAMES (the program's short and full name, API host and variables, its game, its multi-team model) may appear,
+ *      in non-test source, only in FTC-scoped files (FTC_SCOPE) or in a file listed in FTC_ALLOWED with a reason (a
+ *      shared file that IS the program seam, a route that hands off to FTC code, a script that names programs on
+ *      purpose). They may NEVER appear in non-test source of an FRC-scoped file (FRC_SCOPE), which is also where the
+ *      user-visible FRC strings (brand and program config) live. Shared source stays program-neutral: reword a comment
+ *      instead of allowlisting it. `docs/` is not scanned for them: a doc may name either program, it ships nothing.
  *   2. CE NAMES (the old sister app: its name, brand, domain and project ids all contain the same stem, plus its program
  *      switch variable) may appear only in the files listed in CE_ALLOWED: a few docs that describe the history, and the
- *      one-time migration script with its pure rules. Never in an FRC-scoped file.
+ *      one-time migration script with its pure rules. Never in an FRC-scoped file, and never in a test.
  *   3. FTC-scoped SOURCE files must not name the FRC program's data sources or short name (the programs do not see each
  *      other). FTC-scoped tests may: they assert that FRC is unchanged and pass its program id.
  *
@@ -45,50 +54,15 @@ const FTC_ALLOWED: Record<string, string> = {
   "lib/events/matches-internal.ts": "the session-less match fetch: dispatches to the FTC provider like actions.ts (live-score poller)",
   "lib/server/live-program.ts": "the one server place that maps a program id to its live and lobby data store, and validates the program a live route is asked for",
   "app/api/ftc/templates/route.ts": "the server route for form templates of an FTC account; hands the call to the FTC-scoped server module",
-  "app/api/ftc/templates/route.test.ts": "tests that route's token checks and an admin success",
   "config/platform.ts": "platform-level footer credit: the one place that names the teams behind both programs (not a program file; the FRC scope stays strict)",
-  "lib/events/event-key.test.ts": "asserts the season-code key shape of the FTC program config and that an FTC key never collides with an FRC key",
-  "lib/events/event-queries.test.ts": "asserts an FTC event reads the FTC provider and an FRC event the FRC one (mocked providers)",
-  "components/events/event-page.parity.test.tsx": "renders the one event page under each program id and checks the FTC wording, key shape and credit",
-  "components/admin/match-library-panel.shared.test.tsx": "renders the one Match Library panel under each program id and a port stub (2 and 3 team columns)",
-  "components/practice/lobby/lobby-results-screen.test.tsx": "renders the one lobby results screen under each program id (a match with no official score)",
-  "lib/admin/backup.test.ts": "tests the backup export through the FTC program's port and program id",
-  "lib/admin/rescore-5b.test.ts": "tests the rescore writers with the FTC program id (paths, partial failure)",
-  "lib/forms/active-form-roles.test.ts": "tests that an active form keeps the FTC game's alliance-role block (FTC port and game id)",
-  "lib/forms/firestore-store.test.ts": "tests the forms store's paths for the FTC program id and the FTC game's season id",
-  "lib/library/adapter.test.ts": "tests that the default library adapter touches no FTC path",
-  "lib/templates/firestore-service.test.tsx": "tests the templates service under the FTC program id (paths, API route)",
   "app/api/ftc/team/request-join/route.ts": "the server route for asking to join an FTC team; hands the call to the FTC-scoped server module",
   "app/api/ftc/team/sync-field-teams/route.ts": "the server route for Team Settings of an FTC account; hands the call to the FTC-scoped server module",
-  "app/api/ftc/team/sync-field-teams/route.test.ts": "tests that route's token checks and an admin success",
-  "app/api/avatar/avatar.routes.test.ts": "tests the picture routes against account documents of both program ids (every document the Avatar is fed from): program ids as data in paths",
-  "app/api/achievements/achievements.routes.test.ts": "tests the achievement settings routes for both program ids (their own paths, admin checks): program ids as data in paths",
-  "app/api/platform/platform.routes.test.ts": "tests the platform changelog and credits routes: entries are tagged with program ids as data (frc, ftc), nothing else names a program",
-  "lib/platform-changelog/model.test.ts": "tests the platform changelog model: program tags are data (ids), the default view and the unread rule per program id",
-  "components/changelog/entry-card.test.tsx": "renders the one changelog card for program-tagged items (the program badge) under each program id",
   "lib/program/data.ts": "the one shared place that maps a program id to its data port",
   "config/programs/types.ts": "the program id list",
   "config/programs/index.ts": "the program registry",
   "firestore.rules": "the FTC rules block",
-  // Tests and e2e: a legitimate FTC-program test case or program id in a path
-  "firestore.rules.test.ts": "tests the FTC rules block",
-  "lib/program/paths.test.ts": "uses the program id as a path segment",
-  "lib/server/env-example.test.ts": "maps the env groups to the .env.example sections",
-  "lib/sidebar/resolve.test.ts": "tests the sidebar resolver for each program id (hidden pages differ by program)",
-  "lib/sidebar/store.emulator.test.ts": "tests the sidebar config rules and save for both programs' paths",
-  "components/admin/sidebar-panel.test.tsx": "renders the customizer for each program id",
-  "config/parity-guard.test.ts": "the parity guard names both program ids and lists the files that still read a program's data port",
-  "components/practice/practice-parity.test.tsx": "renders the shared practice screens under each program id",
-  "components/assignments/schedule-grid.test.tsx": "renders the schedule grid under each program id (2 and 3 slots)",
-  "e2e/sidebar-builder.e2e.ts": "clicks the sidebar Sync card, whose buttons name the other program",
-  "app/e2e/sidebar-builder/fixture.tsx": "the e2e fixture for the sidebar Sync card, which is given the other program's name",
-  "lib/scroll-reset.test.ts": "uses an /ftc/ path to test the scroll reset on a program route",
-  "lib/analytics/csv-import.test.ts": "tests CSV import for the FTC program's own port and game",
-  "lib/analytics/recompute.test.ts": "tests the accuracy recompute under the FTC program id with the FTC game's form id",
-  "lib/analytics/event-defaults.test.ts": "tests the default-event rule over the FTC program's own game list (the same rule as FRC's)",
-  "lib/events/event-games.test.ts": "tests Event Select's game list for the FTC program next to the FRC one",
-  "lib/scout-stats/actions.test.ts": "tests the scout stats actions under the FTC program id",
-  "lib/scout-stats/engine-program.test.ts": "tests the stats engine with FTC seasons and the FTC game's alliance roles",
+  // A script is not a test: one that names programs on purpose is listed by name.
+  "scripts/audit-event-attendance.ts": "a diagnostic script that names the programs on purpose (its --program flag takes either one)",
 };
 
 /** path -> why this file may name CE terms (its name, brand, domain, project ids). Docs and the migration only. */
@@ -102,7 +76,18 @@ const CE_ALLOWED: Record<string, string> = {
 /** The one-time migration from the old app's data (the script and its pure rules) may name it without being listed. */
 const CE_MIGRATION = [/^scripts\/migrate-ce-to-ftc/, /^lib\/ftc\/migration(\.test)?\.ts$/];
 
-const TEST_FILE = /\.(test|e2e)\.tsx?$/;
+/**
+ * THE TEST RULE: tests and fixtures may use program ids and program names as data (see the header). Never add a test file to FTC_ALLOWED.
+ * A folder listed here must hold only tests or fixture data, never shipped code.
+ */
+const TEST_DATA: RegExp[] = [
+  /\.(test|spec)\.[cm]?[jt]sx?$/, // unit, emulator and component tests, specs
+  /\.e2e\.tsx?$/, // Playwright specs and the fixture pages named page.e2e.tsx
+  /^e2e\//, // Playwright specs and helpers
+  /^app\/e2e\//, // Playwright fixture pages (routes only when E2E_THEME_CHECK=1)
+  /(^|\/)(fixtures?|__fixtures__|test-stubs)\//, // fixture folders
+];
+const isTestData = (file: string) => TEST_DATA.some((re) => re.test(file));
 const inFtcScope = (file: string) => FTC_SCOPE.some((re) => re.test(file));
 const inFrcScope = (file: string) => FRC_SCOPE.some((re) => re.test(file));
 
@@ -137,14 +122,15 @@ const RULES: Rule[] = [
 function isExempt(rule: Rule, file: string): boolean {
   switch (rule.group) {
     case "ftc":
-      if (inFrcScope(file)) return false; // never, whatever the lists say
+      if (isTestData(file)) return true; // the test rule: program ids and names are data in a test or fixture
+      if (inFrcScope(file)) return false; // never in non-test source, whatever the lists say
       return DOCS.test(file) || inFtcScope(file) || file in FTC_ALLOWED;
     case "ce":
       if (inFrcScope(file)) return false;
       return file in CE_ALLOWED || CE_MIGRATION.some((re) => re.test(file));
     case "frc":
       // Only FTC source files: an FTC-scoped TEST may name FRC to assert that FRC is unchanged (a program id, "FRC is unchanged").
-      return !inFtcScope(file) || TEST_FILE.test(file);
+      return !inFtcScope(file) || isTestData(file);
   }
 }
 
@@ -204,6 +190,8 @@ describe("brand guard: each program's names stay behind the program layer", () =
         if (reason.trim().length === 0) problems.push(`${name}: ${file} needs a reason`);
         if (!files.includes(file)) problems.push(`${name}: ${file} is allowed but not tracked`);
         if (inFrcScope(file)) problems.push(`${name}: ${file} is in the FRC scope and may not be allowed`);
+        if (group === "ftc" && isTestData(file)) problems.push(`${name}: ${file} is a test or fixture file, exempt by the test rule; remove it`);
+        if (group === "ce" && isTestData(file)) problems.push(`${name}: ${file} is a test or fixture file; the sister app's name is never exempt, even in tests`);
         const text = texts.get(file);
         const needs = text !== undefined && text.split(/\r?\n/).some((line) => RULES.some((r) => r.group === group && r.pattern.test(line)));
         if (text !== undefined && !needs) problems.push(`${name}: ${file} no longer names anything forbidden; remove it`);
@@ -266,6 +254,38 @@ describe("brand guard: the guard itself", () => {
     expect(violations("lib/analytics/new-file.ts", planted).length).toBeGreaterThan(0);
     expect(violations("lib/scroll-reset.test.ts", planted)).toEqual([]);
     expect(violations("docs/EXAMPLE_RESULTS.md", planted)).toEqual([]);
+  });
+
+  it("the test rule: a planted FTC string fails in non-test FRC source and passes in a test, spec, e2e or fixture file", () => {
+    for (const source of ["lib/frc/example.ts", "config/programs/frc.ts", "data/cs/example.ts", "config/brand.ts", "components/shared/example.tsx"]) {
+      expect(violations(source, planted).length, source).toBeGreaterThan(0);
+    }
+    for (const test of [
+      "lib/frc/example.test.ts",
+      "data/cs/example.test.ts",
+      "components/shared/example.test.tsx",
+      "lib/shared/example.spec.ts",
+      "lib/shared/example.emulator.test.ts",
+      "e2e/example.e2e.ts",
+      "e2e/helpers.ts",
+      "app/e2e/example/fixture.tsx",
+      "app/e2e/example/page.e2e.tsx",
+      "lib/shared/fixtures/example.ts",
+    ]) {
+      expect(violations(test, planted), test).toEqual([]);
+    }
+  });
+
+  it("the test rule goes by file name: a lookalike name is still source", () => {
+    expect(violations("lib/shared/test-helper.ts", planted).length).toBeGreaterThan(0);
+    expect(violations("lib/shared/contest.tsx", planted).length).toBeGreaterThan(0);
+    expect(violations("components/e2e-badge.tsx", planted).length).toBeGreaterThan(0);
+  });
+
+  it("the sister app's name is never exempt, not even in a test, a fixture or e2e", () => {
+    for (const file of ["lib/shared/example.test.ts", "lib/frc/example.test.ts", "e2e/example.e2e.ts", "app/e2e/example/fixture.tsx", "lib/shared/fixtures/example.ts", "components/shared/example.tsx"]) {
+      expect(violations(file, plantedCe).length, file).toBeGreaterThan(0);
+    }
   });
 
   it("an allowlist entry never lifts the rule inside the FRC scope", () => {
