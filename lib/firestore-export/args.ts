@@ -35,12 +35,17 @@ function int(name: string, raw: string, min: number, max: number): number {
   return n;
 }
 
-export function parseArgs(argv: string[]): Options {
+/** Throws when an argument looks like a key file or a credentials flag: credentials come from the environment only. Shared with the membership backfill. */
+export function assertNoKeyFileArgs(argv: string[]): void {
   for (const a of argv) {
     if (KEY_FLAG.test(a) || KEY_FILE_ARG.test(a)) {
       throw new UsageError("Refusing an argument that looks like a key file. Credentials come from the environment variables only (CS_ADMIN_PROJECT_ID, CS_ADMIN_CLIENT_EMAIL, CS_ADMIN_PRIVATE_KEY).");
     }
   }
+}
+
+export function parseArgs(argv: string[]): Options {
+  assertNoKeyFileArgs(argv);
   const o: Options = {
     run: false,
     force: false,
