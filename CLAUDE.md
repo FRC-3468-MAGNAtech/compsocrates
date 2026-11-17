@@ -123,3 +123,9 @@ The decision table in `docs/ROUTES.md` is the record (D1 to D19). Short form: ad
 - Run no code against production Firebase. Do not commit secrets or `docs/SECURITY-NOTES.md` to a public repository.
 - Small, logical commits with clear messages. Add a row to the ROUTES decision table when you make a new decision, and a line to REMAINING when you leave something undone.
 - Build, lint and tests must pass with no errors or warnings before anything is called done.
+
+## Branches
+- The working branch is `release-prep`. Every session commits and pushes there, and never to `main` or `master`.
+- A release is a pull request from `release-prep` into `main`, merged with "Create a merge commit".
+- `dev`, `membership`, `preview`, `rebuild`, `CompSocrates-v2`, the backup branches and the old branches are archival and must not receive commits. `main` receives releases only.
+- The membership kill switch (`appSettings/global.membershipsEnabled`) stays OFF until the additive membership rules are deployed by hand; deploy them before turning the switch on, and preferably before the release that carries the code. The membership backfill is never run without a Firestore export and healthy read quota.
