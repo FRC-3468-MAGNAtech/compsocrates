@@ -44,3 +44,25 @@ export async function getTeamCreationEnabledInTransaction(db: Firestore, txn: Tr
   const snap = await txn.get(db.doc(APP_SETTINGS_PATH));
   return snap.data()?.teamCreationEnabled === true;
 }
+
+const MEMBERSHIPS_ENABLED_TTL_MS = 30_000;
+let membershipsEnabledCache: { value: boolean; at: number } | null = null;
+
+/**
+ * appSettings/global.membershipsEnabled (additive, memberships build 1): the kill switch for everything the membership model does on the server
+ * (`ensureMembership` on sign-in, `/api/team/switch`, the backfill's `--apply`). Missing field or missing document means OFF; only an explicit `true` turns it on.
+ * The owner sets it by hand in the Firestore console. The answer is cached in memory for about 30 seconds per server instance (the production project is on the
+ * free read quota, and sign-in asks on every visit), so a flip takes up to that long to reach every instance. A failed read throws and is NOT cached.
+ */
+export async function getMembershipsEnabled(db: Firestore, nowMs: number = Date.now()): Promise<boolean> {
+  if (membershipsEnabledCache && nowMs - membershipsEnabledCache.at < MEMBERSHIPS_ENABLED_TTL_MS) return membershipsEnabledCache.value;
+  const snap = await db.doc(APP_SETTINGS_PATH).get();
+  const value = snap.data()?.membershipsEnabled === true;
+  membershipsEnabledCache = { value, at: nowMs };
+  return value;
+}
+
+/** Test hook: forget the cached kill-switch answer. */
+export function resetMembershipsEnabledCache(): void {
+  membershipsEnabledCache = null;
+}
