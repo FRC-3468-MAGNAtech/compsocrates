@@ -1,6 +1,7 @@
 import { BRAND } from "@/config/brand";
 import { FTC_GAME_DEFINITIONS, FTC_GAME_ID_LIST } from "@/config/games/ftc";
 import { resolveRadarSource, type RadarProfile } from "@/config/games/radar";
+import { DEFAULT_ROLE_ID } from "@/lib/roles";
 import type { ProgramConfig } from "./types";
 
 /** Pages only the other program has so far. They stay in this program's navigation as greyed-out entries; each one is planned. */
@@ -98,6 +99,12 @@ export const FTC_PROGRAM: ProgramConfig = {
   admin: { tabs: ["match-library", "forms", "page-access", "sidebar", "achievements", "submissions", "sessions", "rescore", "audit-log", "backups", "platform-changelog", "platform-credits"], platformSettings: false, templateSharing: false },
   achievementMetrics: "all",
   multiTeam: true,
+  // Memberships: the program's own user-document field names (`primaryRole`, `isAdmin`, `fieldTeamIds`; no `roles` array).
+  membership: {
+    defaultJoinRole: DEFAULT_ROLE_ID,
+    userFields: { role: "primaryRole", roles: null, secondaryRoles: "secondaryRoles", isAdmin: "isAdmin", isOwner: "isOwner", fieldTeamIds: "fieldTeamIds" },
+    nameFields: ["name"],
+  },
   // Team Settings: the season's form is chosen in Admin Panel > Forms (as in the other program); ownership transfer is a root-only server route, so its card is not shown.
   teamSettings: { ownershipTransfer: false },
   library: { scoresRequired: false, importKind: "schedule", scheduledTime: true, editImportedScores: true, backfill: false, placeholderVideoSwitch: false, videoCsv: false },

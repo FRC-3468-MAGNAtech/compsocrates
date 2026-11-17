@@ -184,4 +184,26 @@ export type ProgramConfig = {
    * listed (the program's radar game), and skips entries of other games.
    */
   radar: Readonly<Record<string, RadarProfile>>;
+  /** How an account's membership in a team maps onto this program's user document (lib/server/memberships.ts). Data only. */
+  membership: ProgramMembership;
+};
+
+/**
+ * Memberships (docs/MEMBERSHIP_PLAN.md): the membership document uses ONE set of field names (`role`, `roles`, `secondaryRoles`, `isAdmin`, `isOwner`,
+ * `fieldTeamIds`); `userFields` says which field of THIS program's user document each one is saved from and restored to (`null`: the program has no such
+ * field). `isPlatformOwner` is never part of a membership.
+ */
+export type ProgramMembership = {
+  /** The role a NEW membership gets from a future join flow (a role id of `lib/roles.ts`). Never applied to an existing user's stored role. */
+  defaultJoinRole: string;
+  userFields: {
+    role: string;
+    roles: string | null;
+    secondaryRoles: string;
+    isAdmin: string;
+    isOwner: string;
+    fieldTeamIds: string | null;
+  };
+  /** The user-document fields the display-name snapshot is read from, first non-empty wins. */
+  nameFields: readonly string[];
 };

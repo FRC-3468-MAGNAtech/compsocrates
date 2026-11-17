@@ -3,9 +3,12 @@
  * touch an emulator or the network. NOT a faithful emulator: it supports `collection().doc().get/set/update/delete`,
  * `collection().where(field, "==" | "array-contains", value).limit().get()`, `runTransaction` (reads then writes, applied
  * immediately), `batch()`, and `doc("a/b")`. Sentinels (`FieldValue.*`) are NOT supported, so code under test must write plain
- * values (the join-request flows do: epoch-ms times, like CS).
+ * values (the join-request flows do: epoch-ms times, like CS), with ONE exception: `FieldValue.delete()` is understood by `update` (it removes the field).
+ *
+ * Transactions are ATOMIC here, like the real thing: writes are buffered and applied together when the callback returns; a throw in the callback, or an
+ * injected commit failure (`injectCommitFailure`), applies NOTHING. As in the Admin SDK, a read after a write in the same transaction throws.
  */
-import type { Firestore } from "firebase-admin/firestore";
+import { FieldValue, type Firestore } from "firebase-admin/firestore";
 
 type Data = Record<string, unknown>;
 
@@ -13,9 +16,16 @@ function clone<T>(v: T): T {
   return v === undefined ? v : (JSON.parse(JSON.stringify(v)) as T);
 }
 
+const DELETE_FIELD = FieldValue.delete();
+const isDeleteField = (v: unknown): boolean => typeof v === "object" && v !== null && typeof (v as { isEqual?: unknown }).isEqual === "function" && (v as { isEqual: (o: unknown) => boolean }).isEqual(DELETE_FIELD);
+
 function deepMergeData(base: Data, patch: Data): Data {
   const out: Data = { ...base };
   for (const [k, v] of Object.entries(patch)) {
+    if (isDeleteField(v)) {
+      delete out[k];
+      continue;
+    }
     const existing = out[k];
     if (v && typeof v === "object" && !Array.isArray(v) && existing && typeof existing === "object" && !Array.isArray(existing)) out[k] = deepMergeData(existing as Data, v as Data);
     else out[k] = clone(v);
@@ -23,8 +33,58 @@ function deepMergeData(base: Data, patch: Data): Data {
   return out;
 }
 
+export type CommitFailure = {
+  /** Fail only a commit whose written paths satisfy this (default: any commit). */
+  when?: (writtenPaths: string[]) => boolean;
+  /** Apply this many of the commit's writes before failing (default 0). Nothing is kept either way: the commit is atomic. */
+  afterWrites?: number;
+  error?: Error;
+  /** How many matching commits fail (default 1). */
+  times?: number;
+};
+
+type TxnWrite = { kind: "set" | "create" | "update" | "delete"; path: string; data?: Data; merge?: boolean };
+
 export class FakeFirestore {
   readonly store = new Map<string, Data>();
+  private commitFailures: CommitFailure[] = [];
+  /** Every transaction commit that was applied, as the list of "kind path" writes (for tests that count writes). */
+  readonly commits: string[][] = [];
+
+  /** Test hook: make a transaction commit fail (see `CommitFailure`). Failures are consumed in the order added. */
+  injectCommitFailure(failure: CommitFailure = {}): this {
+    this.commitFailures.push({ ...failure });
+    return this;
+  }
+
+  private async applyTxnWrites(writes: TxnWrite[]): Promise<void> {
+    const paths = writes.map((w) => w.path);
+    const idx = this.commitFailures.findIndex((f) => !f.when || f.when(paths));
+    const failure = idx === -1 ? null : { ...this.commitFailures[idx] };
+    if (idx !== -1) {
+      const left = (this.commitFailures[idx].times ?? 1) - 1;
+      if (left <= 0) this.commitFailures.splice(idx, 1);
+      else this.commitFailures[idx].times = left;
+    }
+    // Writes go through `docRef` (so a test that wraps it still sees them); the store is restored if any of them fails, which makes the commit atomic.
+    const before = new Map<string, Data>(this.store);
+    try {
+      for (const [i, w] of writes.entries()) {
+        if (failure && i === (failure.afterWrites ?? 0)) throw failure.error ?? new Error("injected commit failure");
+        const ref = this.docRef(w.path);
+        if (w.kind === "create") await ref.create(w.data as Data);
+        else if (w.kind === "update") await ref.update(w.data as Data);
+        else if (w.kind === "set") await ref.set(w.data as Data, { merge: w.merge });
+        else await ref.delete();
+      }
+      if (failure && (failure.afterWrites ?? 0) >= writes.length) throw failure.error ?? new Error("injected commit failure");
+    } catch (err) {
+      this.store.clear();
+      for (const [k, v] of before) this.store.set(k, v);
+      throw err;
+    }
+    this.commits.push(writes.map((w) => `${w.kind} ${w.path}`));
+  }
 
   /** Seeds a document (`"users/u1"`). */
   seed(path: string, data: Data): this {
@@ -112,13 +172,23 @@ export class FakeFirestore {
   }
 
   async runTransaction<T>(fn: (txn: unknown) => Promise<T>): Promise<T> {
-    const txn = {
-      get: async (target: { get?: () => Promise<unknown>; __run?: () => unknown }) => (target.__run ? target.__run() : (target.get as () => Promise<unknown>)()),
-      set: (ref: { set: (d: Data, o?: { merge?: boolean }) => Promise<void> }, data: Data, options?: { merge?: boolean }) => void ref.set(data, options),
-      update: (ref: { update: (d: Data) => Promise<void> }, data: Data) => void ref.update(data),
-      delete: (ref: { delete: () => Promise<void> }) => void ref.delete(),
+    const writes: TxnWrite[] = [];
+    const noReadAfterWrite = () => {
+      if (writes.length) throw new Error("Firestore transactions require all reads to be executed before all writes.");
     };
-    return fn(txn);
+    const txn = {
+      get: async (target: { get?: () => Promise<unknown>; __run?: () => unknown }) => {
+        noReadAfterWrite();
+        return target.__run ? target.__run() : (target.get as () => Promise<unknown>)();
+      },
+      set: (ref: { path: string }, data: Data, options?: { merge?: boolean }) => void writes.push({ kind: "set", path: ref.path, data, merge: options?.merge }),
+      create: (ref: { path: string }, data: Data) => void writes.push({ kind: "create", path: ref.path, data }),
+      update: (ref: { path: string }, data: Data) => void writes.push({ kind: "update", path: ref.path, data }),
+      delete: (ref: { path: string }) => void writes.push({ kind: "delete", path: ref.path }),
+    };
+    const result = await fn(txn);
+    await this.applyTxnWrites(writes);
+    return result;
   }
 
   batch() {
