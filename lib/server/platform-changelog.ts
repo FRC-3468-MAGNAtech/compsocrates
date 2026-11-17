@@ -128,14 +128,14 @@ export async function applyWrite(db: Firestore, owner: Viewer, write: Write, now
   });
 }
 
-type DocExtras = { createdBy: string; createdAt: number; publishedAt: number | null; rev: number; nowMs: number; legacy: boolean; postedAt?: number | null; editedAt?: number | null; editedBy?: string };
+export type DocExtras = { createdBy: string; createdAt: number; publishedAt: number | null; rev: number; nowMs: number; legacy: boolean; postedAt?: number | null; editedAt?: number | null; editedBy?: string };
 
 /**
  * The stored shape (documented in docs/SESSION7_RESULTS.md and docs/SESSION9_RESULTS.md). `legacy` is only ever carried over from an imported entry, never
  * set by a client. The Session 9 fields are written only when they have a value (`postedAt: null` is kept: it records that the owner cleared it), so a
  * document that never had them is written exactly as before.
  */
-function docFor(input: EntryInput, status: PlatformStatus, x: DocExtras) {
+export function docFor(input: EntryInput, status: PlatformStatus, x: DocExtras) {
   return {
     title: input.title,
     version: input.version,
