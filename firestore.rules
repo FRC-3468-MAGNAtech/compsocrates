@@ -1072,8 +1072,15 @@ service cloud.firestore {
         return get(/databases/$(database)/documents/programs/ftc/users/$(request.auth.uid)).data;
       }
 
+      // Memberships build 2 (TIGHTENING, deploy by hand with the other additive rules): an EMPTY team id never matches. A person who left their only team keeps their
+      // profile with `teamId: ""`, and `"" == ""` must not open any document whose team id is empty or missing (a malformed practice session, for one).
       function ftc_sameTeam(teamId) {
-        return ftc_isSignedIn() && ftc_myProfile().teamId == teamId;
+        return ftc_isSignedIn() && teamId is string && teamId != '' && ftc_myProfile().teamId == teamId;
+      }
+
+      // The caller has a team in this program (a profile whose `teamId` is a non-empty string). The rules below that compare the pointer directly use this first.
+      function ftc_hasTeam() {
+        return ftc_isSignedIn() && ftc_myProfile().teamId is string && ftc_myProfile().teamId != '';
       }
 
       function ftc_isAdmin() {
@@ -1322,6 +1329,8 @@ service cloud.firestore {
         // P20: `ownerUid` and `pendingTransfer` are server-only (the transfer routes): nobody can write
         // them from a client, admins and the owner included.
         allow update: if ftc_sameTeam(teamId) && ftc_canManageMembers() && ftc_validActiveEvents() && ftc_validFieldTeams() && ftc_validActiveForms()
+          // Memberships build 2 (tightening): the "joiners may choose their role" switch is a boolean when present.
+          && (!('allowMemberRoleChoice' in request.resource.data) || request.resource.data.allowMemberRoleChoice is bool)
           && request.resource.data.get('ownerUid', null) == resource.data.get('ownerUid', null)
           && request.resource.data.get('pendingTransfer', null) == resource.data.get('pendingTransfer', null);
         allow delete: if false;
@@ -1573,6 +1582,7 @@ service cloud.firestore {
               && (resource.data.visibility == 'public' || (ftc_isAdmin() && adminsSeeAllProfiles())))));
 
         allow create: if ftc_isSignedIn() && request.auth.uid == uid
+          && ftc_hasTeam()
           && request.resource.data.teamId == ftc_myProfile().teamId
           && ftc_validProfile(request.resource.data);
 
@@ -1738,6 +1748,7 @@ service cloud.firestore {
           && exists(/databases/$(database)/documents/programs/ftc/libraryEvents/$(d.eventCode))
           && get(/databases/$(database)/documents/programs/ftc/libraryEvents/$(d.eventCode)).data.origin == 'manual'
           && d.teamId is string
+          && ftc_hasTeam()
           && d.teamId == ftc_myProfile().teamId
           && get(/databases/$(database)/documents/programs/ftc/libraryEvents/$(d.eventCode)).data.teamId == d.teamId
           && (!('scheduledTime' in d) || d.scheduledTime == null || d.scheduledTime is string)
@@ -1811,7 +1822,7 @@ service cloud.firestore {
       match /libraryEvents/{eventCode} {
         allow read: if ftc_isSignedIn() && (resource.data.origin == 'api' || ftc_ownsLibDoc(resource.data));
         allow create: if ftc_isAdmin()
-          && (request.resource.data.origin == 'api' ? !('teamId' in request.resource.data) : request.resource.data.get('teamId', '') == ftc_myProfile().teamId)
+          && (request.resource.data.origin == 'api' ? !('teamId' in request.resource.data) : (ftc_hasTeam() && request.resource.data.get('teamId', '') == ftc_myProfile().teamId))
           && request.resource.data.origin in ['api', 'manual']
           && request.resource.data.eventCode == eventCode
           && request.resource.data.eventName is string && request.resource.data.eventName.size() > 0 && request.resource.data.eventName.size() <= 120
@@ -1942,7 +1953,7 @@ service cloud.firestore {
       }
 
       match /forms/{docId} {
-        allow get: if ftc_isSignedIn() && docId.split('_')[0] == ftc_myProfile().teamId;
+        allow get: if ftc_hasTeam() && docId.split('_')[0] == ftc_myProfile().teamId;
         allow list: if ftc_isSignedIn() && ftc_sameTeam(resource.data.teamId);
 
         allow create: if ftc_canManageMembers()
@@ -1963,7 +1974,7 @@ service cloud.firestore {
         // Published versions are immutable: created once, in the same transaction that bumps the form doc's publishedVersion to
         // that number (getAfter), and never updated or deleted — so the form an old entry was scouted with is always recoverable.
         match /versions/{v} {
-          allow read: if ftc_isSignedIn() && docId.split('_')[0] == ftc_myProfile().teamId;
+          allow read: if ftc_hasTeam() && docId.split('_')[0] == ftc_myProfile().teamId;
           allow create: if ftc_canManageMembers()
             && ftc_sameTeam(request.resource.data.teamId)
             && docId == request.resource.data.teamId + '_' + request.resource.data.formId
@@ -2059,7 +2070,7 @@ service cloud.firestore {
       // so the *elements* of `picked` aren't type-checked — only that it's a list
       // of at most 100 — the writer is an editor and lib/pick-list/ops.ts builds it.
       match /pickLists/{id} {
-        allow read: if ftc_isSignedIn() && id.split('_')[0] == ftc_myProfile().teamId;
+        allow read: if ftc_hasTeam() && id.split('_')[0] == ftc_myProfile().teamId;
 
         allow create: if ftc_canEditPickList()
           && ftc_sameTeam(request.resource.data.teamId)

@@ -1816,3 +1816,78 @@ describe("programs/ftc/memberships/{teamId}_{uid} (additive, server-written)", (
     });
   });
 });
+
+// =====================================================================================================================
+// Memberships build 2: a person who left their only team keeps their profile with `teamId: ""`. The pointer comparisons are tightened so that "" matches nothing,
+// and the team's "joiners may choose their role" switch must be a boolean when present.
+// =====================================================================================================================
+describe('an FTC account with teamId "" (left its only team), and the role-choice switch', () => {
+  const LEFT = "ftc-left-1";
+  const S = (name: string) => programPath("ftc", name);
+  const ids = (snap: { docs: { id: string }[] }) => snap.docs.map((d) => d.id).sort();
+  const malformed = (extra: Record<string, unknown> = {}) => ({
+    teamId: "", uid: "someone", kind: "solo", status: "in-progress", scoutName: "x", seasonId: "biobuzz", mode: "trial", difficulty: null, libraryMatchId: "EVX_Q1", eventCode: "EVX", alliance: "red",
+    robots: [1, 2], completedRobots: [], entryIds: [], accuracy: null, scoutedTotal: null, penaltyPoints: null, officialScore: null, platform: "pc", flags: [], excluded: false,
+    lobbyId: null, pairId: null, startedAt: "2026-02-01T10:00:00.000Z", finishedAt: null, ...extra,
+  });
+
+  beforeAll(async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore();
+      await setDoc(doc(db, P("users"), LEFT), { name: "Left", teamId: "", primaryRole: "match-scout", secondaryRoles: [], isAdmin: false, isOwner: false, themeId: "midnight" });
+      // documents whose team id is empty or whose id starts with "_": what an empty pointer would match if "" compared equal to ""
+      await setDoc(doc(db, S("practiceSessions"), "PS-EMPTY-TEAM"), malformed());
+      await setDoc(doc(db, S("scoutEntries"), "entry-empty-team"), { teamId: "", uid: "someone", source: "event", eventCode: "EVX", matchType: "Qualification", matchNumber: 1, teamNumber: 1, formId: "biobuzz", formVersion: 1, values: {}, score: { auto: 0, teleop: 0, endgame: 0, total: 0 } });
+      await setDoc(doc(db, S("forms"), "_orphan"), { teamId: "", formId: "x", name: "X", origin: "custom", publishedVersion: 1, draft: null, active: true, archived: false, createdBy: "someone" });
+      await setDoc(doc(db, S("pickLists"), "_EVX"), { teamId: "", eventCode: "EVX", picked: [] });
+    });
+  });
+
+  it("keeps its own profile (the preferences stay) and nothing of any team", async () => {
+    const profile = await assertSucceeds(getDoc(doc(as(LEFT), S("users"), LEFT)));
+    expect(profile.data()).toMatchObject({ teamId: "", themeId: "midnight" });
+    await assertFails(getDoc(doc(as(LEFT), S("teams"), T1)));
+    await assertFails(getDocs(query(collection(as(LEFT), S("users")), where("teamId", "==", T1))));
+    await assertFails(getDocs(query(collection(as(LEFT), S("scoutEntries")), where("teamId", "==", T1))));
+    await assertFails(getDoc(doc(as(LEFT), S("scoutEntries"), "seed-1")));
+    await assertFails(getDocs(query(collection(as(LEFT), S("memberships")), where("teamId", "==", T1), where("status", "==", "active"))));
+  });
+
+  it("matches no document whose team id is empty: not the malformed practice session, entry, form or pick list", async () => {
+    const db = as(LEFT);
+    await assertFails(getDoc(doc(db, S("practiceSessions"), "PS-EMPTY-TEAM")));
+    await assertFails(getDocs(query(collection(db, S("practiceSessions")), where("teamId", "==", ""))));
+    await assertFails(getDoc(doc(db, S("scoutEntries"), "entry-empty-team")));
+    await assertFails(getDocs(query(collection(db, S("scoutEntries")), where("teamId", "==", ""))));
+    await assertFails(getDoc(doc(db, S("forms"), "_orphan")));
+    await assertFails(getDoc(doc(db, S("pickLists"), "_EVX")));
+  });
+
+  it("cannot write as a team member: no entry or profile with an empty team", async () => {
+    const db = as(LEFT);
+    await assertFails(addDoc(collection(db, S("scoutEntries")), { teamId: "", uid: LEFT, source: "event", eventCode: "EVX", matchType: "Qualification", matchNumber: 2, teamNumber: 1, formId: "biobuzz", formVersion: 1, values: {}, score: { auto: 0, teleop: 0, endgame: 0, total: 0 } }));
+    await assertFails(setDoc(doc(db, S("profiles"), LEFT), { teamId: "", displayName: "Left", bio: "", pronouns: "", avatar: { type: "initials", value: "L" }, visibility: "team", updatedAt: serverTimestamp() }));
+  });
+
+  it("cannot move the pointer back by itself (the FTC pointer stays locked)", async () => {
+    await assertFails(updateDoc(doc(as(LEFT), S("users"), LEFT), { teamId: T1 }));
+  });
+
+  it("existing members are unaffected: the same reads still work for a team-1 scout", async () => {
+    const db = as(SCOUT);
+    await assertSucceeds(getDoc(doc(db, S("teams"), T1)));
+    await assertSucceeds(getDoc(doc(db, S("scoutEntries"), "seed-1")));
+    expect(ids(await assertSucceeds(getDocs(query(collection(db, S("scoutEntries")), where("teamId", "==", T1), where("uid", "==", SCOUT)))))).toContain("seed-1");
+    await assertSucceeds(getDoc(doc(db, S("forms"), `${T1}_biobuzz`)));
+  });
+
+  it("allowMemberRoleChoice: an admin of the team may set it to a boolean, never anything else, and a member may not set it", async () => {
+    const team = (uid: string) => doc(as(uid), S("teams"), T1);
+    await assertSucceeds(updateDoc(team(ADMIN), { allowMemberRoleChoice: true }));
+    await assertSucceeds(updateDoc(team(ADMIN), { allowMemberRoleChoice: false }));
+    await assertFails(updateDoc(team(ADMIN), { allowMemberRoleChoice: "yes" }));
+    await assertFails(updateDoc(team(ADMIN), { allowMemberRoleChoice: 1 }));
+    await assertFails(updateDoc(team(SCOUT), { allowMemberRoleChoice: true }));
+    await assertFails(updateDoc(doc(as(OTHER), S("teams"), T1), { allowMemberRoleChoice: true }));
+  });
+});

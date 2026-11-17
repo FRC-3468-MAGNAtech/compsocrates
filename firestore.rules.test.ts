@@ -1643,3 +1643,44 @@ describe("memberships/{teamId}_{uid} (additive, server-written)", () => {
     });
   });
 });
+
+// =====================================================================================================================
+// 7. Memberships build 2: a person whose membership ENDED (leave or removal) and whose pointer the server cleared to "".
+// =====================================================================================================================
+describe("a removed member (membership past, pointer cleared) loses the old team's data (additive; existing rules unchanged)", () => {
+  const GONE = "gone-member-1";
+
+  beforeEach(async () => {
+    await seed(async (db) => {
+      await setDoc(doc(db, "users", GONE), user({ displayName: "Gone", teamId: "", role: "match-scout", isTeamAdmin: false }));
+      await setDoc(doc(db, "memberships", `${TEAM1}_${GONE}`), {
+        uid: GONE, teamId: TEAM1, role: "match-scout", roles: null, secondaryRoles: [], isAdmin: false, isOwner: false, fieldTeamIds: null, name: "Gone",
+        status: "past", origin: "verified", joinedAt: 1, leftAt: 9, endedBy: "admin", updatedAt: 9,
+      });
+      await setDoc(doc(db, "teams", TEAM1, "settings", "pageAccess"), { pageRoles: {} });
+    });
+  });
+
+  it("cannot read the team document, its settings, its roster or its active memberships", async () => {
+    const db = as(GONE);
+    await assertFails(getDoc(doc(db, "teams", TEAM1)));
+    await assertFails(getDoc(doc(db, "teams", TEAM1, "settings", "pageAccess")));
+    await assertFails(getDocs(query(collection(db, "users"), where("teamId", "==", TEAM1))));
+    await assertFails(getDocs(query(collection(db, "memberships"), where("teamId", "==", TEAM1), where("status", "==", "active"))));
+  });
+
+  it("cannot read the past roster of the old team, even though they appear on it", async () => {
+    await assertFails(getDocs(query(collection(as(GONE), "memberships"), where("teamId", "==", TEAM1), where("status", "==", "past"))));
+  });
+
+  it("still reads their own (past) membership, and writes no membership", async () => {
+    const mine = await assertSucceeds(getDocs(query(collection(as(GONE), "memberships"), where("uid", "==", GONE))));
+    expect(mine.docs.map((d) => d.id)).toEqual([`${TEAM1}_${GONE}`]);
+    await assertFails(updateDoc(doc(as(GONE), "memberships", `${TEAM1}_${GONE}`), { status: "active" }));
+  });
+
+  it("the old team's members and admins are unaffected", async () => {
+    await assertSucceeds(getDoc(doc(as(SCOUT), "teams", TEAM1)));
+    await assertSucceeds(getDoc(doc(as(ADMIN), "teams", TEAM1)));
+  });
+});
