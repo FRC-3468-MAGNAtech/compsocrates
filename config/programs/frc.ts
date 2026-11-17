@@ -42,10 +42,10 @@ export const FRC_PROGRAM: ProgramConfig = {
   admin: { tabs: ADMIN_TAB_IDS, platformSettings: true, templateSharing: true },
   achievementMetrics: "all",
   multiTeam: false,
-  // Memberships: CS's own user-document field names (`role`, `roles`, `isTeamAdmin`; no field teams).
+  // Memberships: CS's own user-document field names (`role`, `roles`, `isTeamAdmin`).
   membership: {
     defaultJoinRole: DEFAULT_ROLE_ID,
-    userFields: { role: "role", roles: "roles", secondaryRoles: "secondaryRoles", isAdmin: "isTeamAdmin", isOwner: "isOwner", fieldTeamIds: null },
+    userFields: { role: "role", roles: "roles", secondaryRoles: "secondaryRoles", isAdmin: "isTeamAdmin", isOwner: "isOwner" },
     nameFields: ["displayName", "name"],
   },
   // Team Settings: FRC's page is unchanged (its form choice lives in Admin Panel > Forms, its ownership transfer is the root route's).

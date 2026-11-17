@@ -14,7 +14,7 @@ const ALREADY_EXISTS = 6;
 export function userFieldsToRead(program: ProgramId): string[] {
   const m = PROGRAMS[program].membership;
   const f = m.userFields;
-  return [...new Set(["teamId", ...m.nameFields, f.role, f.roles, f.secondaryRoles, f.isAdmin, f.isOwner, f.fieldTeamIds].filter((x): x is string => typeof x === "string"))];
+  return [...new Set(["teamId", ...m.nameFields, ...Object.values(f)].filter((x): x is string => typeof x === "string"))];
 }
 
 export function makeBackfillDb(db: Firestore): BackfillDb {

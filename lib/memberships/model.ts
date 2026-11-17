@@ -2,8 +2,8 @@
  * Memberships (docs/MEMBERSHIP_PLAN.md, build 1): the pure part. No Firebase, no React: types, field mapping, validation and builders, shared by the server
  * module (`lib/server/memberships.ts`), the backfill script and the `useAccountState()` hook.
  *
- * One membership = one account's record in one team: root `memberships/{teamId}_{uid}` (FRC) and `programs/ftc/memberships/{teamId}_{uid}` (FTC), built with
- * the program path helper. The membership uses ONE set of field names; `ProgramConfig.membership.userFields` says which user-document field each is saved
+ * One membership = one account's record in one team: `memberships/{teamId}_{uid}` under the program's path prefix, built with the program path helper (the
+ * default program's collection is at the root). The membership uses ONE set of field names; `ProgramConfig.membership.userFields` says which user-document field each is saved
  * from and restored to, so nothing here names a program.
  *
  * Values are stored RAW (a legacy role such as "coach" or "scout" stays as it is). A field absent on the user document is stored as `null`, and restoring a
@@ -30,6 +30,9 @@ export type RoleSnapshot = {
   isOwner: boolean | null;
   fieldTeamIds: string[] | null;
 };
+
+/** A snapshot with every field absent. */
+export const EMPTY_ROLES: RoleSnapshot = { role: null, roles: null, secondaryRoles: null, isAdmin: null, isOwner: null, fieldTeamIds: null };
 
 export type MembershipDoc = RoleSnapshot & {
   uid: string;
@@ -104,7 +107,7 @@ function boolOrNull(value: unknown): boolean | null {
 /** The role fields of a user document, by the program's field map. A field the program does not have is `null`. */
 export function readRoleSnapshot(program: ProgramId, userDoc: Record<string, unknown> | undefined | null): RoleSnapshot {
   const f = PROGRAMS[program].membership.userFields;
-  const get = (name: string | null) => (name === null || !userDoc ? undefined : userDoc[name]);
+  const get = (name: string | null | undefined) => (!name || !userDoc ? undefined : userDoc[name]);
   return {
     role: stringOrNull(get(f.role), MEMBERSHIP_LIMITS.role),
     roles: listOrNull(get(f.roles)),
@@ -134,8 +137,8 @@ export function roleSnapshotOf(doc: Record<string, unknown> | undefined | null):
 export function restorePatch(program: ProgramId, snapshot: RoleSnapshot, remove: unknown): Record<string, unknown> {
   const f = PROGRAMS[program].membership.userFields;
   const patch: Record<string, unknown> = {};
-  const put = (field: string | null, value: unknown) => {
-    if (field !== null) patch[field] = value === null ? remove : value;
+  const put = (field: string | null | undefined, value: unknown) => {
+    if (field) patch[field] = value === null ? remove : value;
   };
   put(f.role, snapshot.role);
   put(f.roles, snapshot.roles);

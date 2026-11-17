@@ -202,7 +202,8 @@ export type ProgramMembership = {
     secondaryRoles: string;
     isAdmin: string;
     isOwner: string;
-    fieldTeamIds: string | null;
+    /** Absent or null: this program has no such field. */
+    fieldTeamIds?: string | null;
   };
   /** The user-document fields the display-name snapshot is read from, first non-empty wins. */
   nameFields: readonly string[];

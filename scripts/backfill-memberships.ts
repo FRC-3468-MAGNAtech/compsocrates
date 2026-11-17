@@ -1,6 +1,6 @@
 /**
  * Creates the membership documents for accounts that already have an active team (docs/MEMBERSHIP_BUILD1_RESULTS.md). NEVER run by the build, the tests or a
- * deploy. WRITE-ONLY into the two new collections (`memberships`, `programs/ftc/memberships`): it creates documents that do not exist and never overwrites one,
+ * deploy. WRITE-ONLY into the new membership collections (one per program): it creates documents that do not exist and never overwrites one,
  * and it never touches a user document. It runs against whatever project the credentials name, and there is no staging project: take a managed Firestore export
  * first, run the dry run, then one small team, then the rest.
  *
@@ -10,7 +10,7 @@
  *     npm run backfill:memberships -- --detail
  *   Apply (needs --confirm-project equal to the credentials' project AND appSettings/global.membershipsEnabled == true):
  *     npm run backfill:memberships -- --apply --confirm-project=<project id> --team=<teamId> --max=200
- *   Options: --program=frc|ftc|both  --team=<id> (repeatable)  --max=<documents created this run>  --max-writes=5000  --daily-write-ceiling=10000
+ *   Options: --program=<program id>|both  --team=<id> (repeatable)  --max=<documents created this run>  --max-writes=5000  --daily-write-ceiling=10000
  *            --max-reads=20000  --daily-ceiling=25000  --pause-ms=250  --ledger-dir=<folder outside the repo>
  *
  * Environment (a service account; names only here, never put values in a file): CS_ADMIN_PROJECT_ID, CS_ADMIN_CLIENT_EMAIL, CS_ADMIN_PRIVATE_KEY.

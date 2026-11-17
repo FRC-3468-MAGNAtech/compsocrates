@@ -24,7 +24,7 @@ export * from "@/lib/memberships/model";
 /**
  * Memberships, server side (docs/MEMBERSHIP_PLAN.md, build 1). Admin SDK only: the rules give clients NO write on a membership.
  *
- * THE USER DOCUMENT IS THE SOURCE OF TRUTH FOR THE ACTIVE TEAM'S ROLE. `users/{uid}.teamId` (FTC: `programs/ftc/users/{uid}`) stays the active-team pointer that
+ * THE USER DOCUMENT IS THE SOURCE OF TRUTH FOR THE ACTIVE TEAM'S ROLE. `teamId` on the program's user document stays the active-team pointer that
  * every existing rule and query reads, and live CS edits the role fields there. An INACTIVE team's role lives on its membership. A switch copies the outgoing
  * team's current role fields from the user document into that team's membership, then writes the incoming membership's role fields and the pointer onto the user
  * document, all in ONE transaction. Nothing here changes how any existing writer works.
@@ -83,7 +83,7 @@ export async function ensureMembership(db: Firestore, program: ProgramId, uid: s
 export type ActiveState = { program: ProgramId; teamId: string; previousTeamId: string | null; role: string | null; isAdmin: boolean | null; changed: boolean };
 
 /**
- * Makes `teamId` the account's active team for `program`, in ONE Admin SDK transaction (root and `programs/ftc` paths live in the same database):
+ * Makes `teamId` the account's active team for `program`, in ONE Admin SDK transaction (every program's collections live in the same database):
  *  1. the user document must exist (409 `no_profile`: a switch never creates it);
  *  2. the incoming membership must exist (403 `not_a_member`) and be active (403 `membership_ended`);
  *  3. the outgoing team's current role fields are copied from the user document into the outgoing membership (a PAST outgoing membership is left alone); when
