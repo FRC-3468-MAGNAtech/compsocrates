@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { getAdminFirestore } from "@/lib/firebase/admin";
 import { avatarStoreHost } from "@/lib/server/avatar-blobs";
-import { getAccountDeletionEnabled, getAdminsSeeAllProfiles, getAvatarUploadsEnabled, getMembershipsEnabled, getTeamCreationEnabled } from "@/lib/server/team-settings";
+import { meterDb } from "@/lib/server/read-meter";
+import { getPublicSettings } from "@/lib/server/team-settings";
 
 /**
  * The one piece of server state the logged-out Signup page needs (whether
@@ -25,12 +26,10 @@ export async function GET() {
   if (!db) {
     // Firebase Admin isn't configured — fail closed (no Create option)
     // rather than guessing, same convention as lib/server/require-user.ts.
-    return NextResponse.json({ teamCreationEnabled: false, adminsSeeAllProfiles: true, avatarUploadsEnabled: false, membershipsEnabled: false, accountDeletionEnabled: false, avatarBlobHost });
+    return NextResponse.json({ teamCreationEnabled: false, adminsSeeAllProfiles: true, avatarUploadsEnabled: false, membershipsEnabled: false, accountDeletionEnabled: false, readMeterEnabled: false, avatarBlobHost });
   }
-  const teamCreationEnabled = await getTeamCreationEnabled(db);
-  const adminsSeeAllProfiles = await getAdminsSeeAllProfiles(db);
-  const avatarUploadsEnabled = await getAvatarUploadsEnabled(db);
-  const membershipsEnabled = await getMembershipsEnabled(db).catch(() => false);
-  const accountDeletionEnabled = await getAccountDeletionEnabled(db).catch(() => false);
-  return NextResponse.json({ teamCreationEnabled, adminsSeeAllProfiles, avatarUploadsEnabled, membershipsEnabled, accountDeletionEnabled, avatarBlobHost });
+  // ONE shared, cached read of appSettings/global serves every flag (about 30 s per server instance; a failed read answers the fail-closed defaults and is not cached).
+  const settings = await getPublicSettings(meterDb(db, "api/public/config")).catch(() => null);
+  if (!settings) return NextResponse.json({ teamCreationEnabled: false, adminsSeeAllProfiles: true, avatarUploadsEnabled: false, membershipsEnabled: false, accountDeletionEnabled: false, readMeterEnabled: false, avatarBlobHost });
+  return NextResponse.json({ ...settings, avatarBlobHost });
 }

@@ -46,6 +46,52 @@ export async function getTeamCreationEnabledInTransaction(db: Firestore, txn: Tr
   return snap.data()?.teamCreationEnabled === true;
 }
 
+/**
+ * ONE cached read of appSettings/global per server instance (about 30 s), shared by the memberships switch, the account deletion settings, the read meter switch and the
+ * public config route (which used to read the document up to five times per call). A failed read throws and is NOT cached. The write routes call
+ * `invalidateAppSettingsCache()`, so the instance that served a toggle shows it at once; other instances catch up within the TTL. The uncached getters above stay as
+ * they are for the routes that gate an action on the setting.
+ */
+const APP_SETTINGS_TTL_MS = 30_000;
+let appSettingsCache: { data: Record<string, unknown>; at: number } | null = null;
+let readMeterOn = false;
+
+export async function readAppSettings(db: Firestore, nowMs: number = Date.now()): Promise<Record<string, unknown>> {
+  if (appSettingsCache && nowMs - appSettingsCache.at < APP_SETTINGS_TTL_MS) return appSettingsCache.data;
+  const data = ((await db.doc(APP_SETTINGS_PATH).get()).data() ?? {}) as Record<string, unknown>;
+  appSettingsCache = { data, at: nowMs };
+  readMeterOn = data.readMeterEnabled === true;
+  return data;
+}
+
+/** Forget the shared snapshot (a settings write just happened, or a test). */
+export function invalidateAppSettingsCache(): void {
+  appSettingsCache = null;
+}
+
+/** The public flags the browser learns from /api/public/config, all from the one shared snapshot. Same defaults as the individual getters. */
+export async function getPublicSettings(db: Firestore, nowMs: number = Date.now()) {
+  const data = await readAppSettings(db, nowMs);
+  return {
+    teamCreationEnabled: data.teamCreationEnabled === true,
+    adminsSeeAllProfiles: data.adminsSeeAllProfiles !== false,
+    avatarUploadsEnabled: data.avatarUploadsEnabled === true,
+    membershipsEnabled: data.membershipsEnabled === true,
+    accountDeletionEnabled: data.accountDeletionEnabled === true,
+    readMeterEnabled: data.readMeterEnabled === true,
+  };
+}
+
+/** appSettings/global.readMeterEnabled (missing = OFF): the read meter. Asked only by the meter's own routes; the answer rides on the shared snapshot above. */
+export async function getReadMeterEnabled(db: Firestore, nowMs: number = Date.now()): Promise<boolean> {
+  return (await readAppSettings(db, nowMs)).readMeterEnabled === true;
+}
+
+/** The last answer this instance saw, with NO read: false until some route has loaded the shared snapshot. Lets the server instrumentation cost a boolean while OFF. */
+export function isReadMeterOnSync(): boolean {
+  return readMeterOn;
+}
+
 const MEMBERSHIPS_ENABLED_TTL_MS = 30_000;
 let membershipsEnabledCache: { value: boolean; at: number } | null = null;
 
@@ -57,8 +103,7 @@ let membershipsEnabledCache: { value: boolean; at: number } | null = null;
  */
 export async function getMembershipsEnabled(db: Firestore, nowMs: number = Date.now()): Promise<boolean> {
   if (membershipsEnabledCache && nowMs - membershipsEnabledCache.at < MEMBERSHIPS_ENABLED_TTL_MS) return membershipsEnabledCache.value;
-  const snap = await db.doc(APP_SETTINGS_PATH).get();
-  const value = snap.data()?.membershipsEnabled === true;
+  const value = (await readAppSettings(db, nowMs)).membershipsEnabled === true;
   membershipsEnabledCache = { value, at: nowMs };
   return value;
 }
@@ -66,6 +111,7 @@ export async function getMembershipsEnabled(db: Firestore, nowMs: number = Date.
 /** Test hook: forget the cached kill-switch answer. */
 export function resetMembershipsEnabledCache(): void {
   membershipsEnabledCache = null;
+  appSettingsCache = null;
 }
 
 /**
@@ -85,8 +131,8 @@ export function parseRunBudget(raw: unknown): number {
 
 export async function getAccountDeletionSettings(db: Firestore, nowMs: number = Date.now()): Promise<AccountDeletionSettings> {
   if (accountDeletionCache && nowMs - accountDeletionCache.at < ACCOUNT_DELETION_TTL_MS) return accountDeletionCache.value;
-  const data = (await db.doc(APP_SETTINGS_PATH).get()).data();
-  const value = { enabled: data?.accountDeletionEnabled === true, runWrites: parseRunBudget(data?.accountDeletionRunBudget) };
+  const data = await readAppSettings(db, nowMs);
+  const value = { enabled: data.accountDeletionEnabled === true, runWrites: parseRunBudget(data.accountDeletionRunBudget) };
   accountDeletionCache = { value, at: nowMs };
   return value;
 }
@@ -98,4 +144,5 @@ export async function getAccountDeletionEnabled(db: Firestore, nowMs: number = D
 /** Test hook: forget the cached answer. */
 export function resetAccountDeletionSettingsCache(): void {
   accountDeletionCache = null;
+  appSettingsCache = null;
 }

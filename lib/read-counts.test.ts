@@ -116,7 +116,8 @@ describe("server reads, on a synthetic changelog of 60 entries", () => {
     expect(server.reads).toBe(BEFORE_FEED_DOCS);
   });
 });
-const BEFORE_CONFIG: [number, number] = [5, 3];
+// Before the shared snapshot (step B) these were [5, 3]: five reads of appSettings/global on a cold call, three on the next (the uncached getters).
+const BEFORE_CONFIG: [number, number] = [1, 0];
 const BEFORE_FEED_DOCS = 60;
 
 describe("the sidebar changelog unread dot: feed fetches for one mount plus five tab refocuses inside two minutes", () => {

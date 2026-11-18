@@ -148,7 +148,7 @@ export const fakeFirestoreModule = {
     if (f) throw Object.assign(new Error(f.code), { code: f.code });
     const data = store.get(r.path);
     charge("getDoc", r.path, 1, shape(parentOf(r.path)));
-    return { id: idOf(r.path), exists: () => data !== undefined, data: () => (data ? { ...data } : undefined), ref: { path: r.path }, metadata: { fromCache: false } };
+    return { id: idOf(r.path), exists: () => data !== undefined, data: () => (data ? { ...data } : undefined), ref: refOf({ id: idOf(r.path), path: r.path, data: data ?? {} }), metadata: { fromCache: false } };
   },
   onSnapshot: (t: Target | DocRef, ...rest: unknown[]) => {
     const fns = rest.filter((x) => typeof x === "function") as ((s: unknown) => void)[];
@@ -164,7 +164,7 @@ export const fakeFirestoreModule = {
         charge("onSnapshot", t.path, listener.first || data ? 1 : 0, shape(parentOf(t.path)));
         listener.first = false;
         seen = key;
-        next({ id: idOf(t.path), exists: () => data !== undefined, data: () => (data ? { ...data } : undefined), metadata: { fromCache: false, hasPendingWrites: false } });
+        next({ id: idOf(t.path), exists: () => data !== undefined, data: () => (data ? { ...data } : undefined), ref: refOf({ id: idOf(t.path), path: t.path, data: data ?? {} }), metadata: { fromCache: false, hasPendingWrites: false } });
       };
       listeners.push(listener);
       Object.assign(listener, { push });
