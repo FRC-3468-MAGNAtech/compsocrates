@@ -6,6 +6,7 @@ import { pageForPath } from "@/lib/page-access/pages";
 import { childrenOf, normalizeEntries, pageById } from "@/lib/sidebar/layout";
 import { sidebarIcon } from "@/lib/sidebar/icons";
 import { ADMIN_PAGE_ID, FOOTER_ZONE, MAIN_ZONE, type SidebarConfig, type SidebarEntry } from "@/lib/sidebar/types";
+import { PERSONAL_PAGE_IDS, PERSONAL_PLATFORM_OWNER_PAGE_IDS } from "@/lib/personal/routing";
 
 // The ONE resolver every component that renders navigation goes through. Pure. It arranges pages the code defines; role, page access and program gating are applied
 // here with the same checks the route guard uses, AFTER the config, so a config can rearrange and hide but never show a page the person cannot open.
@@ -42,6 +43,11 @@ export type ResolveInput = {
   labelOf?: (item: NavItem) => string;
   /** Program-relative route, for the active page and the group to expand. */
   pathname?: string;
+  /**
+   * Personal mode (memberships ON, no team): ONLY the personal pages (`PERSONAL_PAGE_IDS`, plus the Admin Panel for a platform owner), in the default order, with the
+   * team's sidebar config and page access ignored (there is no team to read them from). Absent: the layout is exactly as before.
+   */
+  personal?: { isPlatformOwner: boolean };
 };
 
 /**
@@ -104,7 +110,21 @@ function build(entries: SidebarEntry[], input: ResolveInput, honourHidden: boole
 }
 
 /** The layout for the signed-in person, from the code's pages, the team's config (or none) and the person's access. */
+/** The default layout cut down to the personal pages. A group left with no page is dropped. */
+function resolvePersonal(input: ResolveInput, isPlatformOwner: boolean): ResolvedSidebar {
+  const ids = new Set<string>([...PERSONAL_PAGE_IDS, ...(isPlatformOwner ? PERSONAL_PLATFORM_OWNER_PAGE_IDS : [])]);
+  const base = build(normalizeEntries(null), { ...input, can: null, isAdmin: isPlatformOwner }, false);
+  const keep = (nodes: SidebarNode[]): SidebarNode[] =>
+    nodes.flatMap((n) => {
+      if (n.kind === "page") return ids.has(n.id) ? [n] : [];
+      const children = keep(n.children ?? []);
+      return children.length > 0 ? [{ ...n, children, active: children.some((c) => c.active) }] : [];
+    });
+  return { main: keep(base.main), footer: keep(base.footer), ignoredConfig: false };
+}
+
 export function resolveSidebar(input: ResolveInput): ResolvedSidebar {
+  if (input.personal) return resolvePersonal(input, input.personal.isPlatformOwner);
   if (input.config) {
     const custom = build(normalizeEntries(input.config), input, true);
     // Lockout guard: an admin must always reach the Admin Panel (the customizer lives there), and nobody may end up with an empty sidebar.

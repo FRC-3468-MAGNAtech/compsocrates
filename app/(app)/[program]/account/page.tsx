@@ -12,6 +12,8 @@ import { AppearancePanel } from "@/components/theme/appearance-panel";
 import { PrivacyProfileSection } from "@/components/profile/privacy-profile-section";
 import { MyTeamsSection } from "@/components/team/my-teams-section";
 import { useAuth } from "@/lib/auth";
+import { usePersonalMode } from "@/lib/personal/context";
+import { PERSONAL_PROFILE_NOTE, PERSONAL_SETTINGS_NOTE } from "@/lib/personal/strings";
 import { getRole } from "@/lib/roles";
 
 const PROVIDER_LABELS: Record<string, string> = {
@@ -21,6 +23,8 @@ const PROVIDER_LABELS: Record<string, string> = {
 
 export default function AccountSettingsPage() {
   const { user, profile, linkedProviders, updateUserProfile, changePassword, linkGoogle } = useAuth();
+  // No team (memberships ON): the profile and privacy sections are team features and stay read-only; appearance is kept on this device.
+  const { personal } = usePersonalMode();
   const [linkingGoogle, setLinkingGoogle] = useState(false);
   const [linkError, setLinkError] = useState<string | null>(null);
   const hasGoogle = linkedProviders.includes("google.com");
@@ -151,6 +155,7 @@ export default function AccountSettingsPage() {
             <Input
               id="display-name"
               value={displayName}
+              readOnly={personal}
               onChange={(e) => {
                 setDisplayName(e.target.value);
                 setNameSaved(false);
@@ -162,26 +167,39 @@ export default function AccountSettingsPage() {
             <Input id="account-email" type="email" value={user?.email ?? ""} disabled />
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <Button className="gap-2 self-start" type="button" onClick={handleSaveName} disabled={savingName}>
-            <Save className="h-4 w-4" /> {savingName ? "Saving…" : "Save changes"}
-          </Button>
-          {nameSaved && <span className="text-sm text-emerald-400">Saved.</span>}
-        </div>
+        {personal ? (
+          <p role="note" className="text-xs text-[var(--muted-foreground)]">
+            {PERSONAL_PROFILE_NOTE}
+          </p>
+        ) : (
+          <div className="flex items-center gap-3">
+            <Button className="gap-2 self-start" type="button" onClick={handleSaveName} disabled={savingName}>
+              <Save className="h-4 w-4" /> {savingName ? "Saving…" : "Save changes"}
+            </Button>
+            {nameSaved && <span className="text-sm text-emerald-400">Saved.</span>}
+          </div>
+        )}
       </GlassPanel>
 
       {/* P25: the profile (picture, display name, pronouns, bio) and who can see it. */}
-      <section id="privacy-profile" className="flex scroll-mt-24 flex-col gap-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Privacy and profile</h2>
-        <PrivacyProfileSection />
-      </section>
+      {!personal && (
+        <section id="privacy-profile" className="flex scroll-mt-24 flex-col gap-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Privacy and profile</h2>
+          <PrivacyProfileSection />
+        </section>
+      )}
 
       {/* Memberships build 2: the teams this account is on in this program, with Leave (hidden while the memberships switch is OFF). */}
-      <MyTeamsSection />
+      {!personal && <MyTeamsSection />}
 
       {/* P18: themes live only here (the sidebar has just the light/dark quick toggle). Saved per user as soon as you pick. */}
       <GlassPanel id="appearance" className="flex flex-col gap-4">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Appearance</h2>
+        {personal && (
+          <p role="note" className="text-xs text-[var(--muted-foreground)]">
+            {PERSONAL_SETTINGS_NOTE}
+          </p>
+        )}
         <AppearancePanel />
       </GlassPanel>
 

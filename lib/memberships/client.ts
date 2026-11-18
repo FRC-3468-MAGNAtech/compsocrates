@@ -11,6 +11,8 @@ import type { ProgramId } from "@/lib/memberships/model";
 let enabledPromise: Promise<boolean> | null = null;
 /** The answer once it has arrived, so a component that mounts later starts with it instead of flashing "off" for one render. */
 let knownEnabled = false;
+/** True once the switch's answer has arrived (a failure counts as an answer: OFF). */
+let settled = false;
 
 /** Is the kill switch ON? Asked once per page load; a failure or a missing answer is OFF. */
 export function membershipsEnabled(): Promise<boolean> {
@@ -21,6 +23,7 @@ export function membershipsEnabled(): Promise<boolean> {
       .catch(() => false)
       .then((value) => {
         knownEnabled = value;
+        settled = true;
         return value;
       });
   }
@@ -31,6 +34,22 @@ export function membershipsEnabled(): Promise<boolean> {
 export function resetMembershipsEnabled(value?: boolean): void {
   enabledPromise = value === undefined ? null : Promise.resolve(value);
   knownEnabled = value === true;
+  settled = value !== undefined;
+}
+
+/** Has the kill switch's answer arrived yet? (The shell holds a person with no team on its spinner until it has, so the routing never runs on a guess.) */
+export function useMembershipsSettled(): boolean {
+  const [done, setDone] = useState(() => settled);
+  useEffect(() => {
+    let alive = true;
+    void membershipsEnabled().then(() => {
+      if (alive) setDone(true);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return done;
 }
 
 /** The kill switch as a hook: false until the answer arrives, so nothing membership-related shows or reads while it is OFF or unknown. */

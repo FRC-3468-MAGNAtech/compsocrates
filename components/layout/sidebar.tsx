@@ -16,6 +16,7 @@ import { useOurTeam } from "@/lib/our-team";
 import { teamLabel } from "@/lib/team-number";
 import { usePermissions } from "@/lib/permissions";
 import { usePendingApplicationCount } from "@/lib/applications-client";
+import { usePersonalMode } from "@/lib/personal/context";
 import { GlassLayerButton } from "@/components/theme/glass-layer-slider";
 import type { ConnectionNotice } from "@/lib/connection-notice";
 import { Avatar } from "@/components/ui/avatar";
@@ -197,6 +198,7 @@ export function Sidebar({ mobileOpen, onClose, connection = null }: { mobileOpen
   const isAdmin = profile?.isAdmin ?? false;
   // The one resolver: the code's pages, arranged by the team's config, then hidden by the same access checks as the route guard (P26) and the admin-only Admin Panel.
   // The layout is the cached or default one until the live config arrives, so nothing flashes.
+  const personal = usePersonalMode();
   const pageAccess = usePageAccess();
   const accessUser = useAccessUser();
   const canOpen = accessUser ? pageAccess.can : null;
@@ -204,8 +206,8 @@ export function Sidebar({ mobileOpen, onClose, connection = null }: { mobileOpen
   const program = useProgram();
   const pathname = usePathname();
   const resolved = useMemo(
-    () => resolveSidebar({ program, isAdmin, can: canOpen, config, labelOf: pageLabel, pathname }),
-    [program, isAdmin, canOpen, config, pathname]
+    () => resolveSidebar({ program, isAdmin, can: canOpen, config, labelOf: pageLabel, pathname, personal: personal.personal ? { isPlatformOwner: personal.isPlatformOwner } : undefined }),
+    [program, isAdmin, canOpen, config, pathname, personal.personal, personal.isPlatformOwner]
   );
   // The changelog is read from the default program's collection, so a program without it connected asks for nothing (no team = no subscription).
   const { features } = useProgramConfig().connection;

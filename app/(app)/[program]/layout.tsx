@@ -6,10 +6,9 @@ import { usePathname, useRouter } from "@/lib/program/navigation";
 import { isProgramId, type ProgramId } from "@/config/programs/types";
 import { isPathConnected, PROGRAMS } from "@/config/programs";
 import { ProgramProvider, useProgram, useProgramConfig } from "@/lib/program/context";
-import { useProgramData } from "@/lib/program/data";
 import { ProgramGate } from "@/components/program/program-gate";
 import { ProgramSetupFrame } from "@/components/program/setup-frame";
-import { TeamEnrollmentScreen } from "@/components/auth/team-enrollment";
+import { TeamSetupScreen } from "@/components/team-setup/team-setup-screen";
 import { ProgramAuth } from "@/components/program/program-auth";
 import { ReadFailureBanner } from "@/components/program/read-failure-banner";
 import { UnconnectedPage } from "@/components/program/unconnected-page";
@@ -30,8 +29,11 @@ import { PageAccessProvider } from "@/lib/page-access/store";
 import { SidebarConfigProvider } from "@/lib/sidebar/store";
 import { FormsProvider } from "@/lib/forms/forms-context";
 import { OwnershipTransferBanner } from "@/components/layout/ownership-transfer-banner";
-import { JoinAnotherTeam } from "@/components/team/join-another-team";
-import { useMembershipsEnabled } from "@/lib/memberships/client";
+import { useMembershipsEnabled, useMembershipsSettled } from "@/lib/memberships/client";
+import { resolveShellRoute } from "@/lib/personal/routing";
+import { setPersonalScope } from "@/lib/personal/scope";
+import { PersonalModeContext } from "@/lib/personal/context";
+import { usePlatformOwnerClaimState } from "@/lib/use-platform-owner-claim";
 import { TeamSwitchProvider, isHolding, useTeamSwitch } from "@/lib/memberships/switching";
 import { MEMBERSHIP_TEXT } from "@/lib/memberships/strings";
 import { ImmersiveContext, useImmersiveValue } from "@/lib/shell-immersive";
@@ -45,24 +47,36 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const { user, profile, loading } = useAuth();
   const program = useProgram();
   const pathname = usePathname();
-  // A program with its own data port (not the root program) has its own profile and team, and only the features it has connected.
-  const ported = useProgramData() !== null;
   const config = useProgramConfig();
   const { features } = config.connection;
   // One subscription for the offline / unsynced badge, shared by the sidebar and the mobile top bar.
   const connection = useConnectionNotice();
-  // Memberships (kill switch): ON, a person with a team may open the join screen again, and a team switch holds the shell on "Switching…" until the new team shows up.
+  // Memberships (kill switch): ON, a person with a team may open the join screen again, a person with NO team lives in the limited personal shell, and a team switch
+  // holds the shell on "Switching…" until the new team shows up.
   const memberships = useMembershipsEnabled();
+  const membershipsSettled = useMembershipsSettled();
   const { target: switchTarget } = useTeamSwitch();
-  // Both programs send an account with no team to the same place, `/<program>/apply-to-team`: the root program's own join-or-create screen, or a program
-  // with a data port's setup screen (create a team, or ask to join with a code). Once the account has a team, that route goes on to the dashboard.
+  const { claim: ownerClaim, ready: ownerClaimReady } = usePlatformOwnerClaimState();
+  const isPlatformOwner = (profile?.isPlatformOwner ?? false) || ownerClaim;
+  // ONE rule for where an account may be (lib/personal/routing.ts, tested exhaustively): OFF, no team means the setup screen at `/<program>/apply-to-team`, the same
+  // screen in both programs; ON, no team means the personal shell and its own pages. A person with a team on the setup route goes on to the dashboard unless ON.
   const onSetupRoute = pathname === "/apply-to-team";
+  const route = resolveShellRoute({
+    loaded: !loading,
+    signedIn: !!user,
+    hasTeam: !!profile?.teamId,
+    memberships,
+    // Wait for both answers (the switch and the owner claim) before routing a person who has no team: a guess would bounce a deep link to the dashboard.
+    membershipsKnown: membershipsSettled && ownerClaimReady,
+    pathname,
+    isPlatformOwner,
+  });
   useEffect(() => {
-    if (loading) return;
-    if (!user) router.replace("/login");
-    else if (!profile?.teamId && !onSetupRoute) router.replace("/apply-to-team");
-    else if (profile?.teamId && onSetupRoute && !memberships) router.replace("/dashboard");
-  }, [loading, user, profile, router, onSetupRoute, memberships]);
+    if (route.redirect) router.replace(route.redirect);
+  }, [route.redirect, router]);
+  // Personal mode tells the practice and entry writers to work in the person's private path (lib/personal/scope.ts). Set in render, here at the top of the shell, so it is
+  // in place before any child effect asks; cleared the moment the account has a team.
+  setPersonalScope(route.render === "personal" && user ? user.uid : null);
 
   // A team switch is in progress: nothing of the old team (pages, forms, permissions) stays on screen while the new team id arrives.
   if (isHolding(switchTarget, profile?.teamId)) {
@@ -75,26 +89,27 @@ function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   // (An account that already has a team and lands on the setup route sees the spinner while the effect above moves it to the dashboard.)
-  if (loading || !user || !profile?.teamId || (onSetupRoute && !memberships)) {
-    if (!loading && user && onSetupRoute && !profile?.teamId) {
-      return ported ? (
-        <ProgramGate />
-      ) : (
-        <ProgramSetupFrame>
-          <TeamEnrollmentScreen embedded programLabel={config.brand.label} greeting={user.displayName ? `Hi, ${user.displayName}` : undefined} onComplete={() => router.push("/dashboard")} />
-        </ProgramSetupFrame>
-      );
-    }
+  if (route.render === "setup") {
+    return (
+      <ProgramSetupFrame>
+        <TeamSetupScreen onComplete={() => router.push("/dashboard")} />
+      </ProgramSetupFrame>
+    );
+  }
+  if (route.render === "loading") {
     return (
       <div className="flex min-h-[70vh] items-center justify-center">
         <div className="glass-card h-10 w-10 animate-pulse rounded-full" />
       </div>
     );
   }
+  const personal = route.render === "personal";
+  const teamKey = profile?.teamId ?? "personal";
 
   return (
     // One shared subscription to the team doc (our team's number and name) for the whole signed-in app.
-    <OurTeamProvider key={profile.teamId}>
+    <PersonalModeContext.Provider value={{ personal, isPlatformOwner }}>
+    <OurTeamProvider key={teamKey}>
       {/* P26: one shared subscription to the account's page access, for the nav, the route guard and the permissions. */}
       <PageAccessProvider>
       {/* Session F: the team's sidebar layout (cached on the device, live from Firestore), read by the sidebar through lib/sidebar/resolve.ts. */}
@@ -109,23 +124,37 @@ function AppShell({ children }: { children: React.ReactNode }) {
             <VerifyEmailBanner className="mb-4" />
             <OwnershipTransferBanner className="mb-4" />
             <ReadFailureBanner className="mb-4" />
-            {features.live && <LiveMatchPill />}
+            {features.live && !personal && <LiveMatchPill />}
             <PageTransition>
-              {/* A path whose data layer is not connected for this program shows a notice, never the shared page (it would read another program's data). */}
-              {onSetupRoute ? <JoinAnotherTeam /> : isPathConnected(program, pathname) ? <PageGuard>{children}</PageGuard> : <UnconnectedPage />}
+              {/* The setup route shows the one Join / Apply screen. A path whose data layer is not connected for this program shows a notice, never the shared page (it
+                  would read another program's data). In the personal shell only the personal pages are reachable (the route above), so the team page guard is skipped. */}
+              {onSetupRoute ? (
+                <div className="mx-auto max-w-xl">
+                  <TeamSetupScreen hasTeam={!personal} onComplete={() => router.push("/dashboard")} />
+                </div>
+              ) : isPathConnected(program, pathname) ? (
+                personal ? (
+                  children
+                ) : (
+                  <PageGuard>{children}</PageGuard>
+                )
+              ) : (
+                <UnconnectedPage />
+              )}
             </PageTransition>
           </main>
           <SiteFooter className="mt-10" />
         </div>
-        {features.practice && features.live && <ScoresReadyWatcher />}
-        {features.assignments && <TeamAssignmentsWatcher />}
-        {profile.isAdmin && features.library && <LibraryBackfill />}
+        {features.practice && features.live && !personal && <ScoresReadyWatcher />}
+        {features.assignments && !personal && <TeamAssignmentsWatcher />}
+        {profile?.isAdmin && features.library && !personal && <LibraryBackfill />}
       </div>
       </ImmersiveContext.Provider>
       </FormsProvider>
       </SidebarConfigProvider>
       </PageAccessProvider>
     </OurTeamProvider>
+    </PersonalModeContext.Provider>
   );
 }
 

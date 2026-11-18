@@ -28,6 +28,7 @@ import { useProgramConfig } from "@/lib/program/context";
 import { activeAdminTab, resolveAdminTabs } from "@/lib/admin/tabs";
 import type { AdminTabId } from "@/config/programs/types";
 import { usePendingApplicationCount } from "@/lib/applications-client";
+import { useAuth } from "@/lib/auth";
 import { SidebarPanel } from "@/components/admin/sidebar-panel";
 import { AchievementsPanel } from "@/components/admin/achievements-panel";
 import { AdminsSeeProfilesSetting } from "@/components/admin/admins-see-profiles-setting";
@@ -76,10 +77,13 @@ const TAB_LABELS: Record<AdminTab, string> = {
 export default function AdminPanelPage() {
   const router = useRouter();
   const { isAdmin, isPlatformOwner, can } = usePermissions();
+  // A platform owner with no team in this program (the personal shell, memberships ON) still opens the panel, with the platform tabs only.
+  const { profile } = useAuth();
+  const teamless = isPlatformOwner && !profile?.teamId;
   const { admin } = useProgramConfig();
   // The program's own tab list (config), then who is looking: a tab the program does not list is not rendered, not just hidden.
   const membershipsEnabled = useMembershipsEnabled();
-  const tabs = resolveAdminTabs(admin, { isPlatformOwner, canManageForms: can("manageForms"), membershipsEnabled });
+  const tabs = resolveAdminTabs(admin, { isPlatformOwner, canManageForms: can("manageForms"), membershipsEnabled, teamless });
   const showPlatformSettings = isPlatformOwner && admin.platformSettings;
   const pendingApplications = usePendingApplicationCount(isPlatformOwner && admin.tabs.includes("applications"));
   const [teamCreationEnabled, setTeamCreationEnabledState] = useState<boolean | null>(null);
@@ -89,8 +93,8 @@ export default function AdminPanelPage() {
   const tab = activeAdminTab(tabs, wantedTab);
 
   useEffect(() => {
-    if (!isAdmin) router.replace("/dashboard");
-  }, [isAdmin, router]);
+    if (!isAdmin && !teamless) router.replace("/dashboard");
+  }, [isAdmin, teamless, router]);
 
   useEffect(() => {
     if (!showPlatformSettings) return;
@@ -136,9 +140,9 @@ export default function AdminPanelPage() {
           <h2 className="text-base font-semibold">Platform owner settings</h2>
           <div className="flex items-center justify-between gap-4">
             <div>
-              <div className="text-sm font-medium">Allow team creation</div>
+              <div className="text-sm font-medium">Accept team applications</div>
               <div className="text-xs text-[var(--muted-foreground)]">
-                Lets the Signup / Finish Setup page offer &ldquo;Create a team&rdquo; directly. Off by default once a team exists: other teams apply instead, and you approve them under Team Applications.
+                Opens the Apply for a team form for both programs. Every new team comes from an application and you approve each one under Team Applications. Off (the default): the form says applications are closed.
               </div>
             </div>
             <Switch
