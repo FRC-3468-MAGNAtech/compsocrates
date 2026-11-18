@@ -13,6 +13,7 @@ import { useAuth } from "@/lib/auth";
 import { useTeamDoc } from "@/lib/team";
 import { useForms } from "@/lib/forms/forms-context";
 import { useProgramData } from "@/lib/program/data";
+import { usePersonalMode } from "@/lib/personal/context";
 import { useLibraryMatchesBySeason } from "@/lib/match-library";
 import { useTeamPracticeSessions } from "@/lib/practice-sessions";
 import { buildMatchRows, pickRandomMatchRow, type MatchRow } from "@/lib/practice-match-rows";
@@ -44,7 +45,9 @@ export function MatchSelect({
   const { team } = useTeamDoc(teamId);
   // A program with its own library has no video entry yet: a match without one is scouted against the timer placeholder instead of being unstartable.
   const ownLibrary = useProgramData()?.library != null;
-  const usePlaceholder = (team?.usePlaceholderVideo ?? false) || ownLibrary;
+  // No team (personal practice): the shared official matches mostly have no video entered, so a match without one is scouted against the timer placeholder.
+  const { personal } = usePersonalMode();
+  const usePlaceholder = (team?.usePlaceholderVideo ?? false) || ownLibrary || personal;
   const { matches, loaded: matchesLoaded, error: matchesError, retry: retryMatches } = useLibraryMatchesBySeason(seasonId);
   const { sessions, loaded: sessionsLoaded, error: sessionsError, retry: retrySessions } = useTeamPracticeSessions(teamId);
   const loadError = matchesError ?? sessionsError;

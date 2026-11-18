@@ -32,6 +32,8 @@ import type { Form, FormValues, StickyNote } from "@/lib/forms/types";
 import { storableScore, type ScoreResult } from "@/lib/forms/scoring";
 import { commentsFrom, joinNotes } from "@/lib/forms/values";
 import type { GameId } from "@/lib/games/types";
+import { personalScopeUid } from "@/lib/personal/scope";
+import { personalEntriesForSession, savePersonalEntry } from "@/lib/personal/practice-store";
 
 /** The three standard phase subtotals and the total; `byPhase` is only present when some other (custom) phase also scored (P21), so ordinary entries are unchanged. */
 export type ScoreBreakdown = { auto: number; teleop: number; endgame: number; total: number; byPhase?: Record<string, number> };
@@ -374,6 +376,12 @@ export function entryDocForSave(teamId: string, uid: string, input: SaveEntryInp
 
 /** `program` picks where the entry is written: the default program's `scouting` collection (below), or a namespaced program's own through its data port. */
 export async function saveEntry(teamId: string, uid: string, input: SaveEntryInput, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
+  // An account with no team only ever saves practice, into its own private path (no team id, no team collection).
+  const personalUid = personalScopeUid();
+  if (personalUid) {
+    if (input.source !== "practice") throw new Error("Only practice can be saved without a team.");
+    return savePersonalEntry(program, personalUid, input);
+  }
   // Session E: the team's submission switches, enforced here for every new entry (the one place; edits go through updateEntry and are never gated).
   // Practice Scouting (a practice or live-practice session) is never closed, in either program: it is harmless and always encouraged.
   if (input.source !== "practice" && input.source !== "live") assertSubmissionOpen(program, teamId, input.gate);
@@ -449,6 +457,8 @@ export function subscribeEntries(teamId: string, eventCode: string, callback: (e
 
 /** P4: every entry saved so far for one practice session (`practiceSessionId`), so Results can assemble both robots' entries. */
 export async function getEntriesForSession(teamId: string, sessionId: string, program: ProgramId = DEFAULT_PROGRAM): Promise<ScoutEntry[]> {
+  const personalUid = personalScopeUid();
+  if (personalUid) return personalEntriesForSession(program, personalUid, sessionId);
   const port = programData(program)?.practice;
   if (port) return port.entriesForSession(teamId, sessionId);
   const [snap, flags] = await Promise.all([getDocs(teamQuery(teamId, where("practiceSessionId", "==", sessionId))), loadFlagStates(teamId)]);

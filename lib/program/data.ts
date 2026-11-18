@@ -25,7 +25,6 @@ import type { AccountTeamsChange } from "@/lib/account-teams";
 import type { PickOp } from "@/lib/pick-list/ops";
 import type { PickListDoc } from "@/lib/pick-list/store";
 import type { MemberAccess } from "@/lib/member-access";
-import type { RoleId } from "@/lib/roles";
 import type { TeamMember } from "@/lib/team-members";
 import type { FormDoc, FormVersion } from "@/lib/forms/resolve";
 import type { FormSubmissionSettings } from "@/lib/forms/submission-settings";
@@ -141,12 +140,6 @@ export type ProgramData = {
     /** Saves a role or admin change and its audit entry in one batch (admins and the owner, by the rules). */
     updateAccess(actor: { teamId: string; uid: string; name: string }, member: Pick<TeamMember, "uid" | "name"> & MemberAccess, changes: Partial<MemberAccess>): Promise<void>;
   };
-  enrollment: {
-    /** Starts a team and the caller's profile on it (team admin and owner), in one batch. The team id is a fresh random join code. */
-    createTeam(input: { uid: string; email: string; name: string; teamNumber: number; teamName: string; location: string; role?: RoleId }): Promise<{ teamId: string; joinCode: string }>;
-    /** Sends a request to join the team with this (normalized) join code. */
-    requestToJoin(joinCode: string, input: { uid: string; name: string }): Promise<void>;
-  };
   /** Approving or denying the requests to join the viewer's team (a member-manager of that team only, by the rules). */
   joinRequests: {
     /** The team's pending requests, oldest first. */
@@ -178,6 +171,8 @@ export type ProgramData = {
   library: {
     /** The shared (imported) events plus the team's own hand-made ones, optionally of one season. */
     subscribeEvents(teamId: string, seasonId: string | null, onData: (events: LibraryEvent[]) => void, onError: DataError): Unsubscribe;
+    /** The SHARED official matches of one season, read once (published, `origin == "api"`): what an account with no team practises on. Never a team's hand-made matches. */
+    fetchSharedMatches(seasonId: string): Promise<{ matches: LibraryMatch[]; unreadable: number }>;
     /** One event's, one season's or all matches; `includeUnpublished` is for admins (a scout's query must ask for published only). */
     subscribeMatches(teamId: string, filter: { eventCode?: string | null; seasonId?: string | null; includeUnpublished: boolean }, onData: (matches: LibraryMatch[], unreadable: number) => void, onError: DataError): Unsubscribe;
     /** Creates a hand-made event owned by the actor's team (no API key needed). */

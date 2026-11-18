@@ -13,6 +13,7 @@ import { describeFirestoreError, reportFirestoreError, type FirestoreFailure } f
 import { libraryAllQuery, libraryEventQuery, librarySeasonQuery } from "@/lib/practice-queries";
 import { useAuth } from "@/lib/auth";
 import { useProgramData } from "@/lib/program/data";
+import { personalScopeUid } from "@/lib/personal/scope";
 import { decideMatchWrite, libraryMatchId, originOf, type LibraryOrigin } from "@/lib/library/ids";
 import { getSeason } from "@/lib/seasons";
 import type { MatchType } from "@/lib/events/types";
@@ -328,6 +329,46 @@ export function useLibraryMatches(eventCode: string | null, options: { includeUn
 }
 
 /**
+ * The shared official matches of one season for an account with NO team (personal practice): ONE read, no listener. FRC: the published root library plus CS's
+ * imported `practiceMatches` (both readable by any signed-in account); the other program: its published `origin == "api"` matches through its port. Never a team's
+ * own hand-made matches. `seasonId` null means not in use.
+ */
+function usePersonalSeasonMatches(seasonId: string | null) {
+  const port = useProgramData()?.library ?? null;
+  const [state, setState] = useState<{ key: string; matches: LibraryMatch[]; error: FirestoreFailure | null } | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const key = seasonId ? JSON.stringify([seasonId, attempt]) : "";
+  useEffect(() => {
+    if (!seasonId || !isFirebaseConfigured()) return;
+    let alive = true;
+    const path = `library matches of season ${seasonId} (published, shared)`;
+    (async () => {
+      try {
+        if (port) {
+          const shared = await port.fetchSharedMatches(seasonId);
+          if (alive) setState({ key, matches: shared.matches, error: null });
+          return;
+        }
+        const snap = await getDocs(librarySeasonQuery(db, seasonId));
+        const own = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as LibraryMatch).sort(compareLibraryMatches);
+        const imported = await loadCsImportedMatches();
+        const merged = imported.length > 0 ? mergeLibraryMatches(own, imported, (m) => m.seasonId === seasonId).sort(compareLibraryMatches) : own;
+        if (alive) setState({ key, matches: merged, error: null });
+      } catch (err) {
+        reportFirestoreError("Couldn't load the practice matches", err, path);
+        if (alive) setState({ key, matches: [], error: describeFirestoreError("Couldn't load matches", err, path) });
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the key stands for seasonId and attempt
+  }, [port, key]);
+  const current = state && state.key === key ? state : null;
+  return { matches: current?.matches ?? [], loaded: key === "" || current !== null, error: current?.error ?? null, retry: () => setAttempt((n) => n + 1) };
+}
+
+/**
  * Realtime subscription to every library match in a season, across every
  * imported event — what Practice Scouting's Match Select (P4) shows, since
  * that flow has no event-select step of its own (just Season > Mode >
@@ -343,10 +384,13 @@ export function useLibraryMatchesBySeason(seasonId: string | null, options: { in
   const [error, setError] = useState<FirestoreFailure | null>(null);
   const [attempt, setAttempt] = useState(0);
   const portActive = useProgramData()?.library != null;
-  const portState = usePortLibraryMatches(portActive && seasonId ? { seasonId, includeUnpublished: false } : null);
+  // An account with no team reads the shared library ONCE (no listener, never a team's own documents).
+  const personal = personalScopeUid() !== null;
+  const personalState = usePersonalSeasonMatches(personal ? seasonId : null);
+  const portState = usePortLibraryMatches(portActive && seasonId && !personal ? { seasonId, includeUnpublished: false } : null);
 
   useEffect(() => {
-    if (portActive) return;
+    if (portActive || personal) return;
     if (!seasonId || !isFirebaseConfigured()) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setMatches([]);
@@ -372,10 +416,11 @@ export function useLibraryMatchesBySeason(seasonId: string | null, options: { in
       }
     );
     return unsubscribe;
-  }, [seasonId, attempt, portActive]);
+  }, [seasonId, attempt, portActive, personal]);
 
-  const imported = useCsImportedMatches(Boolean(seasonId) && includeImported && !portActive);
+  const imported = useCsImportedMatches(Boolean(seasonId) && includeImported && !portActive && !personal);
   const merged = useMemo(() => (imported.length > 0 ? mergeLibraryMatches(matches, imported, (m) => m.seasonId === seasonId).sort(compareLibraryMatches) : matches), [matches, imported, seasonId]);
+  if (personal) return { matches: personalState.matches, loaded: seasonId ? personalState.loaded : true, error: personalState.error, retry: personalState.retry };
   if (portActive) return { matches: portState.matches, loaded: seasonId ? portState.loaded : true, error: portState.error, retry: portState.retry };
   return { matches: merged, loaded, error, retry: () => setAttempt((n) => n + 1) };
 }

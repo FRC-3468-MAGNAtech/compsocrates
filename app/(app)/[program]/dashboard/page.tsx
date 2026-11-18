@@ -14,6 +14,9 @@ import { Button } from "@/components/ui/button";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Shimmer } from "@/components/ui/shimmer";
 import { useAuth } from "@/lib/auth";
+import { PersonalDashboard } from "@/components/dashboard/personal-dashboard";
+import { SharePracticePrompt } from "@/components/personal/share-practice-prompt";
+import { usePersonalMode } from "@/lib/personal/context";
 import { DashboardProvider, useDashboard } from "@/lib/dashboard/data";
 import { useSavedDashboardRole } from "@/lib/dashboard/prefs";
 import { resolveViewRole, roleFromLink, userRoles } from "@/lib/dashboard/roles";
@@ -22,6 +25,9 @@ import { cn } from "@/lib/utils";
 
 // useSearchParams needs a Suspense boundary so the page can still be prerendered.
 export default function DashboardPage() {
+  // An account with no team (memberships ON) has its own dashboard: no team data to show.
+  const { personal } = usePersonalMode();
+  if (personal) return <PersonalDashboard />;
   return (
     <Suspense fallback={null}>
       <DashboardPageInner />
@@ -49,6 +55,8 @@ function DashboardPageInner() {
     // The provider is keyed by role so switching roles starts from that role's own subscriptions.
     <DashboardProvider role={role}>
       <div className="flex flex-col gap-5">
+        {/* Share on join: shown once to a member with private practice nobody has shared yet (memberships ON). */}
+        <SharePracticePrompt auto />
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Welcome back, {profile.name.split(" ")[0] || "scout"}</h1>

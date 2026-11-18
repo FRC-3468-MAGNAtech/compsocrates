@@ -18,7 +18,19 @@ import { completedAttemptQuery, ownPausedSessionQuery, scoutSessionsQuery, teamL
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
 import { programData, useProgramData } from "@/lib/program/data";
-import { useProgramConfig } from "@/lib/program/context";
+import { personalScopeUid } from "@/lib/personal/scope";
+import {
+  cachedPersonalSession,
+  claimPersonalSession,
+  deletePersonalSession,
+  findPersonalPausedSession,
+  getPersonalSession,
+  hasCompletedPersonalAttempt,
+  listPersonalSessions,
+  subscribePersonalSessions,
+  updatePersonalSession,
+} from "@/lib/personal/practice-store";
+import { useProgram, useProgramConfig } from "@/lib/program/context";
 import type { Difficulty } from "@/lib/difficulty";
 import type { MatchType } from "@/lib/events/types";
 
@@ -137,6 +149,9 @@ export async function claimUniqueDocId(
  * once more context is known (library match, alliance, robots, ...).
  */
 export async function claimSessionId(teamId: string, uid: string, kind: SessionKind, maxAttempts = 5, program: ProgramId = DEFAULT_PROGRAM): Promise<string> {
+  // An account with no team practises in its own private path (no team id anywhere).
+  const personalUid = personalScopeUid();
+  if (personalUid) return claimPersonalSession(program, personalUid, maxAttempts);
   const port = programData(program)?.practice;
   if (port) return port.claimSession(teamId, uid, kind);
   return claimUniqueDocId(
@@ -171,12 +186,16 @@ const isSession = (s: PracticeSession | null): s is PracticeSession => s !== nul
  * from the match and the patch alone does not carry them.
  */
 export async function updatePracticeSession(sessionId: string, patch: Partial<PracticeSession>, context?: SessionWriteContext, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
+  const personalUid = personalScopeUid();
+  if (personalUid) return updatePersonalSession(program, personalUid, sessionId, patch);
   const port = programData(program)?.practice;
   if (port) return port.updateSession(sessionId, patch);
   await updateDoc(doc(db, COLLECTION, sessionId), { ...patch, ...practicePatchToCsFields(patch, context) });
 }
 
 export async function getPracticeSession(sessionId: string, program: ProgramId = DEFAULT_PROGRAM): Promise<PracticeSession | null> {
+  const personalUid = personalScopeUid();
+  if (personalUid) return getPersonalSession(program, personalUid, sessionId);
   const port = programData(program)?.practice;
   if (port) return port.getSession(sessionId);
   const snap = await getDoc(doc(db, COLLECTION, sessionId));
@@ -188,6 +207,8 @@ export function usePracticeSession(sessionId: string | null) {
   const [session, setSession] = useState<PracticeSession | null>(null);
   const [loaded, setLoaded] = useState(() => !isFirebaseConfigured());
   const port = useProgramData()?.practice;
+  const program = useProgram();
+  const personalUid = personalScopeUid();
 
   useEffect(() => {
     if (!sessionId || !isFirebaseConfigured()) {
@@ -195,6 +216,23 @@ export function usePracticeSession(sessionId: string | null) {
       setSession(null);
       setLoaded(true);
       return;
+    }
+    if (personalUid) {
+      // A private session: read once, then follow this device's own updates (no listener: nobody else writes it).
+      let alive = true;
+      const sync = () => {
+        const held = cachedPersonalSession(program, personalUid, sessionId);
+        if (held && alive) setSession(held);
+      };
+      sync();
+      void getPersonalSession(program, personalUid, sessionId)
+        .then((s) => alive && (setSession(s), setLoaded(true)))
+        .catch(() => alive && (setSession(null), setLoaded(true)));
+      const stop = subscribePersonalSessions(sync);
+      return () => {
+        alive = false;
+        stop();
+      };
     }
     if (port) {
       return port.subscribeSession(
@@ -222,7 +260,7 @@ export function usePracticeSession(sessionId: string | null) {
       }
     );
     return unsubscribe;
-  }, [sessionId, port]);
+  }, [sessionId, port, personalUid, program]);
 
   return { session, loaded };
 }
@@ -241,8 +279,26 @@ function useTeamPracticeSessionsBase(teamId: string | null) {
   const [error, setError] = useState<FirestoreFailure | null>(null);
   const [attempt, setAttempt] = useState(0);
   const port = useProgramData()?.practice;
+  const program = useProgram();
+  const personalUid = personalScopeUid();
 
   useEffect(() => {
+    if (personalUid && isFirebaseConfigured()) {
+      // A private practice list for Match Select: ONE read (no listener) of the person's own sessions.
+      let alive = true;
+      listPersonalSessions(program, personalUid).then(
+        (all) => alive && (setSessions(all.filter((s) => s.kind === "solo")), setLoaded(true)),
+        (err) => {
+          if (!alive) return;
+          setError(describeFirestoreError("Couldn't load your practice sessions", err, "personalPractice sessions"));
+          setSessions([]);
+          setLoaded(true);
+        }
+      );
+      return () => {
+        alive = false;
+      };
+    }
     if (!teamId || !isFirebaseConfigured()) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setSessions([]);
@@ -282,7 +338,7 @@ function useTeamPracticeSessionsBase(teamId: string | null) {
       }
     );
     return unsubscribe;
-  }, [teamId, attempt, port]);
+  }, [teamId, attempt, port, personalUid, program]);
 
   return { sessions, loaded, error, retry: () => setAttempt((n) => n + 1) };
 }
@@ -400,8 +456,26 @@ export function useOwnPausedSession(teamId: string | null, uid: string | null) {
   const [loaded, setLoaded] = useState(() => !isFirebaseConfigured());
   const [error, setError] = useState<FirestoreFailure | null>(null);
   const port = useProgramData()?.practice;
+  const program = useProgram();
+  const personalUid = personalScopeUid();
 
   useEffect(() => {
+    if (personalUid && isFirebaseConfigured()) {
+      // A private paused session: ONE query when the page opens (no listener).
+      let alive = true;
+      findPersonalPausedSession(program, personalUid).then(
+        (found) => alive && (setSession(found), setLoaded(true)),
+        (err) => {
+          if (!alive) return;
+          setError(describeFirestoreError("Couldn't check for a paused session", err, "personalPractice sessions"));
+          setSession(null);
+          setLoaded(true);
+        }
+      );
+      return () => {
+        alive = false;
+      };
+    }
     if (!teamId || !uid || !isFirebaseConfigured()) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setSession(null);
@@ -439,7 +513,7 @@ export function useOwnPausedSession(teamId: string | null, uid: string | null) {
       }
     );
     return unsubscribe;
-  }, [teamId, uid, port]);
+  }, [teamId, uid, port, personalUid, program]);
 
   return { session, loaded, error };
 }
@@ -452,6 +526,8 @@ export async function hasCompletedAttemptBefore(
   alliance: AllianceColor,
   program: ProgramId = DEFAULT_PROGRAM
 ): Promise<boolean> {
+  const personalUid = personalScopeUid();
+  if (personalUid) return hasCompletedPersonalAttempt(program, personalUid, libraryMatchId, alliance);
   const port = programData(program)?.practice;
   if (port) return port.hasCompletedAttempt(teamId, uid, libraryMatchId, alliance);
   const snap = await getDocs(completedAttemptQuery(db, teamId, uid, libraryMatchId, alliance));
@@ -477,6 +553,8 @@ export async function hasCompletedAttemptBefore(
  * false` for exactly this.
  */
 export async function deletePracticeSession(sessionId: string, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
+  const personalUid = personalScopeUid();
+  if (personalUid) return deletePersonalSession(program, personalUid, sessionId);
   const port = programData(program)?.practice;
   if (port) return port.deleteSession(sessionId);
   await deleteDoc(doc(db, COLLECTION, sessionId));

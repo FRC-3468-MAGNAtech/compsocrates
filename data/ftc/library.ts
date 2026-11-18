@@ -91,6 +91,18 @@ export function subscribeLibraryMatches(teamId: string, filter: LibraryMatchFilt
   return watchMerged("Couldn't load the library matches", twoQueries(matchesRef(), teamId, filters), ftcDocsToLibraryMatches, ({ matches, unreadable }) => onData(matches, unreadable), onError);
 }
 
+/** The shared official matches of one season, once: the one query a person with no team may make (published and `origin == "api"`), converted like every other read. */
+export async function fetchSharedLibraryMatches(seasonId: string): Promise<{ matches: LibraryMatch[]; unreadable: number }> {
+  const q = query(matchesRef(), where("seasonId", "==", seasonId), where("published", "==", true), where("origin", "==", "api"));
+  try {
+    const snap = await getDocs(q);
+    return ftcDocsToLibraryMatches(snap.docs.map((d) => ({ id: d.id, data: d.data() as Record<string, unknown> })));
+  } catch (err) {
+    reportFirestoreError("Couldn't load the library matches", err, `${matchesRef().path} where seasonId == ${seasonId}, published == true, origin == api`);
+    throw err;
+  }
+}
+
 async function readEventMatches(event: Pick<LibraryEvent, "eventCode" | "origin">, teamId: string): Promise<Map<string, Record<string, unknown>>> {
   const base = [where("eventCode", "==", event.eventCode)];
   const q = event.origin === "api" ? query(matchesRef(), ...base, where("origin", "==", "api")) : query(matchesRef(), ...base, where("teamId", "==", teamId));

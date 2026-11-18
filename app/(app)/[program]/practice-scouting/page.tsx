@@ -22,6 +22,9 @@ import { UnreadableSessionsNotice } from "@/components/practice/unreadable-sessi
 import { useForms } from "@/lib/forms/forms-context";
 import { useProgram, useProgramConfig } from "@/lib/program/context";
 import { useProgramData } from "@/lib/program/data";
+import { usePersonalMode } from "@/lib/personal/context";
+import { SharePracticePrompt } from "@/components/personal/share-practice-prompt";
+import { PERSONAL_PRACTICE_TEXT } from "@/lib/personal/strings";
 import { useLibraryMatchesBySeason } from "@/lib/match-library";
 import { useMyActiveLobbyId } from "@/lib/lobby";
 import { useTeamActiveLiveScouts } from "@/lib/live-presence";
@@ -56,10 +59,14 @@ export default function PracticeScoutingPage() {
   const { team } = useTeamDoc(teamId);
 
   const program = useProgram();
-  const { live: liveConnected, lobby: lobbyConnected } = useProgramConfig().connection.features;
+  // No team (memberships ON): solo practice on the shared official matches, private to the person. No live scouting, no lobbies, no team reads.
+  const { personal } = usePersonalMode();
+  const features = useProgramConfig().connection.features;
+  const liveConnected = features.live && !personal;
+  const lobbyConnected = features.lobby && !personal;
   // A program with its own session store: one game, solo practice only, no member-matching reads, a library without video entry yet.
   const ownStore = useProgramData()?.practice != null;
-  const usePlaceholder = (team?.usePlaceholderVideo ?? false) || ownStore;
+  const usePlaceholder = (team?.usePlaceholderVideo ?? false) || ownStore || personal;
   const forms = useForms();
   const seasonName = (id: string) => forms.seasonFor(id).name;
   const { session: pausedSession, loaded: pausedLoaded, error: pausedError } = useOwnPausedSession(teamId, user?.uid ?? null);
@@ -101,13 +108,13 @@ export default function PracticeScoutingPage() {
   };
 
   const claimAndStart = async (row: MatchRow) => {
-    if (claiming || !user || !teamId || !profile || !seasonId || !mode || !difficulty) return;
+    if (claiming || !user || (!personal && (!teamId || !profile)) || !seasonId || !mode || !difficulty) return;
     setClaiming(true);
     setError(null);
     try {
-      const sessionId = await claimSessionId(teamId, user.uid, "solo", 5, program);
+      const sessionId = await claimSessionId(teamId ?? "", user.uid, "solo", 5, program);
       await updatePracticeSession(sessionId, {
-        scoutName: profile.name,
+        scoutName: profile?.name || user.displayName || (user.email ?? "").split("@")[0] || "Scout",
         seasonId,
         mode,
         // the alliance's own difficulty (null when its match has no official score yet); the one chosen when a single difficulty was picked
@@ -178,7 +185,14 @@ export default function PracticeScoutingPage() {
             <p className="text-sm text-[var(--muted-foreground)]">
               Scout recorded matches solo, on your own time &mdash; Trial to practice, Competitive for the real pressure.
             </p>
+            {personal && (
+              <p role="note" className="mt-1 text-xs text-[var(--muted-foreground)]" data-testid="personal-practice-note">
+                {PERSONAL_PRACTICE_TEXT.private}
+              </p>
+            )}
           </div>
+          {/* A member who declined the offer (or came back to it) can share their earlier private practice from here. */}
+          {!personal && <SharePracticePrompt auto={false} />}
           {ownStore && profile?.isAdmin && <UnreadableSessionsNotice teamId={teamId} />}
           {pausedError && <LoadError failure={pausedError} />}
           {liveConnected && (

@@ -8,13 +8,11 @@
  */
 import { addDoc, deleteDoc, runTransaction, serverTimestamp, setDoc, updateDoc, writeBatch } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
-import { authedApi } from "@/lib/api-client";
 import { programCollection, programDoc, programPath } from "@/lib/firebase/paths";
 import { reportFirestoreError } from "@/lib/firestore-errors";
 import type { SaveEntryInput, ScoutEntry } from "@/lib/scout-entries";
 import { ftcScoutEntryDoc, ftcScoutEntryPatch } from "@/data/ftc/scouting";
 import { ftcAccountTeamsFields, ftcActiveEventsFields } from "@/data/ftc/teams";
-import { ftcNewTeamDocs, newFtcJoinCode, type JoinRequestInput, type NewTeamInput } from "@/data/ftc/enrollment";
 import type { ActiveEventsState } from "@/lib/active-events";
 import { buildAuditEntry, newAuditLogRef } from "@/lib/audit-log";
 import { diffEntryValues, formEntryDoc, type FormEntry, type NewFormEntry } from "@/lib/form-entries-model";
@@ -300,41 +298,6 @@ export function updateUserFields(uid: string, fields: Record<string, unknown>): 
   if (locked) return Promise.reject(new Error(`"${locked}" can't be changed from here.`));
   if (Object.keys(fields).length === 0) return Promise.resolve();
   return reported("Couldn't save your settings", `${programPath(PROGRAM, USERS)}/${uid}`, () => updateDoc(programDoc(db, PROGRAM, USERS, uid), fields));
-}
-
-// ---------------------------------------------------------------------------------------------------------------------
-// enrollment: start a team, or ask to join one
-// ---------------------------------------------------------------------------------------------------------------------
-
-/**
- * Creates a team and the caller's membership profile (team admin and owner) in ONE batch. The team id is a fresh random join code; the rules
- * require the id to have that shape, the team to be new, the owner to be the caller and the profile to point at it, so a person can neither
- * claim an existing team nor leave a team with no member. The batch only ever touches `programs/ftc/`.
- */
-export async function createTeam(input: NewTeamInput): Promise<{ teamId: string; joinCode: string }> {
-  const code = newFtcJoinCode();
-  const docs = ftcNewTeamDocs(code, input, serverTimestamp());
-  return reported("Couldn't create your team", `${programPath(PROGRAM, TEAMS)}/${code}`, async () => {
-    const batch = writeBatch(db);
-    batch.set(programDoc(db, PROGRAM, TEAMS, code), docs.team);
-    batch.set(programDoc(db, PROGRAM, USERS, input.uid), docs.user);
-    await batch.commit();
-    return { teamId: code, joinCode: code };
-  });
-}
-
-/**
- * Asks to join the team with this join code. Goes through our server route (`/api/ftc/team/request-join`, lib/ftc/server-join-requests.ts), which finds the
- * team by its document id or its `joinCode` field and files `teams/{teamId}/joinRequests/{uid}` as pending. A failure carries the route's own words
- * (no such team, already a member, too many tries) as an `ApiError`, so the form can say which.
- */
-export async function requestToJoinTeam(joinCode: string, input: JoinRequestInput): Promise<void> {
-  try {
-    await authedApi("/api/ftc/team/request-join", { body: { joinCode, name: input.name }, timeoutMs: 30_000 });
-  } catch (err) {
-    reportFirestoreError("Couldn't send your request", err, `${programPath(PROGRAM, TEAMS)} (join code ${joinCode})`);
-    throw err;
-  }
 }
 
 // ---------------------------------------------------------------------------------------------------------------------

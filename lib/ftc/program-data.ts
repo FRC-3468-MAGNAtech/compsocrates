@@ -3,7 +3,7 @@
 import { FTC_GAME_DEFINITIONS, FTC_GAME_ID_LIST, CURRENT_FTC_GAME_ID } from "@/config/games/ftc";
 import { FTC_BUILTIN_FORMS } from "@/lib/ftc/games";
 import type { ProgramData, ProgramSeason } from "@/lib/program/data";
-import { createManualEvent, deleteManualEvent, deleteManualMatches, importSchedule, setMatchesPublished, setMatchScores, setMatchesVideoLink, setMatchVideo, subscribeLibraryEvents, subscribeLibraryMatches, updateManualEvent, upsertManualMatches } from "@/data/ftc/library";
+import { createManualEvent, deleteManualEvent, deleteManualMatches, importSchedule, setMatchesPublished, setMatchScores, setMatchesVideoLink, setMatchVideo, subscribeLibraryEvents, subscribeLibraryMatches, fetchSharedLibraryMatches, updateManualEvent, upsertManualMatches } from "@/data/ftc/library";
 import { scheduleInputFromValid } from "@/lib/library/schedule";
 import { getEvent, getMatchesForEvent } from "@/lib/events/actions";
 import { claimSession, deleteSession, getSession, hasCompletedAttempt, subscribeLobbySessions, subscribeOwnPausedSession, subscribeSession, subscribeTeamLiveSessions, subscribeTeamSessions, updateSession } from "@/data/ftc/practice";
@@ -21,8 +21,6 @@ import {
   publishAssignments,
   publishTeamAssignments,
   swapAssignmentSlot,
-  createTeam,
-  requestToJoinTeam,
   undoAssignments,
   undoTeamAssignments,
   deleteScoutEntry,
@@ -69,7 +67,6 @@ export const ftcProgramData: ProgramData = {
   teamAssignments: { subscribeTeam: subscribeTeamAssignments, publish: publishTeamAssignments, undo: undoTeamAssignments },
   pickList: { subscribe: subscribePickList, edit: editPickList },
   members: { subscribe: subscribeTeamMembers, updateAccess: updateMemberAccess },
-  enrollment: { createTeam, requestToJoin: (joinCode, input) => requestToJoinTeam(joinCode, input) },
   joinRequests: { subscribePending: subscribePendingJoinRequests, approve: approveJoinRequest, deny: denyJoinRequest },
   attendance: { subscribeTeam: subscribeTeamAttendance, set: setEventAttendance },
   backup: { read: readFtcBackup },
@@ -77,6 +74,7 @@ export const ftcProgramData: ProgramData = {
   library: {
     subscribeEvents: subscribeLibraryEvents,
     subscribeMatches: subscribeLibraryMatches,
+    fetchSharedMatches: fetchSharedLibraryMatches,
     createEvent: createManualEvent,
     deleteEvent: deleteManualEvent,
     updateEvent: updateManualEvent,
