@@ -1,6 +1,7 @@
 "use client";
 
 import { auth } from "@/lib/firebase/client";
+import { markQuotaExceeded } from "@/lib/quota";
 
 /** A failed API call, with the route's machine-readable `code` (and per-field errors for form validation) kept. */
 export class ApiError extends Error {
@@ -44,6 +45,7 @@ export async function authedApi<T = Record<string, unknown>>(path: string, init:
   }
   const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   if (!res.ok || json.ok === false) {
+    if (json.code === "quota_exceeded") markQuotaExceeded();
     throw new ApiError(
       typeof json.error === "string" ? json.error : "Something went wrong.",
       res.status,

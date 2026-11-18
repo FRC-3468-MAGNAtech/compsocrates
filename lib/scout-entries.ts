@@ -25,6 +25,7 @@ import { auth, db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
 import { programData, useProgramData } from "@/lib/program/data";
 import { loadRosterExtras } from "@/lib/team-roster";
+import { isQuotaExceeded } from "@/lib/quota";
 import { clearLegacyCache, legacyCacheKey, readLegacy, writeLegacy } from "@/lib/legacy-cache";
 import type { FirestoreFailure } from "@/lib/firestore-errors";
 import { assertSubmissionOpen, type SubmissionGateInput } from "@/lib/forms/submission-guard";
@@ -221,7 +222,7 @@ function subscribeFlagStates(teamId: string, onChange: () => void): Unsubscribe 
       (err) => {
         // CS does the same: carry on without flag states.
         console.warn("scoutingFlagStates subscription failed:", err);
-        created.states = new Map();
+        if (!isQuotaExceeded(err)) created.states = new Map(); // quota: keep the last flag states
         created.listeners.forEach((listener) => listener());
       }
     );
@@ -535,7 +536,8 @@ function subscribeTeamFeed(teamId: string, listener: (s: TeamSnapshot) => void):
       },
       (err) => {
         console.error("team scouting subscription failed:", err);
-        primary = [];
+        // The daily quota running out must not blank a page that is already showing data: keep the last rows. Any other failure clears them, as before.
+        if (!isQuotaExceeded(err)) primary = [];
         primaryLoaded = true;
         emit();
       }
@@ -592,9 +594,9 @@ export function useTeamScoutEntries(teamId: string | null) {
           setState({ entries, loaded: true });
         },
         (failure) => {
-          // already reported by the port
+          // already reported by the port. The daily quota keeps the entries already on screen; any other failure clears them, as before.
           setError(failure);
-          setState({ entries: [], loaded: true });
+          setState((prev) => (isQuotaExceeded(failure) ? { entries: prev.entries, loaded: true } : { entries: [], loaded: true }));
         }
       );
     }

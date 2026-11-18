@@ -8,6 +8,7 @@
 // first SERVER snapshot and every document added or modified afterwards. Snapshots served from the local cache (metadata.fromCache) are skipped, and so are
 // local writes that have not reached the server (hasPendingWrites). Reads Firestore bills for evaluating security rules are NOT visible here.
 import * as fs from "firebase/firestore";
+import { clearQuotaExceeded, isQuotaExceeded, isQuotaFlagged, markQuotaExceeded } from "@/lib/quota";
 import { isMeterActive, recordDocs } from "@/lib/read-meter/client";
 
 export * from "firebase/firestore";
@@ -51,14 +52,26 @@ const safely = (count: () => void) => {
   }
 };
 
+/** A failed read that is the daily quota is noted (one banner in the shell) and then thrown unchanged. */
+const noteFailure = (err: unknown): never => {
+  if (isQuotaExceeded(err)) markQuotaExceeded();
+  throw err;
+};
+/** A read that came from the server proves the allowance is not exhausted (any banner goes away). */
+const noteServerRead = (snap: AnySnap | undefined) => {
+  if (isQuotaFlagged() && !snap?.metadata?.fromCache) clearQuotaExceeded();
+};
+
 export const getDocs = (async (...args: unknown[]) => {
-  const snap = await (fs.getDocs as (...a: unknown[]) => Promise<unknown>)(...args);
+  const snap = await Promise.resolve((fs.getDocs as (...a: unknown[]) => unknown)(...args)).catch(noteFailure);
+  noteServerRead(snap as AnySnap);
   if (isMeterActive()) safely(() => countQuery(snap as AnySnap));
   return snap;
 }) as typeof fs.getDocs;
 
 export const getDoc = (async (...args: unknown[]) => {
-  const snap = await (fs.getDoc as (...a: unknown[]) => Promise<unknown>)(...args);
+  const snap = await Promise.resolve((fs.getDoc as (...a: unknown[]) => unknown)(...args)).catch(noteFailure);
+  noteServerRead(snap as AnySnap);
   if (isMeterActive()) {
     safely(() => {
       const s = snap as AnySnap;
@@ -69,23 +82,32 @@ export const getDoc = (async (...args: unknown[]) => {
 }) as typeof fs.getDoc;
 
 const wrapNext = (next: (snap: unknown) => void) => (snap: unknown) => {
+  noteServerRead(snap as AnySnap);
   if (isMeterActive()) safely(() => countSnapshot(snap as AnySnap));
   next(snap);
 };
+const wrapError = (onError: (err: unknown) => void) => (err: unknown) => {
+  if (isQuotaExceeded(err)) markQuotaExceeded();
+  onError(err);
+};
 
 export const onSnapshot = ((target: unknown, ...rest: unknown[]) => {
-  let wrapped = false;
+  let functions = 0;
   const args = rest.map((arg) => {
-    if (wrapped) return arg;
     if (typeof arg === "function") {
-      wrapped = true;
-      return wrapNext(arg as (snap: unknown) => void);
+      functions += 1;
+      if (functions === 1) return wrapNext(arg as (snap: unknown) => void);
+      if (functions === 2) return wrapError(arg as (err: unknown) => void); // (next, error, complete)
+      return arg;
     }
     if (arg && typeof arg === "object" && typeof (arg as { next?: unknown }).next === "function") {
-      wrapped = true;
-      return { ...(arg as object), next: wrapNext((arg as { next: (snap: unknown) => void }).next.bind(arg)) };
+      const observer = arg as { next: (s: unknown) => void; error?: (e: unknown) => void };
+      functions = 3;
+      return { ...observer, next: wrapNext(observer.next.bind(observer)), error: wrapError((observer.error ?? (() => {})).bind(observer)) };
     }
     return arg;
   });
+  // A listener with no error callback still learns about the quota (the SDK would only log it).
+  if (functions === 1) args.push(wrapError(() => {}));
   return (fs.onSnapshot as (...a: unknown[]) => fs.Unsubscribe)(target, ...args);
 }) as typeof fs.onSnapshot;

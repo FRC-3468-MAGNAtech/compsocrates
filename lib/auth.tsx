@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { PROFILE_RETRY_MS, readFailureMeansNoProfile } from "@/lib/profile-read-failure";
 import { clearLegacyCache } from "@/lib/legacy-cache";
 import {
   createUserWithEmailAndPassword,
@@ -148,6 +149,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const pendingGoogleCredential = useRef<AuthCredential | null>(null);
   // The raw CS user doc behind `profile` (D1/D10): writers need its role fields to keep CS's `role`/`roles` consistent.
   const rawUserDoc = useRef<CsUserDoc | null>(null);
+  // Which account the held profile belongs to, and a counter that re-asks after a FAILED read that left nothing to show.
+  const profileOwner = useRef<string | null>(null);
+  const [profileAttempt, setProfileAttempt] = useState(0);
   const [ownerPendingVerification, setOwnerPendingVerification] = useState(false);
 
   // `restore`: a session found again on page load (not a person signing in just now): the sync runs at most once per 10 minutes per browser session (lib/sign-in-sync.ts).
@@ -221,10 +225,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // new subscription spins up.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setProfileLoaded(false);
+    let retry: ReturnType<typeof setTimeout> | undefined;
     const unsubscribe = onSnapshot(
       doc(db, "users", user.uid),
       (snap) => {
         rawUserDoc.current = snap.exists() ? (snap.data() as CsUserDoc) : null;
+        profileOwner.current = user.uid;
         setProfile(snap.exists() ? csUserToProfile(snap.id, snap.data() as CsUserDoc) : null);
         setProfileLoaded(true);
       },
@@ -239,12 +245,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // profile doc" so app/(app)/[program]/layout.tsx's redirect to /apply-to-team
         // can actually run.
         console.error("users/{uid} subscription failed:", err);
-        setProfile(null);
-        setProfileLoaded(true);
+        if (readFailureMeansNoProfile(err)) {
+          setProfile(null);
+          setProfileLoaded(true);
+          return;
+        }
+        // A FAILED read (the daily quota, a dropped network) says nothing about the account, so it is never "no profile": keep this account's last known profile, or stay on
+        // the loading state and ask again in a minute. The quota banner explains; routing a member to the team setup screen would be wrong.
+        if (profileOwner.current === user.uid) setProfileLoaded(true);
+        retry = setTimeout(() => setProfileAttempt((n) => n + 1), PROFILE_RETRY_MS);
       }
     );
-    return unsubscribe;
-  }, [user]);
+    return () => {
+      unsubscribe();
+      if (retry) clearTimeout(retry);
+    };
+  }, [user, profileAttempt]);
 
   const login = async (email: string, password: string) => {
     const credential = await signInWithEmailAndPassword(auth, email, password);

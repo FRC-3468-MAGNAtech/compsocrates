@@ -11,6 +11,7 @@ import { ProgramSetupFrame } from "@/components/program/setup-frame";
 import { TeamSetupScreen } from "@/components/team-setup/team-setup-screen";
 import { ProgramAuth } from "@/components/program/program-auth";
 import { ReadFailureBanner } from "@/components/program/read-failure-banner";
+import { QuotaBanner } from "@/components/layout/quota-banner";
 import { UnconnectedPage } from "@/components/program/unconnected-page";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
@@ -125,6 +126,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
           <main className="min-w-0">
             <VerifyEmailBanner className="mb-4" />
             <OwnershipTransferBanner className="mb-4" />
+            <QuotaBanner className="mb-4" />
             <ReadFailureBanner className="mb-4" />
             {features.live && !personal && showsLivePill(pathname) && <LiveMatchPill />}
             <PageTransition>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { readFailureMeansNoProfile } from "@/lib/profile-read-failure";
 import { AuthContext, useAuth, type AuthContextValue, type UserDoc } from "@/lib/auth";
 import { useProgramData } from "@/lib/program/data";
 
@@ -25,7 +26,8 @@ export function ProgramAuth({ children }: { children: ReactNode }) {
     return data.profile.subscribe(
       uid,
       (profile) => setHeld({ uid, profile }),
-      () => setHeld({ uid, profile: null }) // already reported by the port
+      // already reported by the port. Only the rules' denial means "no profile yet"; any other failed read keeps this account's last profile, or leaves the loading state.
+      (failure) => setHeld((prev) => (readFailureMeansNoProfile(failure) ? { uid, profile: null } : prev?.uid === uid ? prev : null))
     );
   }, [data, uid]);
 

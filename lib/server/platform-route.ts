@@ -4,6 +4,7 @@ import type { Firestore } from "firebase-admin/firestore";
 import { getAdminFirestore } from "@/lib/firebase/admin";
 import { isPlatformOwnerToken } from "@/lib/server/owner-admin";
 import { consumeRateLimit } from "@/lib/server/rate-limit";
+import { isQuotaError } from "@/lib/server/memberships";
 import { serverSignInProblem, verifyBearerToken } from "@/lib/server/require-user";
 
 // The route wiring shared by the platform changelog and credits routes (Session 7). Every route here uses the Admin SDK only: the
@@ -38,6 +39,7 @@ export async function withViewer(request: Request, handler: (db: Firestore, view
     return respond(await handler(db, { uid: decoded.uid, name: nameOf(decoded), isOwner: isPlatformOwnerToken(decoded) }));
   } catch (err) {
     console.error("platform route failed:", err instanceof Error ? err.message : "unknown error");
+    if (isQuotaError(err)) return respond(fail(503, "quota_exceeded", "The database is over its daily usage limit right now. Try again later."));
     return respond(fail(500, "server_error", "Something went wrong."));
   }
 }
