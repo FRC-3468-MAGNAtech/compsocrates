@@ -1570,6 +1570,20 @@ service cloud.firestore {
           && d.updatedAt == request.time;
       }
 
+      // Memberships build 3: a person's PRIVATE practice (an account with no team), the same rules as the root block (the helpers are the root ones). Self only by path,
+      // never a `teamId` key, bounded size. A team can never read it: sharing on joining is a server route that copies it as team sessions.
+      match /personalPractice/{uid}/sessions/{sessionId} {
+        allow read, delete: if ftc_isSignedIn() && request.auth.uid == uid;
+        allow create, update: if ftc_isSignedIn() && request.auth.uid == uid && personalSessionOk(uid, request.resource.data);
+      }
+      match /personalPractice/{uid}/entries/{entryId} {
+        allow read, delete: if ftc_isSignedIn() && request.auth.uid == uid;
+        allow create, update: if ftc_isSignedIn() && request.auth.uid == uid && personalEntryOk(uid, request.resource.data);
+      }
+      match /personalPractice/{uid}/state/{docId} {
+        allow read, write: if ftc_isSignedIn() && request.auth.uid == uid && personalStateOk(request.resource.data);
+      }
+
       match /profiles/{uid} {
         // Session G: same rule as the root block: a same-team admin reads any profile of their team while the owner's
         // appSettings/global.adminsSeeAllProfiles switch is on (missing means on); the platform owner reads any; an admin may set their own private.
@@ -2339,6 +2353,34 @@ service cloud.firestore {
         || isPlatformOwner()
       );
       allow write: if false;
+    }
+
+    // =================================================================================================================
+    // Memberships build 3: a person's PRIVATE practice (an account with NO team). `personalPractice/{uid}/sessions|entries|state` (FTC: the same under programs/ftc).
+    // ADDITIVE: no existing rule changes. Self only, decided by the PATH (the uid in it must be the caller's), the document must NOT carry a `teamId` key (an empty
+    // `teamId` was the old practice-data bug) and is bounded (key count, name length). A teammate, an admin and the platform owner read nothing here: the only way a team
+    // ever gets this data is the person's own opt-in, a server route that copies it as team sessions.
+    // =================================================================================================================
+    function personalSessionOk(uid, d) {
+      return !('teamId' in d) && d.get('uid', '') == uid && d.keys().size() <= 40
+        && d.get('scoutName', '') is string && d.get('scoutName', '').size() <= 120;
+    }
+    function personalEntryOk(uid, d) {
+      return !('teamId' in d) && d.get('uid', '') == uid && d.keys().size() <= 60;
+    }
+    function personalStateOk(d) {
+      return !('teamId' in d) && d.keys().size() <= 10;
+    }
+    match /personalPractice/{uid}/sessions/{sessionId} {
+      allow read, delete: if signedIn() && request.auth.uid == uid;
+      allow create, update: if signedIn() && request.auth.uid == uid && personalSessionOk(uid, request.resource.data);
+    }
+    match /personalPractice/{uid}/entries/{entryId} {
+      allow read, delete: if signedIn() && request.auth.uid == uid;
+      allow create, update: if signedIn() && request.auth.uid == uid && personalEntryOk(uid, request.resource.data);
+    }
+    match /personalPractice/{uid}/state/{docId} {
+      allow read, write: if signedIn() && request.auth.uid == uid && personalStateOk(request.resource.data);
     }
 
     // =================================================================================================================
