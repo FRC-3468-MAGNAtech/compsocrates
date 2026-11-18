@@ -13,6 +13,7 @@ import { useAuth } from "@/lib/auth";
 import { useProgram, useProgramConfig } from "@/lib/program/context";
 import { LoadError } from "@/components/practice/load-error";
 import { useTeamMembers } from "@/lib/team-members";
+import { personName } from "@/lib/people/display-name";
 import { getSeason, SEASONS } from "@/lib/seasons";
 import { getPercentColor } from "@/lib/accuracy/engine";
 import { dismissSessionFlag, hardResetScoutData, setSessionExcluded } from "@/lib/scout-stats/actions";
@@ -98,7 +99,7 @@ export function SessionsPanel() {
       <GlassPanel className="flex flex-wrap items-center gap-3">
         <Select value={scoutFilter} onValueChange={setScoutFilter}>
           <SelectTrigger className="w-44">
-            <SelectValue>{scoutFilter === "all" ? "All scouts" : members.find((m) => m.uid === scoutFilter)?.name ?? "Scout"}</SelectValue>
+            <SelectValue>{scoutFilter === "all" ? "All scouts" : personName(scoutFilter, members, "Scout")}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All scouts</SelectItem>

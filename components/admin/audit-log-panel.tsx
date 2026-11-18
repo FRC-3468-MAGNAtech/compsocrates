@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/lib/auth";
 import { useTeamMembers } from "@/lib/team-members";
+import { personName } from "@/lib/people/display-name";
 import { useAuditLog, type AuditAction, type AuditLogEntry } from "@/lib/audit-log";
 
 const ACTION_LABELS: Record<AuditAction, string> = {
@@ -102,7 +103,7 @@ export function AuditLogPanel() {
       <GlassPanel className="flex flex-wrap items-center gap-3">
         <Select value={actorFilter} onValueChange={setActorFilter}>
           <SelectTrigger className="w-44">
-            <SelectValue>{actorFilter === "all" ? "All actors" : members.find((m) => m.uid === actorFilter)?.name ?? "Actor"}</SelectValue>
+            <SelectValue>{actorFilter === "all" ? "All actors" : personName(actorFilter, members, "Actor")}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All actors</SelectItem>

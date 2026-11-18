@@ -12,6 +12,7 @@ import { usePageAccess } from "@/lib/page-access/store";
 import { getRole } from "@/lib/roles";
 import { eligibleFormScouts } from "@/lib/scout-status/form-status";
 import type { TeamMember } from "@/lib/team-members";
+import { personName } from "@/lib/people/display-name";
 import { TEAM_ASSIGN_KIND_INFO, type TeamAssignKind } from "@/lib/team-assignments/model";
 import { KIND_FORM_TYPE, findTeamAssignments, publishTeamAssignments, undoTeamAssignments, useTeamAssignmentDocs } from "@/lib/team-assignments/store";
 
@@ -46,7 +47,7 @@ export function TeamAssignmentsPanel({ kind, eventCode, season, members, attendi
     };
   }, [members, attendingUids, config, info.pageId]);
 
-  const nameOf = (uid: string) => members.find((m) => m.uid === uid)?.name ?? "Someone";
+  const nameOf = (uid: string) => personName(uid, members, "Someone");
 
   return (
     <TeamAssignmentsView

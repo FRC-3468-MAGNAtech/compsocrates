@@ -6,6 +6,7 @@
 // team never strands someone. An admin sees every team. Scouting entries belong to the account, not to one of its teams, so removing a team never
 // touches an entry.
 
+import { personName } from "@/lib/people/display-name";
 import { parseTeamNumber, type AccountTeam } from "@/lib/team-number";
 
 /** At most this many teams per account (also enforced in firestore.rules). */
@@ -71,7 +72,7 @@ export function effectiveTeamIds(assigned: readonly string[] | null | undefined,
 export function removalCheck(teamId: string, teams: readonly AccountTeam[], members: readonly MemberLike[]): { ok: true } | { ok: false; reason: "last-team" | "assigned"; members: { uid: string; name: string }[] } {
   if (teams.length <= 1) return { ok: false, reason: "last-team", members: [] };
   const assigned = membersAssignedTo(teamId, members);
-  if (assigned.length > 0) return { ok: false, reason: "assigned", members: assigned.map((m) => ({ uid: m.uid, name: m.name ?? m.uid })) };
+  if (assigned.length > 0) return { ok: false, reason: "assigned", members: assigned.map((m) => ({ uid: m.uid, name: personName(m.uid, [{ uid: m.uid, name: m.name ?? "" }]) })) };
   return { ok: true };
 }
 

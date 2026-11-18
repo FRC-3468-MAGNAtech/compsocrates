@@ -9,6 +9,7 @@ import { allianceSlots, slotIndex, slotLabel } from "@/config/alliance";
 import { useProgramConfig } from "@/lib/program/context";
 import type { ScheduleResult, SlotId } from "@/lib/scheduler/types";
 import type { TeamMember } from "@/lib/team-members";
+import { personName } from "@/lib/people/display-name";
 
 /**
  * The grid's columns: Red 1..n then Blue 1..n, where n is the widest alliance in the schedule itself
@@ -22,7 +23,7 @@ export function slotColumns(slots: ScheduleResult["slots"], allianceSize: number
 
 function nameFor(members: TeamMember[], uid: string | null): string {
   if (!uid) return "—";
-  return members.find((m) => m.uid === uid)?.name ?? uid;
+  return personName(uid, members);
 }
 
 /**

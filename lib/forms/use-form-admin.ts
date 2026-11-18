@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { personName } from "@/lib/people/display-name";
 import { useAuth } from "@/lib/auth";
 import { useProgram } from "@/lib/program/context";
 import { createFirestoreFormStore } from "@/lib/forms/firestore-store";
@@ -32,7 +33,6 @@ export function useFormAdmin(): {
   const usage = useMemo(() => usageByForm(entries), [entries]);
   const store = useMemo(() => (teamId && uid ? createFirestoreFormStore(teamId, { uid }, program) : null), [teamId, uid, program]);
   const actor = useMemo<FormActor | null>(() => (teamId && uid ? { teamId, uid, name, program } : null), [teamId, uid, name, program]);
-  const names = useMemo(() => new Map(members.map((m) => [m.uid, m.name])), [members]);
-  const nameOf = useMemo(() => (id: string | undefined) => (id ? (names.get(id) ?? "a former member") : "—"), [names]);
+  const nameOf = useMemo(() => (id: string | undefined) => (id ? personName(id, members, "a former member") : "—"), [members]);
   return { teamId, actor, store, usage, entriesLoaded, nameOf };
 }
