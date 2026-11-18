@@ -1,4 +1,4 @@
-import type { RegistryEntry, RewriteSpec } from "@/lib/deletion/registry";
+import type { RegistryEntry } from "@/lib/deletion/registry";
 
 /**
  * Person data that only this program's collections hold (account deletion, `lib/deletion/registry.ts`). Data only; paths are under `programs/ftc/`. Add a row here

@@ -29,7 +29,11 @@ export type PlatformAuditAction =
   | "unpublish-platform-changelog-entry"
   | "delete-platform-changelog-entry"
   | "save-platform-credits"
-  | "verify-team-admins";
+  | "verify-team-admins"
+  | "start-account-deletion"
+  | "resume-account-deletion"
+  | "stall-account-deletion"
+  | "finish-account-deletion";
 
 /** The platform owner's own log (`platformAuditLog`, readable only by platform owners): it may hold applicant details that must not appear in any team's Audit Log. */
 export function platformAuditDoc(action: PlatformAuditAction, actor: { uid: string; name: string }, details: Record<string, unknown>) {

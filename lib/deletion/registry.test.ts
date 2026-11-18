@@ -171,6 +171,9 @@ const NOT_A_PERSON: Record<string, string> = {
   teamOwnerUid: "a function argument of the guard, not a stored field (ownerUid is registered)",
   templateName: "a mail template argument",
   confirmName: "the typed confirmation of an owner action, not stored",
+  matchedName: "a flag inside the deletion engine (in memory), not stored",
+  requestedBy: "who asked for a deletion (self or owner) on the job document: a role word, not a person",
+  stoppedBy: "why a deletion run stopped (budget, time, cooldown), not a person",
 };
 
 describe("registry covers person fields in writers (heuristic)", () => {

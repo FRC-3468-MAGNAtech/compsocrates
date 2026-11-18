@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/poll-live-scores",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/account-deletions",
+      "schedule": "30 0 * * *"
     }
   ]
 }

@@ -5,7 +5,7 @@ import { PROGRAM_IDS, type ProgramId } from "@/config/programs/types";
  * THE PERSON DATA REGISTRY (memberships build 4): the single place that says where a person lives in the database and what account deletion does there.
  * The deletion job (`lib/server/account-deletion/`) is driven by it, and `registry.test.ts` fails when code names a collection that is not listed here, or writes
  * a person field that its entry does not list. NEW CODE THAT STORES A PERSON (a uid, a name, an email, a token, a photo) MUST UPDATE THIS FILE (or the program's
- * own list: `data/cs/deletion-entries.ts`, `lib/ftc/deletion-entries.ts`) IN THE SAME CHANGE.
+ * own list under `ProgramConfig.deletion`) IN THE SAME CHANGE.
  *
  * Actions: `delete` (the rows go), `rewrite` (the row stays, the person's uid becomes the job's opaque id and the name "Deleted Account"), `keep` (nothing about
  * the person; documented), `owner` (an owner decision: not processed, reported), `none` (no person data; a reason is given).
