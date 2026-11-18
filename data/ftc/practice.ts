@@ -61,8 +61,9 @@ export function subscribeTeamSessions(teamId: string, onData: (sessions: Practic
 }
 
 /** Realtime, the team's LIVE sessions (`teamId ==`, `kind ==`; live practice: Pending Robots, the score watcher, and the match keys the presence reads derive from). */
-export function subscribeTeamLiveSessions(teamId: string, onData: (sessions: PracticeSession[]) => void, onError: Failure): Unsubscribe {
-  return watch("Couldn't load live practice sessions", sessionsQuery([["teamId", teamId], ["kind", "live"]]), onData, onError);
+export function subscribeTeamLiveSessions(teamId: string, onData: (sessions: PracticeSession[]) => void, onError: Failure, ownUid?: string): Unsubscribe {
+  const filters: Equality[] = [["teamId", teamId], ["kind", "live"], ...(ownUid ? ([["uid", ownUid]] as Equality[]) : [])];
+  return watch("Couldn't load live practice sessions", sessionsQuery(filters), onData, onError);
 }
 
 /** Realtime, the sessions of one lobby (`teamId ==`, `lobbyId ==`): the waiting room and the results screen. */

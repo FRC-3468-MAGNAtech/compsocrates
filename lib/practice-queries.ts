@@ -26,7 +26,11 @@ export const libraryAllQuery = (db: Firestore, includeUnpublished: boolean) => (
 
 export const teamSoloSessionsQuery = (db: Firestore, teamId: string) => query(collection(db, "practiceSessions"), where("teamId", "==", teamId), where("kind", "==", "solo"));
 
-export const teamLiveSessionsQuery = (db: Firestore, teamId: string) => query(collection(db, "practiceSessions"), where("teamId", "==", teamId), where("kind", "==", "live"));
+/** The team's live sessions; with `uid`, only that person's own (the shell's scores watcher needs nothing else). */
+export const teamLiveSessionsQuery = (db: Firestore, teamId: string, uid?: string) =>
+  uid
+    ? query(collection(db, "practiceSessions"), where("teamId", "==", teamId), where("kind", "==", "live"), where("uid", "==", uid))
+    : query(collection(db, "practiceSessions"), where("teamId", "==", teamId), where("kind", "==", "live"));
 
 export const teamSessionsQuery = (db: Firestore, teamId: string) => query(collection(db, "practiceSessions"), where("teamId", "==", teamId));
 

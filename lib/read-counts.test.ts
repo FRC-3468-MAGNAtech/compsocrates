@@ -42,7 +42,8 @@ async function measure(page: (team: string) => void): Promise<{ total: number; b
 
 // The shell's two watchers, mounted on every page of the signed-in app.
 function useShellPage(t: string) {
-  useTeamLiveSessions(t);
+  // Before the watcher read only its own sessions this was useTeamLiveSessions(t): the team's whole live history (161 documents on this dataset).
+  useTeamLiveSessions(t, "u1");
   useTeamActiveLiveScouts(t);
 }
 function useScoutPage(t: string) {
@@ -67,7 +68,7 @@ const pages: Record<string, (team: string) => void> = {
 };
 
 const BEFORE: Record<string, number> = {
-  "app shell (live sessions + live presence listeners)": 161,
+  "app shell (live sessions + live presence listeners)": 9,
   "Scout page (team entries feed)": 4162,
   "Analytics (entries + all sessions + all library matches)": 5493,
   "Team Coach dashboard (entries, members x2, all sessions)": 5032,

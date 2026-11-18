@@ -349,7 +349,7 @@ function useTeamPracticeSessionsBase(teamId: string | null) {
  * covered" checks read, team-wide (not just the caller's own), same
  * reasoning as `useTeamPracticeSessions`.
  */
-export function useTeamLiveSessions(teamId: string | null) {
+export function useTeamLiveSessions(teamId: string | null, ownUid?: string | null) {
   const [sessions, setSessions] = useState<PracticeSession[]>([]);
   const [loaded, setLoaded] = useState(() => !isFirebaseConfigured());
   // A program without live practice reads nothing here (no live session store exists for it).
@@ -374,11 +374,12 @@ export function useTeamLiveSessions(teamId: string | null) {
         () => {
           setSessions([]);
           setLoaded(true);
-        }
+        },
+        ownUid ?? undefined
       );
     }
     const unsubscribe = onSnapshot(
-      teamLiveSessionsQuery(db, teamId),
+      teamLiveSessionsQuery(db, teamId, ownUid ?? undefined),
       (snap) => {
         setSessions(snap.docs.map((d) => toSession(d.id, d.data())).filter(isSession));
         setLoaded(true);
@@ -390,7 +391,7 @@ export function useTeamLiveSessions(teamId: string | null) {
       }
     );
     return unsubscribe;
-  }, [teamId, liveConnected, port]);
+  }, [teamId, ownUid, liveConnected, port]);
 
   return { sessions, loaded };
 }

@@ -24,7 +24,8 @@ import { springSnappy } from "@/lib/motion";
  */
 export function ScoresReadyWatcher() {
   const { user, profile } = useAuth();
-  const { sessions } = useTeamLiveSessions(profile?.teamId ?? null);
+  // Only the signed-in person's OWN live sessions are ever used below, so only those are read (and none until the person is known: a null uid would mean the whole team).
+  const { sessions } = useTeamLiveSessions(user ? (profile?.teamId ?? null) : null, user?.uid ?? null);
   const router = useRouter();
   const program = useProgram();
   const [popup, setPopup] = useState<{ title: string; body: string } | null>(null);

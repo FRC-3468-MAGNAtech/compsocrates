@@ -215,7 +215,7 @@ export type ProgramData = {
     /** Every entry saved so far for one session (both robots), found by the session id. */
     entriesForSession(teamId: string, sessionId: string): Promise<ScoutEntry[]>;
     /** The team's live sessions only (`teamId ==`, `kind ==`). */
-    subscribeTeamLiveSessions(teamId: string, onData: (sessions: PracticeSession[]) => void, onError: DataError): Unsubscribe;
+    subscribeTeamLiveSessions(teamId: string, onData: (sessions: PracticeSession[]) => void, onError: DataError, ownUid?: string): Unsubscribe;
   };
   /**
    * Live practice presence (FTC: `programs/ftc/liveMatches/{key}/scouts/{uid}`). The root program has none: `lib/live-presence.ts` reads its own collections
