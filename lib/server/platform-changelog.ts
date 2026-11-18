@@ -15,14 +15,29 @@ const ID = /^[A-Za-z0-9_-]{1,120}$/;
 /** The JSON a client receives for an entry (`PlatformEntry` is already plain data). */
 export const entryJson = (e: PlatformEntry): PlatformEntry => e;
 
+const FEED_TTL_MS = 60_000;
+let feedCache: { at: number; entries: PlatformEntry[] } | null = null;
+
+/** Forget the cached published feed (an owner write happened, or a test). */
+export function invalidateFeedCache(): void {
+  feedCache = null;
+}
+
 /**
  * The feed: published entries for everyone, plus drafts only when the caller is the platform owner AND asked for them. Entries are sorted
  * (current newest first, legacy below). Never filtered by team or program: the page filters by the tags, so "Show all programs" needs no refetch.
  */
-export async function listFeed(db: Firestore, viewer: Viewer, wantDrafts: boolean): Promise<RouteResult> {
-  const snap = await db.collection(PLATFORM_CHANGELOG).get();
+export async function listFeed(db: Firestore, viewer: Viewer, wantDrafts: boolean, nowMs: number = Date.now()): Promise<RouteResult> {
   const includeDrafts = viewer.isOwner && wantDrafts;
-  const entries = sortEntries(snap.docs.map((d) => entryFromDoc(d.id, d.data() as Record<string, unknown>)).filter((e) => includeDrafts || e.status === "published"));
+  // The published feed is served from a 60 s per-instance copy (it is read by every shell load); the owner's draft view is always fresh, and every owner write below drops the copy.
+  let entries: PlatformEntry[];
+  if (!includeDrafts && feedCache && nowMs - feedCache.at < FEED_TTL_MS) {
+    entries = feedCache.entries;
+  } else {
+    const snap = await db.collection(PLATFORM_CHANGELOG).get();
+    entries = sortEntries(snap.docs.map((d) => entryFromDoc(d.id, d.data() as Record<string, unknown>)).filter((e) => includeDrafts || e.status === "published"));
+    if (!includeDrafts) feedCache = { at: nowMs, entries };
+  }
   return { status: 200, body: { ok: true, entries: entries.map(entryJson), isOwner: viewer.isOwner }, headers: { "Cache-Control": "private, no-store" } };
 }
 
@@ -44,6 +59,14 @@ const timesOf = (e: Pick<PlatformEntry, "postedAtMs" | "editedAtMs">): EntryTime
 
 /** Applies one owner write. Validation first (400), then one transaction (404, 409 with the current entry, or the write and its audit entry). */
 export async function applyWrite(db: Firestore, owner: Viewer, write: Write, nowMs: number = Date.now()): Promise<RouteResult> {
+  try {
+    return await applyWriteInner(db, owner, write, nowMs);
+  } finally {
+    invalidateFeedCache(); // the next reader sees the change at once on this instance (other instances within 60 s)
+  }
+}
+
+async function applyWriteInner(db: Firestore, owner: Viewer, write: Write, nowMs: number): Promise<RouteResult> {
   const actor = { uid: owner.uid, name: owner.name };
 
   if (write.kind === "create") {

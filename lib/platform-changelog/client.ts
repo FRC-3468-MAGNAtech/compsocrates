@@ -5,6 +5,7 @@ import { serverTimestamp } from "firebase/firestore";
 import { authedApi, ApiError } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth";
 import { timestampMs } from "@/lib/changelog";
+import { cachedFeed, rememberFeed } from "@/lib/platform-changelog/feed-cache";
 import { hasUnread, sortEntries, type EntryInput, type PlatformEntry } from "@/lib/platform-changelog/model";
 import type { TimePatch } from "@/lib/platform-changelog/times";
 import { useProgram } from "@/lib/program/context";
@@ -65,8 +66,8 @@ export function useAccountCreatedMs(): number | null {
 }
 
 /**
- * The unread dot for the current program: fetches the published feed once when the shell mounts (and again when the tab becomes visible), then
- * derives the dot from the account's `lastSeenChangelogAt` (so opening the page, which stamps it, clears the dot without another fetch).
+ * The unread dot for the current program: fetches the published feed when the shell mounts and when the tab becomes visible, but never more than once per
+ * 10 minutes per browser session (lib/platform-changelog/feed-cache.ts), then derives the dot from the account's `lastSeenChangelogAt` (so opening the page, which stamps it, clears the dot without another fetch).
  * A failed fetch shows no dot (it is a hint, not a content read; the page itself reports errors).
  */
 export function usePlatformChangelogUnread(enabled: boolean, lastSeenChangelogAt: unknown): boolean {
@@ -80,8 +81,16 @@ export function usePlatformChangelogUnread(enabled: boolean, lastSeenChangelogAt
     if (!enabled || !uid) return;
     let cancelled = false;
     const load = () => {
+      const fresh = cachedFeed();
+      if (fresh) {
+        queueMicrotask(() => !cancelled && setEntries(fresh));
+        return;
+      }
       fetchFeed().then(
-        (r) => !cancelled && setEntries(r.entries),
+        (r) => {
+          rememberFeed(r.entries);
+          if (!cancelled) setEntries(r.entries);
+        },
         () => !cancelled && setEntries([])
       );
     };

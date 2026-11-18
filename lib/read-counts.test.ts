@@ -112,13 +112,14 @@ describe("server reads, on a synthetic changelog of 60 entries", () => {
     server.reads = 0;
     const { listFeed } = await import("@/lib/server/platform-changelog");
     const { getAdminFirestore } = await import("@/lib/firebase/admin");
-    await listFeed(getAdminFirestore() as never, { uid: "u", name: "n", isOwner: false } as never, false);
+    // Six feed requests inside a minute (one mount plus five refocuses of the old client): before the 60 s server copy this read 6 x 60 = 360 documents.
+    for (let i = 0; i < 6; i += 1) await listFeed(getAdminFirestore() as never, { uid: "u", name: "n", isOwner: false } as never, false, 1_000 + i);
     expect(server.reads).toBe(BEFORE_FEED_DOCS);
   });
 });
 // Before the shared snapshot (step B) these were [5, 3]: five reads of appSettings/global on a cold call, three on the next (the uncached getters).
 const BEFORE_CONFIG: [number, number] = [1, 0];
-const BEFORE_FEED_DOCS = 60;
+const BEFORE_FEED_DOCS = 60; // documents read by the FIRST feed call; a second call inside 60 s reads 0 (see the test below)
 
 describe("the sidebar changelog unread dot: feed fetches for one mount plus five tab refocuses inside two minutes", () => {
   it("calls", async () => {
@@ -137,4 +138,5 @@ describe("the sidebar changelog unread dot: feed fetches for one mount plus five
     vi.unstubAllGlobals();
   });
 });
-const BEFORE_DOT_FETCHES = 6;
+// Before the 10-minute minimum interval this was 6 (one on mount, one on every refocus).
+const BEFORE_DOT_FETCHES = 1;
