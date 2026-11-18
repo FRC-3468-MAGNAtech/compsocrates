@@ -13,6 +13,7 @@ import { useAuth } from "@/lib/auth";
 import { SignedOutOnly } from "@/components/marketing/auth-actions";
 import { cardEntranceVariants } from "@/lib/motion";
 import { BRAND } from "@/config/brand";
+import { DELETION_TEXT } from "@/lib/deletion/strings";
 
 function authErrorMessage(err: unknown): string {
   const code = (err as { code?: string })?.code;
@@ -23,6 +24,8 @@ function authErrorMessage(err: unknown): string {
       return "That email or password doesn't match an account.";
     case "auth/too-many-requests":
       return "Too many attempts. Try again in a bit.";
+    case "auth/user-disabled":
+      return DELETION_TEXT.signInBlocked;
     default:
       return err instanceof Error ? err.message : "Something went wrong logging in.";
   }

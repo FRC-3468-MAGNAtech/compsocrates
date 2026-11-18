@@ -36,6 +36,8 @@ import { AvatarUploadsSetting } from "@/components/admin/avatar-uploads-setting"
 import { PlatformChangelogPanel } from "@/components/admin/platform-changelog-panel";
 import { PlatformCreditsPanel } from "@/components/admin/platform-credits-panel";
 import { VerifyAdminsPanel } from "@/components/admin/verify-admins-panel";
+import { AccountDeletionsPanel } from "@/components/admin/account-deletions-panel";
+import { useAccountDeletionEnabled } from "@/lib/deletion/client";
 import { useMembershipsEnabled } from "@/lib/memberships/client";
 
 type AdminTab = AdminTabId;
@@ -85,7 +87,8 @@ export default function AdminPanelPage() {
   const { admin } = useProgramConfig();
   // The program's own tab list (config), then who is looking: a tab the program does not list is not rendered, not just hidden.
   const membershipsEnabled = useMembershipsEnabled();
-  const tabs = resolveAdminTabs(admin, { isPlatformOwner, canManageForms: can("manageForms"), membershipsEnabled, teamless });
+  const accountDeletionEnabled = useAccountDeletionEnabled();
+  const tabs = resolveAdminTabs(admin, { isPlatformOwner, canManageForms: can("manageForms"), membershipsEnabled, accountDeletionEnabled, teamless });
   const showPlatformSettings = isPlatformOwner && admin.platformSettings;
   const pendingApplications = usePendingApplicationCount(isPlatformOwner && admin.tabs.includes("applications"));
   const [teamCreationEnabled, setTeamCreationEnabledState] = useState<boolean | null>(null);
@@ -194,6 +197,7 @@ export default function AdminPanelPage() {
       {tab === "platform-changelog" && isPlatformOwner && <PlatformChangelogPanel />}
       {tab === "platform-credits" && isPlatformOwner && <PlatformCreditsPanel />}
       {tab === "verify-admins" && isPlatformOwner && <VerifyAdminsPanel />}
+      {tab === "account-deletions" && isPlatformOwner && <AccountDeletionsPanel />}
       {tab === "setup-check" && <SetupCheckPanel />}
     </div>
   );

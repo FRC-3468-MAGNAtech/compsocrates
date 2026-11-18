@@ -12,7 +12,7 @@ const plainAdmin = { isPlatformOwner: false, canManageForms: true };
 describe("admin tab resolver", () => {
   it("FRC is unchanged: every tab in the old order for an owner, platform tabs hidden for an admin, Forms by permission", () => {
     // Memberships build 2 adds ONE id ("verify-admins", a platform tab); with the memberships switch OFF the list an owner sees is exactly the old one.
-    expect([...ADMIN_TAB_IDS].filter((t) => t !== "verify-admins")).toEqual(FRC_BEFORE);
+    expect([...ADMIN_TAB_IDS].filter((t) => t !== "verify-admins" && t !== "account-deletions")).toEqual(FRC_BEFORE);
     expect(resolveAdminTabs(PROGRAMS.frc.admin, owner)).toEqual(FRC_BEFORE);
     expect(resolveAdminTabs(PROGRAMS.frc.admin, plainAdmin)).toEqual(FRC_BEFORE.filter((t) => !PLATFORM.includes(t)));
     expect(resolveAdminTabs(PROGRAMS.frc.admin, { isPlatformOwner: false, canManageForms: false })).not.toContain("forms");
@@ -92,5 +92,17 @@ describe("FTC admin connection", () => {
     expect(PROGRAMS.ftc.connection.paths).toContain("/admin");
     expect(PROGRAMS.ftc.connection.features.library).toBe(true);
     for (const on of ["live", "lobby"] as const) expect(PROGRAMS.ftc.connection.features[on], on).toBe(true);
+  });
+});
+
+describe("Memberships build 4: the Account deletions tab", () => {
+  it("is in BOTH programs' tab lists and is a platform tab; it is hidden until the deletion switch is ON, and for anyone who is not a platform owner", () => {
+    for (const id of ["frc", "ftc"] as const) {
+      expect(PROGRAMS[id].admin.tabs).toContain("account-deletions");
+      expect(resolveAdminTabs(PROGRAMS[id].admin, owner)).not.toContain("account-deletions");
+      expect(resolveAdminTabs(PROGRAMS[id].admin, { ...owner, accountDeletionEnabled: true })).toContain("account-deletions");
+      expect(resolveAdminTabs(PROGRAMS[id].admin, { ...plainAdmin, accountDeletionEnabled: true })).not.toContain("account-deletions");
+      expect(resolveAdminTabs(PROGRAMS[id].admin, { ...owner, accountDeletionEnabled: true, teamless: true })).toContain("account-deletions");
+    }
   });
 });

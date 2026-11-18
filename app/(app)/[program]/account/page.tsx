@@ -11,6 +11,7 @@ import { GoogleButton } from "@/components/auth/google-button";
 import { AppearancePanel } from "@/components/theme/appearance-panel";
 import { PrivacyProfileSection } from "@/components/profile/privacy-profile-section";
 import { MyTeamsSection } from "@/components/team/my-teams-section";
+import { DeleteAccountSection } from "@/components/account/delete-account-section";
 import { useAuth } from "@/lib/auth";
 import { usePersonalMode } from "@/lib/personal/context";
 import { PERSONAL_PROFILE_NOTE, PERSONAL_SETTINGS_NOTE } from "@/lib/personal/strings";
@@ -232,6 +233,9 @@ export default function AccountSettingsPage() {
           </Button>
         </form>
       </GlassPanel>
+
+      {/* Memberships build 4: delete the account (shown only while the account deletion switch is ON). */}
+      <DeleteAccountSection />
     </div>
   );
 }
