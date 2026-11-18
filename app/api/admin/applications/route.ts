@@ -1,47 +1,21 @@
 import { NextResponse } from "next/server";
-import { FieldValue, type Firestore } from "firebase-admin/firestore";
+import { FieldValue } from "firebase-admin/firestore";
 import { getAdminAuth, getAdminFirestore } from "@/lib/firebase/admin";
 import { verifyBearerToken } from "@/lib/server/require-user";
 import { isPlatformOwnerToken } from "@/lib/server/owner-admin";
-import { APPLICATION_LIMITS, effectiveStatus, sanitizeLine, sanitizeText } from "@/lib/applications";
-import { DEFAULT_ROLE_ID, type RoleId } from "@/lib/roles";
-import { buildBaseUserDoc, buildCreatorUserPatch, buildNewTeamDoc, normalizeTeamCode } from "@/data/cs/join-requests";
-import type { CsUserDoc } from "@/data/cs/types";
-import { claimFreeTeamCode } from "@/lib/server/team-create";
-import { DEFAULT_PROGRAM } from "@/config/programs/types";
-import { MembershipError } from "@/lib/memberships/model";
-import { readCreationState, writeCreatorMembership } from "@/lib/server/membership-flows";
-import { teamLabelOfDoc } from "@/lib/memberships/flows";
-import { getMembershipsEnabled } from "@/lib/server/team-settings";
-import { platformAuditDoc, teamAuditDoc } from "@/lib/server/audit";
+import { APPLICATION_LIMITS, sanitizeLine, sanitizeText } from "@/lib/applications";
+import { programPath } from "@/lib/firebase/paths";
+import { PROGRAMS } from "@/config/programs";
+import { platformAuditDoc } from "@/lib/server/audit";
 import { appBaseUrl, sendEmail } from "@/lib/server/email";
 import { emailTemplates } from "@/lib/server/email-templates";
-
-class RouteError extends Error {
-  status: number;
-  code: string;
-  constructor(status: number, code: string, message: string) {
-    super(message);
-    this.status = status;
-    this.code = code;
-  }
-}
-
-function toMs(value: unknown): number | null {
-  return value && typeof value === "object" && "toMillis" in value && typeof (value as { toMillis: unknown }).toMillis === "function" ? (value as { toMillis: () => number }).toMillis() : null;
-}
+import { parseProgram } from "@/lib/server/memberships";
+import { RouteError, approveApplication, decideApplication } from "@/lib/server/application-decisions";
 
 /**
- * P20: the platform owner's review actions on team applications. Every action requires a platform owner (verified
- * email in RELEASE_OWNER_EMAILS plus the claim) and is logged in `platformAuditLog`. Nothing here is automatic: approval
- * only happens when the platform owner presses it.
- *
- *  - approve: ONE transaction creates the team account (join code, `teamName`/`teamNumber`, `verifiedOwnerId` =
- *    the applicant), makes the applicant its owner and admin, marks the application approved and writes the audit
- *    entries. Refuses an expired or already-decided application, an applicant who has since joined a team, and an
- *    team number some account already has.
- *  - reject (with a reason the applicant sees), block (email and/or team number, which also ends the application),
- *    unblock, and private notes.
+ * P20 (both programs since memberships build 3): the platform owner's review actions on team applications. Every action requires a platform owner (verified email in
+ * RELEASE_OWNER_EMAILS plus the claim) and a REQUIRED `program` in the body (400 otherwise), and is logged in `platformAuditLog`. Nothing here is automatic: approval only
+ * happens when the platform owner presses it. The rules of each action are in lib/server/application-decisions.ts (one implementation for every program).
  */
 export async function POST(request: Request) {
   const decoded = await verifyBearerToken(request);
@@ -53,28 +27,32 @@ export async function POST(request: Request) {
   if (!db || !adminAuth) return NextResponse.json({ ok: false, error: "Server isn't configured." }, { status: 503 });
 
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+  const parsed = parseProgram(body?.program);
+  if (!parsed.ok) return NextResponse.json({ ok: false, code: parsed.code, error: parsed.error }, { status: parsed.status });
+  const program = parsed.program;
   const action = typeof body?.action === "string" ? body.action : "";
   const actor = { uid: decoded.uid, name: sanitizeLine(decoded.name ?? decoded.email ?? "Platform owner", 80) };
+  const applications = () => db.collection(programPath(program, "teamApplications"));
 
   try {
     switch (action) {
       case "approve": {
         const applicationId = String(body?.applicationId ?? "");
         // The applicant must still exist and still have a verified email; checked outside the transaction (an Auth call).
-        const appSnap = await db.collection("teamApplications").doc(applicationId).get();
+        const appSnap = await applications().doc(applicationId).get();
         if (!appSnap.exists) throw new RouteError(404, "not-found", "That application doesn't exist.");
         const applicantUid = String(appSnap.data()?.applicantUid ?? "");
         const applicant = await adminAuth.getUser(applicantUid).catch(() => null);
         if (!applicant) throw new RouteError(409, "applicant-gone", "The applicant's sign-in account no longer exists.");
         if (!applicant.emailVerified) throw new RouteError(409, "email-unverified", "The applicant's email isn't verified.");
-        const result = await approve(db, applicationId, actor);
-        await sendEmail(emailTemplates.applicationApproved({ to: result.email, name: result.name, teamNumber: result.teamNumber, appUrl: `${appBaseUrl()}/dashboard` })).catch(() => {});
-        return NextResponse.json({ ok: true, teamId: result.teamId });
+        const result = await approveApplication(db, program, applicationId, actor);
+        await sendEmail(emailTemplates.applicationApproved({ to: result.email, name: result.name, teamNumber: result.teamNumber, appUrl: `${appBaseUrl()}/${program}/dashboard` })).catch(() => {});
+        return NextResponse.json({ ok: true, teamId: result.teamId, programLabel: PROGRAMS[program].brand.label });
       }
       case "reject": {
         const reason = sanitizeText(body?.reason, APPLICATION_LIMITS.reason);
         if (reason.length < 3) throw new RouteError(400, "reason-required", "Give the applicant a reason (a sentence is fine).");
-        const decided = await decide(db, String(body?.applicationId ?? ""), actor, "rejected", reason);
+        const decided = await decideApplication(db, program, String(body?.applicationId ?? ""), actor, "rejected", reason);
         await sendEmail(emailTemplates.applicationRejected({ to: decided.email, name: decided.name, teamNumber: decided.teamNumber, reason, statusUrl: `${appBaseUrl()}/apply` })).catch(() => {});
         return NextResponse.json({ ok: true });
       }
@@ -83,23 +61,22 @@ export async function POST(request: Request) {
         const blockTeam = body?.blockTeam === true;
         if (!blockEmail && !blockTeam) throw new RouteError(400, "nothing-to-block", "Choose the email, the team number, or both to block.");
         const reason = sanitizeText(body?.reason, APPLICATION_LIMITS.reason);
-        await decide(db, String(body?.applicationId ?? ""), actor, "blocked", reason, { blockEmail, blockTeam });
+        await decideApplication(db, program, String(body?.applicationId ?? ""), actor, "blocked", reason, { blockEmail, blockTeam });
         return NextResponse.json({ ok: true });
       }
       case "unblock": {
         const blockId = String(body?.blockId ?? "");
         if (!/^(email_[0-9a-f]{32}|team_\d{1,5})$/.test(blockId)) throw new RouteError(400, "bad-block", "That isn't a block.");
         const batch = db.batch();
-        batch.delete(db.collection("applicationBlocks").doc(blockId));
-        batch.set(db.collection("platformAuditLog").doc(), platformAuditDoc("unblock", actor, { blockId }));
+        batch.delete(db.collection(programPath(program, "applicationBlocks")).doc(blockId));
+        batch.set(db.collection(programPath(program, "platformAuditLog")).doc(), platformAuditDoc("unblock", actor, { blockId, program }));
         await batch.commit();
         return NextResponse.json({ ok: true });
       }
       case "note": {
         const applicationId = String(body?.applicationId ?? "");
-        const appRef = db.collection("applicationPrivate").doc(applicationId);
-        if (!(await db.collection("teamApplications").doc(applicationId).get()).exists) throw new RouteError(404, "not-found", "That application doesn't exist.");
-        await appRef.set({ notes: sanitizeText(body?.notes, APPLICATION_LIMITS.notes), notesUpdatedAt: FieldValue.serverTimestamp(), notesUpdatedBy: actor.uid }, { merge: true });
+        if (!(await applications().doc(applicationId).get()).exists) throw new RouteError(404, "not-found", "That application doesn't exist.");
+        await db.collection(programPath(program, "applicationPrivate")).doc(applicationId).set({ notes: sanitizeText(body?.notes, APPLICATION_LIMITS.notes), notesUpdatedAt: FieldValue.serverTimestamp(), notesUpdatedBy: actor.uid }, { merge: true });
         return NextResponse.json({ ok: true });
       }
       default:
@@ -110,92 +87,4 @@ export async function POST(request: Request) {
     console.error("applications route failed:", err instanceof Error ? err.message : err);
     return NextResponse.json({ ok: false, error: "Something went wrong." }, { status: 500 });
   }
-}
-
-type Actor = { uid: string; name: string };
-
-async function approve(db: Firestore, applicationId: string, actor: Actor): Promise<{ teamId: string; email: string; name: string; teamNumber: number }> {
-  // Memberships (build 2): with the kill switch ON the applicant also gets a VERIFIED owner membership in the same transaction. OFF: nothing extra happens.
-  const membershipsOn = await getMembershipsEnabled(db).catch(() => false);
-  return db.runTransaction(async (txn) => {
-    const appRef = db.collection("teamApplications").doc(applicationId);
-    const appSnap = await txn.get(appRef);
-    if (!appSnap.exists) throw new RouteError(404, "not-found", "That application doesn't exist.");
-    const app = appSnap.data()!;
-    const status = effectiveStatus({ status: app.status, expiresAtMs: toMs(app.expiresAt) }, Date.now());
-    if (status === "expired") throw new RouteError(409, "expired", "This application has expired. Ask the applicant to apply again.");
-    if (status !== "pending") throw new RouteError(409, "already-decided", `This application is already ${status}.`);
-
-    const userRef = db.collection("users").doc(app.applicantUid);
-    const [userSnap, numberSnap, code] = await Promise.all([
-      txn.get(userRef),
-      // CS's own field: `teamNumber` is a STRING.
-      txn.get(db.collection("teams").where("teamNumber", "==", String(app.teamNumber)).limit(1)),
-      claimFreeTeamCode(db, txn),
-    ]);
-    const applicant = userSnap.exists ? ((userSnap.data() ?? {}) as CsUserDoc) : null;
-    if (applicant && normalizeTeamCode(applicant.teamId) !== "") throw new RouteError(409, "already-member", "The applicant has already joined a team account.");
-    if (!numberSnap.empty) throw new RouteError(409, "account-exists", `An account for team ${app.teamNumber} already exists.`);
-    if (!code) throw new RouteError(503, "code-collision", "Couldn't pick a free join code. Try again.");
-    const created = membershipsOn ? await readCreationState(db, txn, DEFAULT_PROGRAM, code, app.applicantUid) : null;
-
-    const teamRef = db.collection("teams").doc(code);
-    const role: RoleId = (app.role as RoleId) ?? DEFAULT_ROLE_ID;
-
-    // CS-shaped team (teamName, teamNumber string, verifiedOwnerId, selectedEvents) + the application link; the applicant becomes its owner and team admin (merge: an existing CS user doc keeps all its other fields).
-    txn.set(teamRef, { ...buildNewTeamDoc({ teamNumber: app.teamNumber, teamName: app.teamName || "", ownerUid: app.applicantUid }, Date.now()), applicationId });
-    const creatorPatch = buildCreatorUserPatch({ teamId: code, role });
-    if (applicant) txn.set(userRef, creatorPatch, { merge: true });
-    else txn.set(userRef, { ...buildBaseUserDoc({ uid: app.applicantUid, email: app.applicantEmail, displayName: app.applicantName, role }, Date.now()), ...creatorPatch });
-    if (created) {
-      try {
-        writeCreatorMembership(txn, DEFAULT_PROGRAM, created, { uid: app.applicantUid, teamId: code, name: String(app.applicantName ?? applicant?.displayName ?? ""), teamLabel: teamLabelOfDoc({ teamNumber: String(app.teamNumber), teamName: app.teamName || "" }), role, nowMs: Date.now() });
-      } catch (err) {
-        if (err instanceof MembershipError) throw new RouteError(err.status, err.code, err.message);
-        throw err;
-      }
-    }
-    txn.update(appRef, { status: "approved", decidedAt: FieldValue.serverTimestamp(), decidedBy: actor.uid, teamId: teamRef.id });
-    // The new account's own log gets a minimal entry (no applicant details); the platform log gets the full one.
-    txn.set(db.collection("auditLog").doc(), teamAuditDoc(teamRef.id, actor.uid, actor.name, "approve-team-application", { applicationId }, null, { verifiedOwnerId: app.applicantUid, teamNumber: app.teamNumber }));
-    txn.set(db.collection("platformAuditLog").doc(), platformAuditDoc("approve-application", actor, { applicationId, teamId: teamRef.id, teamNumber: app.teamNumber, applicantUid: app.applicantUid }));
-    return { teamId: teamRef.id, email: app.applicantEmail as string, name: app.applicantName as string, teamNumber: app.teamNumber as number };
-  });
-}
-
-async function decide(
-  db: Firestore,
-  applicationId: string,
-  actor: Actor,
-  outcome: "rejected" | "blocked",
-  reason: string,
-  blocks: { blockEmail?: boolean; blockTeam?: boolean } = {}
-): Promise<{ email: string; name: string; teamNumber: number }> {
-  return db.runTransaction(async (txn) => {
-    const appRef = db.collection("teamApplications").doc(applicationId);
-    const snap = await txn.get(appRef);
-    if (!snap.exists) throw new RouteError(404, "not-found", "That application doesn't exist.");
-    const app = snap.data()!;
-    const status = effectiveStatus({ status: app.status, expiresAtMs: toMs(app.expiresAt) }, Date.now());
-    if (status === "expired") throw new RouteError(409, "expired", "This application has expired.");
-    if (status !== "pending") throw new RouteError(409, "already-decided", `This application is already ${status}.`);
-
-    txn.update(appRef, { status: outcome, rejectionReason: reason || null, decidedAt: FieldValue.serverTimestamp(), decidedBy: actor.uid });
-    if (outcome === "blocked") {
-      const common = { reason: reason || null, applicationId, createdAt: FieldValue.serverTimestamp(), createdBy: actor.uid };
-      if (blocks.blockEmail) txn.set(db.collection("applicationBlocks").doc(`email_${app.emailKey}`), { type: "email", value: app.applicantEmail, ...common });
-      if (blocks.blockTeam) txn.set(db.collection("applicationBlocks").doc(`team_${app.teamNumber}`), { type: "team", value: String(app.teamNumber), ...common });
-    }
-    txn.set(
-      db.collection("platformAuditLog").doc(),
-      platformAuditDoc(outcome === "blocked" ? "block-application" : "reject-application", actor, {
-        applicationId,
-        teamNumber: app.teamNumber,
-        reason: reason || null,
-        // (Firestore refuses `undefined` values, so the key is only present for a block.)
-        ...(outcome === "blocked" ? { blocked: { email: blocks.blockEmail === true, team: blocks.blockTeam === true } } : {}),
-      })
-    );
-    return { email: app.applicantEmail as string, name: app.applicantName as string, teamNumber: app.teamNumber as number };
-  });
 }

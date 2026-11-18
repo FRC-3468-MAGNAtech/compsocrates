@@ -41,7 +41,7 @@ describe("normalizeFtcJoinCode", () => {
 describe("requestToJoinFtcTeam", () => {
   it("files a pending request for a team whose id is the code", async () => {
     const res = await requestToJoinFtcTeam(db, caller("j-id"), { joinCode: "abcd2345", name: " Joe " });
-    expect(res).toEqual({ status: 200, body: { ok: true, alreadyPending: false, teamId: "ABCD2345" } });
+    expect(res).toEqual({ status: 200, body: { ok: true, alreadyPending: false, teamId: "ABCD2345", requestId: "j-id" } });
     expect(await requestDoc("ABCD2345", "j-id")).toMatchObject({ uid: "j-id", name: "Joe", status: "pending" });
   });
 
@@ -65,15 +65,15 @@ describe("requestToJoinFtcTeam", () => {
 
   it("a profile with an EMPTY team id (left its only team) is not 'a team': that person may ask to join another", async () => {
     const res = await requestToJoinFtcTeam(db, caller("left-member"), { joinCode: "ABCD2345", name: "Lee" });
-    expect(res).toEqual({ status: 200, body: { ok: true, alreadyPending: false, teamId: "ABCD2345" } });
+    expect(res).toEqual({ status: 200, body: { ok: true, alreadyPending: false, teamId: "ABCD2345", requestId: "left-member" } });
     expect(await requestDoc("ABCD2345", "left-member")).toMatchObject({ uid: "left-member", status: "pending" });
     expect((await db.collection(P("users")).doc("left-member").get()).data()).toMatchObject({ teamId: "", themeId: "midnight" });
   });
 
-  it("a repeat while pending changes nothing, and a new request replaces a denied one", async () => {
+  it("a repeat while pending is a 409 and changes nothing, and a new request replaces a denied one", async () => {
     await requestToJoinFtcTeam(db, caller("j-again"), { joinCode: "ABCD2345", name: "Al" });
     const repeat = await requestToJoinFtcTeam(db, caller("j-again"), { joinCode: "ABCD2345", name: "Al" });
-    expect(repeat.body).toMatchObject({ ok: true, alreadyPending: true });
+    expect(repeat).toMatchObject({ status: 409, body: { ok: false, code: "already-pending" } });
     await db.collection(P("teams")).doc("ABCD2345").collection("joinRequests").doc("j-again").update({ status: "denied", decidedBy: "admin" });
     const again = await requestToJoinFtcTeam(db, caller("j-again"), { joinCode: "ABCD2345", name: "Al" });
     expect(again.body).toMatchObject({ ok: true, alreadyPending: false });

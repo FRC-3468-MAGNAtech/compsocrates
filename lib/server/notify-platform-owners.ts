@@ -26,9 +26,9 @@ async function platformOwnerPushTokens(db: Firestore): Promise<string[]> {
  */
 export async function notifyPlatformOwnersOfApplication(
   db: Firestore,
-  app: { applicationId: string; applicantName: string; applicantEmail: string; teamNumber: number; teamName: string; role: string }
+  app: { applicationId: string; applicantName: string; applicantEmail: string; teamNumber: number; teamName: string; role: string; programLabel?: string }
 ): Promise<void> {
-  const title = `New team application: team ${app.teamNumber}`;
+  const title = `New team application: ${app.programLabel ? `${app.programLabel} ` : ""}team ${app.teamNumber}`;
   const body = `${app.applicantName} applied to create a team account.`;
 
   try {

@@ -65,12 +65,22 @@ describe("requestToJoinTeam", () => {
     expect(fake.ids("teamJoinRequests")).toHaveLength(0);
   });
 
-  it("is idempotent for a repeat request to the same team", async () => {
-    const first = await requestToJoinTeam(db(), asUser("new-1"), { teamCode: "ABC123" }, NOW);
+  it("a second request to the same team is refused with 409 (the first stays the only one)", async () => {
+    await requestToJoinTeam(db(), asUser("new-1"), { teamCode: "ABC123" }, NOW);
     const again = await requestToJoinTeam(db(), asUser("new-1"), { teamCode: "ABC123" }, NOW + 1);
-    expect(again.status).toBe(200);
-    expect(again.body).toMatchObject({ alreadyPending: true, requestId: (first.body as { requestId: string }).requestId });
+    expect(again.status).toBe(409);
+    expect(again.body).toMatchObject({ ok: false, code: "already-pending" });
     expect(fake.ids("teamJoinRequests")).toHaveLength(1);
+  });
+
+  it("allows several pending requests, one per team, and refuses a sixth", async () => {
+    for (let i = 0; i < 5; i++) fake.seed(`teams/CODE${i}1`, { teamName: `T${i}`, teamNumber: String(i + 1) });
+    for (let i = 0; i < 5; i++) expect((await requestToJoinTeam(db(), asUser("new-2"), { teamCode: `CODE${i}1` }, NOW + i)).status).toBe(200);
+    expect(fake.ids("teamJoinRequests")).toHaveLength(5);
+    const sixth = await requestToJoinTeam(db(), asUser("new-2"), { teamCode: "ABC123" }, NOW + 9);
+    expect(sixth.status).toBe(409);
+    expect(sixth.body).toMatchObject({ ok: false, code: "too-many-pending" });
+    expect(fake.ids("teamJoinRequests")).toHaveLength(5);
   });
 
   it("keeps an existing team-less CS user doc untouched (unknown fields survive)", async () => {

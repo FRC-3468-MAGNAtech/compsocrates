@@ -1,6 +1,7 @@
 "use client";
 
 import { useAuth } from "@/lib/auth";
+import { usePlatformOwnerClaim } from "@/lib/use-platform-owner-claim";
 import { usePageAccess } from "@/lib/page-access/store";
 import { canEditPickList } from "@/lib/pick-list/permissions";
 import { canManageForms } from "@/lib/forms/permissions";
@@ -27,7 +28,9 @@ export function usePermissions() {
   const { profile } = useAuth();
   const isAdmin = profile?.isAdmin ?? false;
   const isOwner = profile?.isOwner ?? false;
-  const isPlatformOwner = profile?.isPlatformOwner ?? false;
+  // The platform owner is the program profile's mirror OR the account's own claim (an owner with no team in a program has no profile there, yet may approve applications).
+  const claim = usePlatformOwnerClaim();
+  const isPlatformOwner = (profile?.isPlatformOwner ?? false) || claim;
   const pageAccess = usePageAccess();
 
   function can(action: PermissionAction): boolean {

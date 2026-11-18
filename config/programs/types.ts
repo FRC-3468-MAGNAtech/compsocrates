@@ -227,6 +227,10 @@ export type MembershipFlows = {
   leaveExtras: Readonly<Record<string, string | number | boolean | null | readonly never[]>>;
   /** How a team is found from a typed code: by document id only, or by id and then by its `joinCode` field. */
   teamLookup: "id" | "idOrJoinCode";
+  /** Build 3 (applications): the length of a new team's random join code (also its document id), and how the team document stores its number (the field, and string or number). */
+  newTeam: { joinCodeLength: number; numberField: string; numberKind: "string" | "number" };
+  /** The route a join request goes through while the memberships switch is OFF (body `{ joinCode, name }`). With the switch ON every program uses `/api/team/membership/request-join`. */
+  legacyJoinPath: string;
   /** The user document a person with no profile gets when their first request here is approved. */
   newUser: { storeUid: boolean; emailField: string | null; extras: Readonly<Record<string, string | number | boolean>>; createOnRequest: boolean };
   /** Is the admin flag on a user document locked against the person's own writes by this program's rules? Only says so in the "Verify admins" evidence note; it proves nothing by itself. */

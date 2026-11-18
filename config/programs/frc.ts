@@ -53,6 +53,8 @@ export const FRC_PROGRAM: ProgramConfig = {
       legacyAdminRole: "coach",
       leaveExtras: { specialRole: null, specialRoles: [] },
       teamLookup: "id",
+      newTeam: { joinCodeLength: 6, numberField: "teamNumber", numberKind: "string" },
+      legacyJoinPath: "/api/team/join",
       newUser: { storeUid: true, emailField: "email", extras: { profileVisibility: "team", bio: "", photoURL: "", emailVerificationExempt: false, profileComplete: true }, createOnRequest: true },
       adminFlagLocked: false,
       requests: { layout: "flat", collection: "teamJoinRequests", userId: "userId", name: "userName", email: "userEmail", teamId: "teamId", role: "requestedRole", alsoRole: "userRole", timeKind: "ms", approvedExtras: { profileSyncPending: false, profileSyncedAt: "@now" }, outcomeFields: { by: "processedBy", at: "processedAt" } },

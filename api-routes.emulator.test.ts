@@ -39,7 +39,7 @@ process.env.FIRESTORE_EMULATOR_HOST = "127.0.0.1:8080";
 process.env.FIREBASE_AUTH_EMULATOR_HOST = "127.0.0.1:9099";
 process.env.RELEASE_OWNER_EMAILS = "owner@example.com";
 
-const { POST: createTeam } = await import("@/app/api/team/create/route");
+const { POST: retiredCreateRoute } = await import("@/app/api/team/create/route");
 const { POST: joinRequestRoute } = await import("@/app/api/team/join/route");
 const { POST: approveJoinRoute } = await import("@/app/api/team/join-requests/approve/route");
 const { POST: denyJoinRoute } = await import("@/app/api/team/join-requests/deny/route");
@@ -48,9 +48,10 @@ const { GET: teamLabelRoute } = await import("@/app/api/team/label/route");
 const { POST: deleteUserRoute } = await import("@/app/api/user/delete/route");
 const { processJoinRequest } = await import("@/lib/server/join-requests");
 const { POST: syncRoles } = await import("@/app/api/auth/sync-roles/route");
-const { POST: submitApplication } = await import("@/app/api/applications/route");
+const { POST: submitApplicationRoute } = await import("@/app/api/applications/route");
 const { GET: startToken } = await import("@/app/api/applications/start/route");
-const { POST: reviewApplication } = await import("@/app/api/admin/applications/route");
+const { POST: reviewApplicationRoute } = await import("@/app/api/admin/applications/route");
+const { buildBaseUserDoc, buildCreatorUserPatch, buildNewTeamDoc, generateTeamCode } = await import("@/data/cs/join-requests");
 const { GET: applicationConfig } = await import("@/app/api/admin/application-config/route");
 const { POST: transfer } = await import("@/app/api/team/transfer/route");
 const { GET: listTeams } = await import("@/app/api/admin/teams/route");
@@ -63,6 +64,38 @@ const portableLib = await import("@/lib/forms/portable");
 const { FieldValue } = await import("firebase-admin/firestore");
 const { GET: publicConfig } = await import("@/app/api/public/config/route");
 const { getAdminAuth, getAdminFirestore } = await import("@/lib/firebase/admin");
+
+/** The two application routes take a REQUIRED program since memberships build 3; these tests are the root program's, so it is added unless a test names one. */
+async function withProgram(request: Request, route: (r: Request) => Promise<Response>, program = "frc"): Promise<Response> {
+  const body = (await request.clone().json().catch(() => ({}))) as Record<string, unknown>;
+  const headers: Record<string, string> = {};
+  request.headers.forEach((v, k) => (headers[k] = v));
+  return route(new Request(request.url, { method: request.method, headers, body: JSON.stringify({ program, ...body }) }));
+}
+const submitApplication = (request: Request) => withProgram(request, submitApplicationRoute);
+const reviewApplication = (request: Request) => withProgram(request, reviewApplicationRoute);
+
+/**
+ * TEST SEEDING ONLY. `POST /api/team/create` is retired (410): a team now comes from an approved application. Most tests below need "a team and its admin" as a starting
+ * point, so this makes one the way the old route did (a CS-shaped team, the caller as its owner and admin), through the Admin SDK, and answers like the old route did.
+ */
+async function createTeam(request: Request): Promise<Response> {
+  const adminAuth = getAdminAuth()!;
+  const db = getAdminFirestore()!;
+  const token = (request.headers.get("authorization") ?? "").replace(/^Bearer /, "");
+  const decoded = await adminAuth.verifyIdToken(token);
+  const input = (await request.json()) as { teamNumber?: unknown; teamName?: unknown; role?: unknown; name?: unknown };
+  const existing = await db.collection("users").doc(decoded.uid).get();
+  if (existing.exists && typeof existing.data()?.teamId === "string" && existing.data()?.teamId) return Response.json({ ok: false }, { status: 409 });
+  const code = generateTeamCode(Math.random);
+  const teamNumber = Number(input.teamNumber);
+  const now = Date.now();
+  await db.collection("teams").doc(code).set(buildNewTeamDoc({ teamNumber, teamName: String(input.teamName ?? ""), ownerUid: decoded.uid }, now));
+  const patch = buildCreatorUserPatch({ teamId: code, role: input.role });
+  if (existing.exists) await db.collection("users").doc(decoded.uid).set(patch, { merge: true });
+  else await db.collection("users").doc(decoded.uid).set({ ...buildBaseUserDoc({ uid: decoded.uid, email: decoded.email ?? "", displayName: String(input.name ?? decoded.name ?? ""), role: input.role }, now), ...patch });
+  return Response.json({ ok: true, joinCode: code, teamId: code }, { status: 200 });
+}
 
 /**
  * CS's join is an approval queue (docs/ROUTES.md D1): the route only files a request. Most tests below need "a member of that
@@ -135,47 +168,16 @@ beforeEach(async () => {
   await db.doc("appSettings/global").set({ teamCreationEnabled: true });
 });
 
-describe("POST /api/team/create", () => {
-  it("creates a team, makes the caller admin, and disables further creation", async () => {
+describe("POST /api/team/create (retired)", () => {
+  it("answers 410 for a signed-in person and writes nothing: no team, no user, and the applications switch stays as it was", async () => {
     const idToken = await createTestUser("first-admin@example.com");
-    const res = await createTeam(postJson({ teamNumber: 3468, teamName: "MAGNAtech", name: "First Admin" }, idToken));
-    const body = await res.json();
-    expect(res.status).toBe(200);
-    expect(body.ok).toBe(true);
-    expect(typeof body.joinCode).toBe("string");
-
-    const config = await (await publicConfig()).json();
-    expect(config.teamCreationEnabled).toBe(false);
-  });
-
-  it("rejects a second creation attempt once disabled", async () => {
-    const firstToken = await createTestUser("first-admin@example.com");
-    await createTeam(postJson({ teamNumber: 3468 }, firstToken));
-
-    const secondToken = await createTestUser("second-admin@example.com");
-    const res = await createTeam(postJson({ teamNumber: 9999 }, secondToken));
-    expect(res.status).toBe(403);
+    const res = await retiredCreateRoute(postJson({ teamNumber: 3468, teamName: "MAGNAtech", name: "First Admin" }, idToken));
+    expect(res.status).toBe(410);
     expect((await res.json()).ok).toBe(false);
-  });
-
-  it("only lets one of two simultaneous create attempts win (simulated race)", async () => {
-    const tokenA = await createTestUser("racer-a@example.com");
-    const tokenB = await createTestUser("racer-b@example.com");
-
-    const [resA, resB] = await Promise.all([
-      createTeam(postJson({ teamNumber: 1111 }, tokenA)),
-      createTeam(postJson({ teamNumber: 2222 }, tokenB)),
-    ]);
-    const [bodyA, bodyB] = await Promise.all([resA.json(), resB.json()]);
-    const successes = [bodyA, bodyB].filter((b) => b.ok === true);
-    expect(successes).toHaveLength(1);
-  });
-
-  it("rejects a caller who's already on a team", async () => {
-    const idToken = await createTestUser("already-on-team@example.com");
-    await createTeam(postJson({ teamNumber: 1 }, idToken));
-    const res = await createTeam(postJson({ teamNumber: 2 }, idToken));
-    expect(res.status).toBe(409);
+    const db = getAdminFirestore()!;
+    expect((await db.collection("teams").get()).empty).toBe(true);
+    expect((await db.collection("users").get()).empty).toBe(true);
+    expect((await publicConfig().then((r) => r.json())).teamCreationEnabled).toBe(true);
   });
 });
 
@@ -198,9 +200,10 @@ describe("POST /api/team/join (approval queue)", () => {
     const uid = await idOf("joiner@example.com");
     expect(await doc(`users/${uid}`)).toMatchObject({ displayName: "Joiner", role: "pit-scout", teamId: "", isTeamAdmin: false, profileComplete: true });
     expect(await doc(`teamJoinRequests/${body.requestId}`)).toMatchObject({ userId: uid, teamId: joinCode, status: "pending", requestedRole: "pit-scout", userEmailLower: "joiner@example.com" });
-    // a repeat is answered with the same request
-    const again = await (await joinRequestRoute(postJson({ joinCode }, joinerToken))).json();
-    expect(again).toMatchObject({ alreadyPending: true, requestId: body.requestId });
+    // a repeat to the same team is a 409 (several pending requests are allowed, one per team), and the first stays the only one
+    const againRes = await joinRequestRoute(postJson({ joinCode }, joinerToken));
+    expect(againRes.status).toBe(409);
+    expect(await againRes.json()).toMatchObject({ ok: false, code: "already-pending" });
   });
 
   it("rejects a join code that doesn't match any team, and a caller with no token", async () => {
@@ -296,12 +299,6 @@ describe("GET /api/public/config", () => {
     expect(await (await publicConfig()).json()).toMatchObject({ teamCreationEnabled: false, avatarUploadsEnabled: false });
   });
 
-  it("reports teamCreationEnabled: false once a team has been created (creation switches itself off)", async () => {
-    const idToken = await createTestUser("admin@example.com");
-    await createTeam(postJson({ teamNumber: 1 }, idToken));
-    const body = await (await publicConfig()).json();
-    expect(body.teamCreationEnabled).toBe(false);
-  });
 });
 
 describe("POST /api/auth/sync-roles", () => {

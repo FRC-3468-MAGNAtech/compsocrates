@@ -14,6 +14,8 @@ import { getTeamByNumber } from "@/lib/events/actions";
 import { parseTeamNumber } from "@/lib/team-number";
 import { ROLES, getRole, type RoleId } from "@/lib/roles";
 import { BRAND } from "@/config/brand";
+import { PROGRAMS } from "@/config/programs";
+import { PROGRAM_IDS, type ProgramId } from "@/config/programs/types";
 
 type Lookup = { status: "idle" } | { status: "loading" } | { status: "found"; name: string } | { status: "missing" } | { status: "error" };
 
@@ -24,7 +26,9 @@ type Lookup = { status: "idle" } | { status: "loading" } | { status: "found"; na
  * platform owner sees what FIRST said). A hidden honeypot field and a signed "form opened at" token (fetched here)
  * feed the server's bot checks; Cloudflare Turnstile is shown when a site key is configured.
  */
-export function ApplyForm({ email, defaultName, onSubmitted }: { email: string; defaultName: string; onSubmitted: () => void }) {
+export function ApplyForm({ email, defaultName, defaultProgram, onSubmitted }: { email: string; defaultName: string; defaultProgram: ProgramId; onSubmitted: () => void }) {
+  // The first field: which program the team is for (the same form for every program; the choice decides the collections the server uses).
+  const [program, setProgram] = useState<ProgramId>(defaultProgram);
   const [name, setName] = useState(defaultName);
   const [teamNumber, setTeamNumber] = useState("");
   const [teamName, setTeamName] = useState("");
@@ -54,6 +58,12 @@ export function ApplyForm({ email, defaultName, onSubmitted }: { email: string; 
   }, []);
 
   // Look the team up once the number is a valid 1-5 digit number (debounced), and fill the name if the applicant hasn't typed one.
+  // The lookup is the chosen program's own directory, so it starts over when the program changes.
+  useEffect(() => {
+    lookedUp.current = null;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLookup({ status: "idle" });
+  }, [program]);
   useEffect(() => {
     const number = parseTeamNumber(teamNumber);
     if (number === null || lookedUp.current === number) return;
@@ -62,7 +72,7 @@ export function ApplyForm({ email, defaultName, onSubmitted }: { email: string; 
       setLookup({ status: "loading" });
       let next: Lookup;
       try {
-        const res = await getTeamByNumber(number);
+        const res = await getTeamByNumber(number, undefined, program);
         next = !res.ok ? { status: "error" } : res.data ? { status: "found", name: res.data.nameShort } : { status: "missing" };
       } catch {
         next = { status: "error" };
@@ -80,7 +90,7 @@ export function ApplyForm({ email, defaultName, onSubmitted }: { email: string; 
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [teamNumber]);
+  }, [teamNumber, program]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -90,7 +100,7 @@ export function ApplyForm({ email, defaultName, onSubmitted }: { email: string; 
     if (needsCaptcha && !turnstileToken) return setError("Complete the CAPTCHA first.");
     setSubmitting(true);
     try {
-      await submitApplication({ name, teamNumber, teamName, role, verification, link, startToken, turnstileToken, orgUrl: honeypot });
+      await submitApplication({ program, name, teamNumber, teamName, role, verification, link, startToken, turnstileToken, orgUrl: honeypot });
       onSubmitted();
     } catch (err) {
       if (err instanceof ApiError) {
@@ -112,13 +122,29 @@ export function ApplyForm({ email, defaultName, onSubmitted }: { email: string; 
   return (
     <GlassPanel strong className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold">Apply to create a team</h1>
+        <h1 className="text-2xl font-semibold">Apply for a team</h1>
         <p className="mt-1 text-sm text-[var(--muted-foreground)]">
           Each team gets one {BRAND.name} account, and the platform owner approves each one by hand. Tell us about your team so we can check it.
         </p>
       </div>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
+        <div>
+          <Label htmlFor="apply-program">Which program is the team in?</Label>
+          <Select value={program} onValueChange={(v) => setProgram(v as ProgramId)}>
+            <SelectTrigger id="apply-program" data-testid="apply-program">
+              <SelectValue>{PROGRAMS[program].brand.fullName}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {PROGRAM_IDS.map((id) => (
+                <SelectItem key={id} value={id}>
+                  {PROGRAMS[id].brand.fullName}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
         <div>
           <Label htmlFor="apply-name">Your name</Label>
           <Input id="apply-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={APPLICATION_LIMITS.name} required aria-invalid={err("name") ? true : undefined} autoComplete="name" />

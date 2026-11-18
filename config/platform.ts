@@ -7,6 +7,9 @@ import { BRAND } from "@/config/brand";
 /** The most ACTIVE team memberships one account may hold, across both programs together (enforced server-side when a membership is created or reactivated). */
 export const MAX_ACTIVE_MEMBERSHIPS = 5;
 
+/** The most join requests one account may have PENDING at once in one program (one per team). A request to a team that already has a pending one, or a sixth, is refused (409). */
+export const MAX_PENDING_JOIN_REQUESTS = 5;
+
 export const PLATFORM = {
   /** Same value as `MAX_ACTIVE_MEMBERSHIPS`, for readers that take the platform object. */
   maxActiveMemberships: MAX_ACTIVE_MEMBERSHIPS,

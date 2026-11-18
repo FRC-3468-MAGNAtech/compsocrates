@@ -59,6 +59,7 @@ const FTC_ALLOWED: Record<string, string> = {
   "lib/team-roster.ts": "maps a membership's stored robot-team list onto the roster member (`assignedTeamIds`), the one place the roster seam reads it",
   "components/program/field-team-switcher.tsx":"the robot-team switcher; its name is fixed by the membership build (the new membership switcher takes the name TeamSwitcher), and it renders only where the program config allows it",
   "components/layout/sidebar.tsx": "mounts the robot-team switcher (FieldTeamSwitcher) next to the membership TeamSwitcher; both decide for themselves whether to render",
+  "lib/server/first-team.ts": "the one server place that maps a program id to its team directory (provider and season) for an application's verification signals",
   "lib/server/live-program.ts": "the one server place that maps a program id to its live and lobby data store, and validates the program a live route is asked for",
   "app/api/ftc/templates/route.ts": "the server route for form templates of an FTC account; hands the call to the FTC-scoped server module",
   "config/platform.ts": "platform-level footer credit: the one place that names the teams behind both programs (not a program file; the FRC scope stays strict)",

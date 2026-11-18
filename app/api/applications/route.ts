@@ -14,7 +14,11 @@ import { notifyPlatformOwnersOfApplication } from "@/lib/server/notify-platform-
 import { appBaseUrl, sendEmail } from "@/lib/server/email";
 import { emailTemplates } from "@/lib/server/email-templates";
 import { getRole } from "@/lib/roles";
-import { normalizeTeamCode } from "@/data/cs/join-requests";
+import { programPath } from "@/lib/firebase/paths";
+import { PROGRAMS } from "@/config/programs";
+import { parseProgram } from "@/lib/server/memberships";
+import { getMembershipsEnabled, getTeamCreationEnabled } from "@/lib/server/team-settings";
+import { teamNumberTaken } from "@/lib/server/application-decisions";
 
 const HOUR_MS = 60 * 60 * 1000;
 const MAX_BODY_BYTES = 16 * 1024;
@@ -26,12 +30,13 @@ function fail(status: number, code: string, error: string, extra: Record<string,
 }
 
 /**
- * P20: submits an application to create a team account. Public in the sense that team creation stays disabled, but
- * the caller must be signed in with a **verified** email (Google sign-in, or a clicked verification link), and every
- * measure runs here, server-side: a body-size cap, the honeypot, the signed time-to-submit token, input
- * validation and sanitizing, the disposable-email list, blocks, Cloudflare Turnstile (when configured), per-IP
- * (hashed) and per-email rate limits, one pending application per applicant / email / team number, and a check that
- * no account already has this team. Nothing is ever approved automatically: this only files the application.
+ * P20 (both programs since memberships build 3): submits an application to create a team account. The body names the REQUIRED `program` (400 otherwise) and every
+ * collection is that program's (`programPath`). Applications are the ONLY way to get a new team and are accepted only while the platform owner has them open
+ * (`appSettings/global.teamCreationEnabled`, missing = closed, 403 `applications_closed`). The caller must be signed in with a **verified** email (Google sign-in, or
+ * a clicked verification link), and every measure runs here, server-side: a body-size cap, the honeypot, the signed time-to-submit token, input validation and
+ * sanitizing, the disposable-email list, blocks (per program), Cloudflare Turnstile (when configured), per-IP (hashed) and per-email rate limits, one pending
+ * application per applicant / email / team number (per program), and a check that no account in the program already has this team. Nothing is ever approved
+ * automatically: this only files the application.
  */
 export async function POST(request: Request) {
   const decoded = await verifyBearerToken(request);
@@ -66,6 +71,14 @@ export async function POST(request: Request) {
   // Honeypot: a field no human sees. Anything in it is a bot; it gets the same generic answer as any other refusal.
   if (typeof body.orgUrl === "string" && body.orgUrl.trim() !== "") return fail(400, "rejected", "We couldn't submit that. Please try again.");
 
+  const parsedProgram = parseProgram(body.program);
+  if (!parsedProgram.ok) return fail(parsedProgram.status, parsedProgram.code, parsedProgram.error);
+  const program = parsedProgram.program;
+  const collectionOf = (name: string) => db.collection(programPath(program, name));
+
+  // Applications are open only while the platform owner says so (the switch the Admin Panel calls "Accept team applications"; missing = closed).
+  if (!(await getTeamCreationEnabled(db))) return fail(403, "applications_closed", "Applications to create a team aren't open yet. If your team already has an account, ask your team admin for its join code.");
+
   const token = checkStartToken(body.startToken, nowMs);
   if (!token.ok) {
     return token.reason === "too-fast"
@@ -81,8 +94,8 @@ export async function POST(request: Request) {
   if (isDisposableEmail(email)) return fail(400, "disposable-email", "Disposable email addresses can't be used. Use your school, team or personal email.");
   const emailKey = hashValue("email", canonicalEmail(email));
 
-  // Blocked by the platform owner (email or team number).
-  const [emailBlock, teamBlock] = await Promise.all([db.collection("applicationBlocks").doc(`email_${emailKey}`).get(), db.collection("applicationBlocks").doc(`team_${input.teamNumber}`).get()]);
+  // Blocked by the platform owner in THIS program (email or team number).
+  const [emailBlock, teamBlock] = await Promise.all([collectionOf("applicationBlocks").doc(`email_${emailKey}`).get(), collectionOf("applicationBlocks").doc(`team_${input.teamNumber}`).get()]);
   if (emailBlock.exists || teamBlock.exists) return fail(403, "blocked", "We can't accept an application from this email or for this team.");
 
   const turnstile = await verifyTurnstile(body.turnstileToken, ip === "unknown" ? null : ip);
@@ -94,15 +107,16 @@ export async function POST(request: Request) {
   ];
   if (!ipLimit.allowed || !emailLimit.allowed) return fail(429, "rate-limited", "You've applied several times recently. Try again in an hour.");
 
-  // Already on a team? (CS user docs exist from signup with `teamId: ""`, so only a non-empty teamId counts.)
-  const existingUser = await db.collection("users").doc(decoded.uid).get();
-  if (existingUser.exists && normalizeTeamCode(existingUser.data()?.teamId) !== "") return fail(409, "already-member", "You're already on a team account.");
+  // Already on a team in THIS program? (A user document can exist with an empty `teamId`, so only a non-empty one counts.) With memberships ON an account may apply for another team.
+  const existingUser = await collectionOf("users").doc(decoded.uid).get();
+  const teamIdOnUser = existingUser.exists ? existingUser.data()?.teamId : "";
+  if (typeof teamIdOnUser === "string" && teamIdOnUser.trim() !== "" && !(await getMembershipsEnabled(db, nowMs).catch(() => false))) return fail(409, "already-member", "You're already on a team account.");
 
-  // One pending (not expired) application per applicant, email and team number.
+  // One pending (not expired) application per applicant, email and team number, in this program.
   const pendingChecks = await Promise.all([
-    db.collection("teamApplications").where("applicantUid", "==", decoded.uid).where("status", "==", "pending").get(),
-    db.collection("teamApplications").where("emailKey", "==", emailKey).where("status", "==", "pending").get(),
-    db.collection("teamApplications").where("teamNumber", "==", input.teamNumber).where("status", "==", "pending").get(),
+    collectionOf("teamApplications").where("applicantUid", "==", decoded.uid).where("status", "==", "pending").get(),
+    collectionOf("teamApplications").where("emailKey", "==", emailKey).where("status", "==", "pending").get(),
+    collectionOf("teamApplications").where("teamNumber", "==", input.teamNumber).where("status", "==", "pending").get(),
   ]);
   const livePending = pendingChecks.some((snap) =>
     snap.docs.some((d) => {
@@ -112,14 +126,13 @@ export async function POST(request: Request) {
   );
   if (livePending) return fail(409, "duplicate", "There's already a pending application for this person or this team.");
 
-  // An account for this team already exists: they should join it, not create another. CS's own field: `teamNumber` is a STRING.
-  const existing = await db.collection("teams").where("teamNumber", "==", String(input.teamNumber)).limit(1).get();
-  const existingAccountForNumber = !existing.empty;
+  // An account for this team already exists IN THIS PROGRAM: they should join it, not create another (the number is matched the way the program stores it).
+  const existingAccountForNumber = await teamNumberTaken(db, program, input.teamNumber);
   if (existingAccountForNumber) {
     return fail(409, "account-exists", `An account for team ${input.teamNumber} already exists. Ask your team's admin for the join code instead.`);
   }
 
-  const first = await lookupTeamForApplication(input.teamNumber, input.teamName);
+  const first = await lookupTeamForApplication(program, input.teamNumber, input.teamName);
   const authRecord = await adminAuth.getUser(decoded.uid).catch(() => null);
   const createdMs = authRecord?.metadata.creationTime ? new Date(authRecord.metadata.creationTime).getTime() : NaN;
 
@@ -136,9 +149,10 @@ export async function POST(request: Request) {
     existingAccountForNumber,
   };
 
-  const ref = db.collection("teamApplications").doc();
+  const ref = collectionOf("teamApplications").doc();
   const batch = db.batch();
   batch.set(ref, {
+    program,
     applicantUid: decoded.uid,
     applicantName: input.name,
     applicantEmail: email,
@@ -157,8 +171,8 @@ export async function POST(request: Request) {
     createdAt: FieldValue.serverTimestamp(),
     expiresAt: new Date(nowMs + APPLICATION_TTL_MS),
   });
-  batch.set(db.collection("applicationPrivate").doc(ref.id), { signals, ipHash: ipKey, notes: "", createdAt: FieldValue.serverTimestamp() });
-  batch.set(db.collection("platformAuditLog").doc(), platformAuditDoc("submit-application", { uid: decoded.uid, name: input.name }, { applicationId: ref.id, teamNumber: input.teamNumber }));
+  batch.set(collectionOf("applicationPrivate").doc(ref.id), { signals, ipHash: ipKey, notes: "", createdAt: FieldValue.serverTimestamp() });
+  batch.set(collectionOf("platformAuditLog").doc(), platformAuditDoc("submit-application", { uid: decoded.uid, name: input.name }, { applicationId: ref.id, teamNumber: input.teamNumber, program }));
   await batch.commit();
 
   // Best effort from here: none of these can undo the filed application.
@@ -169,8 +183,9 @@ export async function POST(request: Request) {
     teamNumber: input.teamNumber,
     teamName: input.teamName || first.officialName || "",
     role: getRole(input.role).label,
+    programLabel: PROGRAMS[program].brand.label,
   }).catch(() => {});
   await sendEmail(emailTemplates.applicationReceived({ to: email, name: input.name, teamNumber: input.teamNumber, statusUrl: `${appBaseUrl()}/apply` })).catch(() => {});
 
-  return NextResponse.json({ ok: true, applicationId: ref.id });
+  return NextResponse.json({ ok: true, applicationId: ref.id, program });
 }

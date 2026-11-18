@@ -24,6 +24,7 @@ import { consumeRateLimit } from "@/lib/server/rate-limit";
 import { releaseOwnerUids } from "@/lib/server/env";
 import { readServerRoster } from "@/lib/server/team-roster";
 import { DEFAULT_PROGRAM } from "@/config/programs/types";
+import { MAX_PENDING_JOIN_REQUESTS } from "@/config/platform";
 
 /**
  * The server side of CS's join-request flow (docs/ROUTES.md D1/D6/D10), over the Admin SDK. CS did this through the Firestore
@@ -88,12 +89,10 @@ export async function requestToJoinTeam(db: Firestore, caller: Caller, input: { 
   const user = userSnap.exists ? ((userSnap.data() ?? {}) as CsUserDoc) : null;
   const existing = await requestsOfUser(db, caller.uid);
   const allowed = canRequestToJoin({ user, teamId: code, existing });
-  if (!allowed.ok) {
-    if (allowed.code === "duplicate") {
-      const dup = existing.find((r) => r.status === "pending" && r.teamId === code);
-      return { status: 200, body: { ok: true, alreadyPending: true, requestId: dup?.id ?? null, status: "pending", teamId: code, teamLabel: team.label } };
-    }
-    return fail(409, allowed.code, allowed.message);
+  if (!allowed.ok) return fail(409, allowed.code === "duplicate" ? "already-pending" : allowed.code, allowed.message);
+  // Build 3: several pending requests are allowed (one per team), at most MAX_PENDING_JOIN_REQUESTS.
+  if (existing.filter((r) => r.status === "pending").length >= MAX_PENDING_JOIN_REQUESTS) {
+    return fail(409, "too-many-pending", `You can have at most ${MAX_PENDING_JOIN_REQUESTS} requests waiting at once. Cancel one to ask another team.`);
   }
 
   const email = caller.email ?? "";

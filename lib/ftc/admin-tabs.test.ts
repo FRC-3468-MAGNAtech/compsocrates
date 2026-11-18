@@ -40,8 +40,18 @@ describe("admin tab resolver", () => {
 
   it("FTC hides the unported and owner-only tabs even from a platform owner", () => {
     const shown = resolveAdminTabs(PROGRAMS.ftc.admin, owner);
-    for (const hidden of ["templates", "applications", "recovery", "entries", "match-scout-ids", "practice-session-ids", "setup-check"]) expect(shown, hidden).not.toContain(hidden);
+    for (const hidden of ["templates", "recovery", "entries", "match-scout-ids", "practice-session-ids", "setup-check"]) expect(shown, hidden).not.toContain(hidden);
     expect(PROGRAMS.ftc.admin.platformSettings).toBe(false);
+  });
+
+  it("Memberships build 3: the shared Applications panel is in BOTH programs' lists, for the platform owner only; a teamless owner sees the platform tabs only", () => {
+    for (const id of ["frc", "ftc"] as const) {
+      expect(resolveAdminTabs(PROGRAMS[id].admin, owner)).toContain("applications");
+      expect(resolveAdminTabs(PROGRAMS[id].admin, { ...owner, isPlatformOwner: false })).not.toContain("applications");
+      const teamless = resolveAdminTabs(PROGRAMS[id].admin, { ...owner, teamless: true });
+      expect(teamless).toContain("applications");
+      for (const tab of teamless) expect(PLATFORM.includes(tab), tab).toBe(true);
+    }
   });
 
   it("Session 7: the owner's Changelog and Credits tabs are in BOTH programs' lists, in the same order, shown to the platform owner only", () => {

@@ -178,8 +178,10 @@ describe.each(["frc", "ftc"] as const)("membership flows (%s)", (program) => {
       expect(limited.status).toBe(409);
       expect(limited.body.code).toBe("membership_limit");
       const first = await requestJoin(db(), actor("u4"), { program, code: "TEAMC3", name: "D" }, NOW);
+      expect(first.body).toMatchObject({ alreadyPending: false });
       const again = await requestJoin(db(), actor("u4"), { program, code: "TEAMC3", name: "D" }, NOW);
-      expect(again.body).toMatchObject({ alreadyPending: true, requestId: first.body.requestId });
+      expect(again.status).toBe(409);
+      expect(again.body.code).toBe("already_pending");
     });
 
     it("404s an unknown code and 400s a malformed one", async () => {

@@ -1,79 +1,24 @@
 import "server-only";
 import type { Firestore, Transaction } from "firebase-admin/firestore";
-import type { CsUserDoc } from "@/data/cs/types";
-import { buildBaseUserDoc, buildCreatorUserPatch, buildNewTeamDoc, generateTeamCode, normalizeTeamCode } from "@/data/cs/join-requests";
-import { str } from "@/data/cs/util";
-import { parseTeamNumber } from "@/lib/team-number";
-import { APP_SETTINGS_PATH, getMembershipsEnabled, getTeamCreationEnabledInTransaction } from "@/lib/server/team-settings";
-import { DEFAULT_PROGRAM } from "@/config/programs/types";
-import { MembershipError } from "@/lib/memberships/model";
-import { readCreationState, writeCreatorMembership } from "@/lib/server/membership-flows";
-import { teamLabelOfDoc } from "@/lib/memberships/flows";
-import type { Caller, RouteResult } from "@/lib/server/join-requests";
-
-const fail = (status: number, code: string, error: string): RouteResult => ({ status, body: { ok: false, code, error } });
+import { generateTeamCode } from "@/data/cs/join-requests";
+import { PROGRAMS } from "@/config/programs";
+import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
+import { programPath } from "@/lib/firebase/paths";
 
 /** How many fresh codes one attempt looks at (all read inside the transaction, so a code can't be taken between check and write). */
 const CODE_CANDIDATES = 6;
 
 /**
- * A free uppercase team code, or null if every candidate is taken. Reads candidate team docs INSIDE the transaction (so the code
- * can't be claimed between check and write); call it before the transaction's first write.
+ * A free uppercase team code for `program` (its length comes from `ProgramConfig.membership.flows.newTeam.joinCodeLength`), or null if every candidate is taken.
+ * Reads candidate team docs INSIDE the transaction (so the code can't be claimed between check and write); call it before the transaction's first write.
+ *
+ * Team creation itself is no longer a route: a new team comes only from an approved application (`lib/server/application-decisions.ts`), and `POST /api/team/create`
+ * answers 410 for every program (memberships build 3).
  */
-export async function claimFreeTeamCode(db: Firestore, txn: Transaction, random: () => number = Math.random): Promise<string | null> {
-  const candidates = [...new Set(Array.from({ length: CODE_CANDIDATES }, () => generateTeamCode(random)))];
-  const snaps = await Promise.all(candidates.map((c) => txn.get(db.collection("teams").doc(c))));
+export async function claimFreeTeamCode(db: Firestore, txn: Transaction, random: () => number = Math.random, program: ProgramId = DEFAULT_PROGRAM): Promise<string | null> {
+  const length = PROGRAMS[program].membership.flows.newTeam.joinCodeLength;
+  const candidates = [...new Set(Array.from({ length: CODE_CANDIDATES }, () => generateTeamCode(random, length)))];
+  const snaps = await Promise.all(candidates.map((c) => txn.get(db.collection(programPath(program, "teams")).doc(c))));
   const free = snaps.findIndex((s) => !s.exists);
   return free < 0 ? null : candidates[free];
-}
-
-/**
- * Creates a team as CS stores it, makes the caller its owner and admin, and switches public creation off, in ONE transaction
- * (two simultaneous creators cannot both win). Writes:
- *   teams/{CODE}: teamName, teamNumber (string), verifiedOwnerId, selectedEvents [], createdAt (ms)
- *   users/{uid} (merge): teamId, role/roles/secondaryRoles, isTeamAdmin true, isOwner true (app mirror)
- * `{CODE}` is a random uppercase code, checked for collisions against existing team docs inside the transaction.
- */
-export async function createTeamForCaller(
-  db: Firestore,
-  caller: Caller,
-  input: { teamNumber: unknown; teamName?: unknown; role?: unknown; name?: unknown },
-  nowMs: number = Date.now(),
-  random: () => number = Math.random
-): Promise<RouteResult> {
-  const teamNumber = parseTeamNumber(typeof input.teamNumber === "number" || typeof input.teamNumber === "string" ? input.teamNumber : null);
-  if (teamNumber === null) return fail(400, "bad-number", "Enter a valid team number.");
-  const teamName = str(input.teamName).trim().slice(0, 80);
-  const displayName = str(input.name).trim() || str(caller.name).trim() || str(caller.email).split("@")[0] || "";
-
-  // Memberships (build 2): with the kill switch ON the creator also gets a VERIFIED owner membership, in the same transaction. OFF: nothing below changes.
-  const membershipsOn = await getMembershipsEnabled(db, nowMs).catch(() => false);
-  try {
-  return await db.runTransaction(async (txn): Promise<RouteResult> => {
-    const userRef = db.collection("users").doc(caller.uid);
-    // Reads must happen before any writes in a Firestore transaction.
-    const [userSnap, creationEnabled, code] = await Promise.all([txn.get(userRef), getTeamCreationEnabledInTransaction(db, txn), claimFreeTeamCode(db, txn, random)]);
-
-    const user = userSnap.exists ? ((userSnap.data() ?? {}) as CsUserDoc) : null;
-    if (user && normalizeTeamCode(user.teamId)) return fail(409, "already-member", "You're already on a team.");
-    if (!creationEnabled) return fail(403, "creation-disabled", "Team creation is currently disabled.");
-
-    if (!code) return fail(503, "code-collision", "Couldn't pick a free join code. Try again.");
-    const created = membershipsOn ? await readCreationState(db, txn, DEFAULT_PROGRAM, code, caller.uid) : null;
-
-    txn.set(db.collection("teams").doc(code), buildNewTeamDoc({ teamNumber, teamName, ownerUid: caller.uid }, nowMs));
-    const patch = buildCreatorUserPatch({ teamId: code, role: input.role ?? user?.role });
-    if (user) {
-      txn.set(userRef, patch, { merge: true });
-    } else {
-      txn.set(userRef, { ...buildBaseUserDoc({ uid: caller.uid, email: caller.email ?? "", displayName, role: input.role }, nowMs), ...patch });
-    }
-    txn.set(db.doc(APP_SETTINGS_PATH), { teamCreationEnabled: false }, { merge: true });
-    if (created) writeCreatorMembership(txn, DEFAULT_PROGRAM, created, { uid: caller.uid, teamId: code, name: displayName || str(user?.displayName), teamLabel: teamLabelOfDoc(buildNewTeamDoc({ teamNumber, teamName, ownerUid: caller.uid }, nowMs)), role: String(patch.role ?? "match-scout"), nowMs });
-    return { status: 200, body: { ok: true, joinCode: code, teamId: code } };
-  });
-  } catch (err) {
-    if (err instanceof MembershipError) return fail(err.status, err.code, err.message);
-    throw err;
-  }
 }

@@ -5,73 +5,40 @@ vi.hoisted(() => {
 });
 
 import { FakeFirestore } from "@/lib/server/test-support/fake-firestore";
-import { createTeamForCaller } from "@/lib/server/team-create";
+import { claimFreeTeamCode } from "@/lib/server/team-create";
 import { syncRolesForCaller, type SyncRolesInput } from "@/lib/server/sync-roles";
 
-const NOW = 1_700_000_000_000;
 let fake: FakeFirestore;
 const db = () => fake.asFirestore();
-const caller = (uid: string) => ({ uid, email: `${uid}@x.org`, name: uid });
 
 beforeEach(() => {
   fake = new FakeFirestore();
 });
 
-describe("createTeamForCaller", () => {
-  beforeEach(() => {
-    fake.seed("appSettings/global", { teamCreationEnabled: true });
+describe("claimFreeTeamCode (a new team's join code, per program)", () => {
+  it("picks a free code of the program's own length inside the transaction", async () => {
+    for (const [program, length] of [["frc", 6], ["ftc", 8]] as const) {
+      const code = await db().runTransaction((txn) => claimFreeTeamCode(db(), txn as never, Math.random, program));
+      expect(code).toMatch(new RegExp(`^[A-Z2-9]{${length}}$`));
+    }
   });
 
-  it("writes a CS-shaped team doc under an uppercase code and makes the caller owner and admin", async () => {
-    const res = await createTeamForCaller(db(), caller("u1"), { teamNumber: "3468", teamName: " MAGNAtech ", name: "Ada" }, NOW);
-    expect(res.status).toBe(200);
-    const code = (res.body as { joinCode: string }).joinCode;
-    expect(code).toMatch(/^[A-Z2-9]{6}$/);
-
-    expect(fake.read(`teams/${code}`)).toEqual({
-      teamName: "MAGNAtech",
-      teamNumber: "3468",
-      verifiedOwnerId: "u1",
-      selectedEvents: [],
-      createdAt: NOW,
-    });
-    expect(fake.read("users/u1")).toMatchObject({ uid: "u1", displayName: "Ada", teamId: code, role: "match-scout", roles: ["match-scout"], secondaryRoles: [], isTeamAdmin: true, isOwner: true, profileComplete: true });
-    expect(fake.read("appSettings/global")).toEqual({ teamCreationEnabled: false });
-  });
-
-  it("merges into an existing team-less CS user doc and keeps its other fields", async () => {
-    fake.seed("users/u1", { uid: "u1", displayName: "Ada", teamId: "", role: "lead-scout", roles: ["lead-scout"], encryptedUserData: "blob", bio: "hi" });
-    const res = await createTeamForCaller(db(), caller("u1"), { teamNumber: 254 }, NOW);
-    const code = (res.body as { joinCode: string }).joinCode;
-    expect(fake.read("users/u1")).toMatchObject({ displayName: "Ada", encryptedUserData: "blob", bio: "hi", teamId: code, role: "lead-scout", isTeamAdmin: true });
-  });
-
-  it("rejects when disabled, when already on a team, and on a bad number", async () => {
-    expect((await createTeamForCaller(db(), caller("u1"), { teamNumber: "abc" }, NOW)).status).toBe(400);
-    fake.seed("users/member", { uid: "member", teamId: "ABC123" });
-    expect((await createTeamForCaller(db(), caller("member"), { teamNumber: 1 }, NOW)).status).toBe(409);
-    fake.seed("appSettings/global", { teamCreationEnabled: false });
-    expect((await createTeamForCaller(db(), caller("u2"), { teamNumber: 1 }, NOW)).status).toBe(403);
-    expect(fake.ids("teams")).toHaveLength(0);
-  });
-
-  it("skips a code that is already taken (collision check)", async () => {
-    // rng that yields "AAAAAA" for the first candidate, then distinct codes: seed AAAAAA as taken.
+  it("skips a code that is already taken in THAT program (collision check)", async () => {
+    // rng that yields "AAAAAA" for the first candidate, then distinct codes: AAAAAA is taken in the root program only.
     fake.seed("teams/AAAAAA", { teamName: "taken" });
-    let n = 0;
-    const random = () => (n++ < 6 ? 0 : 0.5); // first candidate AAAAAA (taken); the rest are a different code
-    const res = await createTeamForCaller(db(), caller("u1"), { teamNumber: 7 }, NOW, random);
-    expect(res.status).toBe(200);
-    const code = (res.body as { joinCode: string }).joinCode;
-    expect(code).not.toBe("AAAAAA");
-    expect(fake.read("teams/AAAAAA")).toEqual({ teamName: "taken" });
+    let calls = 0;
+    const rng = () => (calls++ < 6 ? 0 : (calls % 20) / 20);
+    const root = await db().runTransaction((txn) => claimFreeTeamCode(db(), txn as never, rng, "frc"));
+    expect(root).not.toBe("AAAAAA");
+    calls = 0;
+    const other = await db().runTransaction((txn) => claimFreeTeamCode(db(), txn as never, rng, "ftc"));
+    // The other program's collection is its own: the root team "AAAAAA" does not block its first candidate.
+    expect(other).toMatch(/^AAAAAA[A-Z2-9]{2}$/);
   });
 
   it("reports a collision when every candidate is taken", async () => {
-    fake.seed("teams/AAAAAA", { teamName: "taken" });
-    const res = await createTeamForCaller(db(), caller("u1"), { teamNumber: 7 }, NOW, () => 0);
-    expect(res.status).toBe(503);
-    expect(res.body.code).toBe("code-collision");
+    for (const c of ["AAAAAA"]) fake.seed(`teams/${c}`, { teamName: "taken" });
+    expect(await db().runTransaction((txn) => claimFreeTeamCode(db(), txn as never, () => 0, "frc"))).toBeNull();
   });
 });
 
@@ -164,38 +131,5 @@ describe("syncRolesForCaller owner mirror", () => {
     await syncRolesForCaller(db(), input("old"));
     expect(fake.read("users/boss")).toMatchObject({ isOwner: true, isTeamAdmin: true });
     expect(fake.read("users/old")).toMatchObject({ isOwner: false, isTeamAdmin: true });
-  });
-});
-
-describe("createTeamForCaller and memberships (kill switch)", () => {
-  const mem = (teamId: string, uid: string) => ({ uid, teamId, role: "match-scout", roles: null, secondaryRoles: [], isAdmin: false, isOwner: false, fieldTeamIds: null, name: "P", status: "active", origin: "pointer", joinedAt: 1, leftAt: null, endedBy: null, updatedAt: 1 });
-
-  it("OFF: no membership is written", async () => {
-    fake.seed("appSettings/global", { teamCreationEnabled: true });
-    const { resetMembershipsEnabledCache } = await import("@/lib/server/team-settings");
-    resetMembershipsEnabledCache();
-    await createTeamForCaller(db(), caller("u1"), { teamNumber: "3468", name: "Ada" }, NOW);
-    expect(fake.ids("memberships")).toEqual([]);
-  });
-
-  it("ON: the creator also gets a VERIFIED owner membership, in the same transaction", async () => {
-    fake.seed("appSettings/global", { teamCreationEnabled: true, membershipsEnabled: true });
-    const { resetMembershipsEnabledCache } = await import("@/lib/server/team-settings");
-    resetMembershipsEnabledCache();
-    const res = await createTeamForCaller(db(), caller("u1"), { teamNumber: "3468", name: "Ada", role: "lead-scout" }, NOW);
-    const code = (res.body as { joinCode: string }).joinCode;
-    expect(fake.read(`memberships/${code}_u1`)).toMatchObject({ uid: "u1", teamId: code, origin: "verified", isAdmin: true, isOwner: true, status: "active", role: "lead-scout", name: "Ada" });
-  });
-
-  it("ON, at five active teams: refuses with 409 membership_limit and creates nothing", async () => {
-    fake.seed("appSettings/global", { teamCreationEnabled: true, membershipsEnabled: true });
-    const { resetMembershipsEnabledCache } = await import("@/lib/server/team-settings");
-    resetMembershipsEnabledCache();
-    for (const t of ["A1", "B1", "C1", "D1", "E1"]) fake.seed(`memberships/${t}_u1`, mem(t, "u1"));
-    const res = await createTeamForCaller(db(), caller("u1"), { teamNumber: "3468", name: "Ada" }, NOW);
-    expect(res.status).toBe(409);
-    expect((res.body as { code: string }).code).toBe("membership_limit");
-    expect(fake.ids("teams")).toEqual([]);
-    expect(fake.read("users/u1")).toBeUndefined();
   });
 });

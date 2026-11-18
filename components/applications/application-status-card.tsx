@@ -1,6 +1,7 @@
 "use client";
 
-import Link from "@/components/program/link";
+import Link from "next/link";
+import { programHref } from "@/lib/program/paths";
 import { CheckCircle2, Clock, XCircle, TimerOff } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,6 +9,7 @@ import { GlassPanel } from "@/components/ui/glass-panel";
 import { APPLICATION_STATUS_LABEL, applicantFacingStatus } from "@/lib/applications";
 import { statusOf, type TeamApplication } from "@/lib/applications-client";
 import { getRole } from "@/lib/roles";
+import { PROGRAMS } from "@/config/programs";
 
 const fmt = (ms: number | null) => (ms === null ? "just now" : new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }));
 
@@ -38,7 +40,7 @@ export function ApplicationStatusCard({
         <div className="min-w-0">
           <h1 className="text-xl font-semibold">Your application</h1>
           <p className="text-sm text-[var(--muted-foreground)]">
-            Team {application.teamNumber}
+            {PROGRAMS[application.program].brand.label} team {application.teamNumber}
             {application.teamName ? ` · ${application.teamName}` : ""}
           </p>
         </div>
@@ -62,7 +64,7 @@ export function ApplicationStatusCard({
       {status === "approved" && (
         <div className="flex flex-col gap-3 text-sm">
           <p>Your application was approved and your team&apos;s account has been created. You&apos;re its owner and an admin.</p>
-          <Link href="/dashboard">
+          <Link href={programHref(application.program, "/dashboard")}>
             <Button size="lg" className="w-full">
               Continue to your dashboard
             </Button>

@@ -1,15 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { collection, doc, onSnapshot, query, where, type DocumentData } from "firebase/firestore";
+import { useCallback, useEffect, useState } from "react";
+import { getDoc, getDocs, query, where, type DocumentData, type QueryDocumentSnapshot } from "firebase/firestore";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { authedApi } from "@/lib/api-client";
+import { programCollection, programDoc } from "@/lib/firebase/paths";
+import { PROGRAM_IDS, type ProgramId } from "@/config/programs/types";
 import { effectiveStatus, type ApplicationSignals, type ApplicationStatus } from "@/lib/applications";
 import type { RoleId } from "@/lib/roles";
 
 /** A `teamApplications` doc as the app reads it (timestamps as milliseconds). */
 export type TeamApplication = {
   id: string;
+  /** Which program the application is for (the collection it lives in). */
+  program: ProgramId;
   applicantUid: string;
   applicantName: string;
   applicantEmail: string;
@@ -28,13 +32,14 @@ export type TeamApplication = {
   teamId: string | null;
 };
 
-export type ApplicationBlock = { id: string; type: "email" | "team"; value: string; reason: string | null; createdAtMs: number | null };
+export type ApplicationBlock = { id: string; program: ProgramId; type: "email" | "team"; value: string; reason: string | null; createdAtMs: number | null };
 
 const ms = (v: unknown): number | null => (v && typeof v === "object" && "toMillis" in v && typeof (v as { toMillis: unknown }).toMillis === "function" ? (v as { toMillis: () => number }).toMillis() : null);
 
-function toApplication(id: string, d: DocumentData): TeamApplication {
+function toApplication(id: string, program: ProgramId, d: DocumentData): TeamApplication {
   return {
     id,
+    program,
     applicantUid: d.applicantUid,
     applicantName: d.applicantName ?? "",
     applicantEmail: d.applicantEmail ?? "",
@@ -58,115 +63,171 @@ export function statusOf(app: TeamApplication, nowMs: number = Date.now()): Appl
   return effectiveStatus({ status: app.status, expiresAtMs: app.expiresAtMs }, nowMs);
 }
 
-/** The signed-in applicant's own applications, newest first (rules: an applicant reads only their own). */
-export function useMyApplications(uid: string | null) {
-  const [apps, setApps] = useState<TeamApplication[]>([]);
-  const [loaded, setLoaded] = useState(() => !isFirebaseConfigured());
+const read = (program: ProgramId, d: QueryDocumentSnapshot<DocumentData>): TeamApplication => toApplication(d.id, program, d.data());
+const newestFirst = (a: TeamApplication, b: TeamApplication) => (b.createdAtMs ?? Number.MAX_SAFE_INTEGER) - (a.createdAtMs ?? Number.MAX_SAFE_INTEGER);
+
+/** The signed-in applicant's own applications in the given programs, newest first, in ONE read per program (rules: an applicant reads only their own). No listener. */
+export async function fetchMyApplications(uid: string, programs: readonly ProgramId[] = PROGRAM_IDS): Promise<TeamApplication[]> {
+  const all = await Promise.all(programs.map(async (program) => ({ program, snap: await getDocs(query(programCollection(db, program, "teamApplications"), where("applicantUid", "==", uid))) })));
+  return all.flatMap(({ program, snap }) => snap.docs.map((d) => read(program, d))).sort(newestFirst);
+}
+
+/** Own applications, read ONCE when `uid` is known; `refresh()` reads again (after sending one). A failed read shows as none, as before. */
+export function useMyApplications(uid: string | null, programs: readonly ProgramId[] = PROGRAM_IDS) {
+  const [state, setState] = useState<{ apps: TeamApplication[]; loaded: boolean }>({ apps: [], loaded: !isFirebaseConfigured() });
+  const key = programs.join(",");
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
+    let alive = true;
     if (!uid || !isFirebaseConfigured()) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setApps([]);
-      setLoaded(true);
+      setState({ apps: [], loaded: true });
       return;
     }
-    return onSnapshot(
-      query(collection(db, "teamApplications"), where("applicantUid", "==", uid)),
-      (snap) => {
-        setApps(snap.docs.map((d) => toApplication(d.id, d.data())).sort((a, b) => (b.createdAtMs ?? Number.MAX_SAFE_INTEGER) - (a.createdAtMs ?? Number.MAX_SAFE_INTEGER)));
-        setLoaded(true);
-      },
+    fetchMyApplications(uid, key.split(",") as ProgramId[]).then(
+      (apps) => alive && setState({ apps, loaded: true }),
       (err) => {
-        console.error("teamApplications (own) subscription failed:", err);
-        setApps([]);
-        setLoaded(true);
+        console.error("teamApplications (own) read failed:", err);
+        if (alive) setState({ apps: [], loaded: true });
       }
     );
-  }, [uid]);
-  return { applications: apps, loaded };
+    return () => {
+      alive = false;
+    };
+  }, [uid, key, attempt]);
+  const refresh = useCallback(() => setAttempt((n) => n + 1), []);
+  return { applications: state.apps, loaded: state.loaded, refresh };
 }
 
-/** Every application, newest first. Platform owners only (rules); pass `enabled: false` for everyone else so nothing is subscribed. */
+/** Every application in both programs, newest first. Platform owners only (rules). */
+export async function fetchAllApplications(): Promise<TeamApplication[]> {
+  const all = await Promise.all(PROGRAM_IDS.map(async (program) => ({ program, snap: await getDocs(programCollection(db, program, "teamApplications")) })));
+  return all.flatMap(({ program, snap }) => snap.docs.map((d) => read(program, d))).sort(newestFirst);
+}
+
+// How many applications are waiting: the badge on the Admin Panel and the sidebar. One read per program, cached for a minute and shared by every caller.
+const COUNT_TTL_MS = 60_000;
+let countCache: { at: number; promise: Promise<number> } | null = null;
+const countListeners = new Set<() => void>();
+
+function pendingCount(): Promise<number> {
+  if (countCache && Date.now() - countCache.at < COUNT_TTL_MS) return countCache.promise;
+  const promise = Promise.all(PROGRAM_IDS.map((program) => getDocs(query(programCollection(db, program, "teamApplications"), where("status", "==", "pending")))))
+    .then((snaps) => {
+      const now = Date.now();
+      return snaps.flatMap((snap) => snap.docs.map((d) => ms(d.data().expiresAt))).filter((expires) => effectiveStatus({ status: "pending", expiresAtMs: expires }, now) === "pending").length;
+    })
+    .catch(() => {
+      countCache = null;
+      return 0;
+    });
+  countCache = { at: Date.now(), promise };
+  return promise;
+}
+
+/** Forget the cached count (after a decision) so the badges read again. */
+export function refreshPendingApplicationCount(): void {
+  countCache = null;
+  countListeners.forEach((l) => l());
+}
+
+/** The review queue: read ONCE (no listener) when `enabled`; `refresh()` reads again. Platform owners only: pass `enabled: false` for everyone else so nothing is read. */
 export function useAllApplications(enabled: boolean) {
-  const [apps, setApps] = useState<TeamApplication[]>([]);
-  const [loaded, setLoaded] = useState(false);
+  const [state, setState] = useState<{ apps: TeamApplication[]; loaded: boolean; error: boolean }>({ apps: [], loaded: false, error: false });
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
+    let alive = true;
     if (!enabled || !isFirebaseConfigured()) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setApps([]);
-      setLoaded(true);
+      setState({ apps: [], loaded: true, error: false });
       return;
     }
-    return onSnapshot(
-      collection(db, "teamApplications"),
-      (snap) => {
-        setApps(snap.docs.map((d) => toApplication(d.id, d.data())).sort((a, b) => (b.createdAtMs ?? Number.MAX_SAFE_INTEGER) - (a.createdAtMs ?? Number.MAX_SAFE_INTEGER)));
-        setLoaded(true);
-      },
+    fetchAllApplications().then(
+      (apps) => alive && setState({ apps, loaded: true, error: false }),
       (err) => {
-        console.error("teamApplications subscription failed:", err);
-        setApps([]);
-        setLoaded(true);
+        console.error("teamApplications read failed:", err);
+        if (alive) setState({ apps: [], loaded: true, error: true });
       }
     );
-  }, [enabled]);
-  return { applications: apps, loaded };
+    return () => {
+      alive = false;
+    };
+  }, [enabled, attempt]);
+  const refresh = useCallback(() => {
+    refreshPendingApplicationCount();
+    setAttempt((n) => n + 1);
+  }, []);
+  return { applications: state.apps, loaded: state.loaded, error: state.error, refresh };
 }
 
-/** How many applications are waiting (pending and not expired): the badge on the Admin Panel. Platform owners only. */
+/** How many applications are waiting (pending and not expired) in both programs: the badge on the Admin Panel. Platform owners only. */
 export function usePendingApplicationCount(enabled: boolean): number {
-  const [apps, setApps] = useState<{ expiresAtMs: number | null }[]>([]);
+  const [count, setCount] = useState(0);
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
+    const again = () => setAttempt((n) => n + 1);
+    countListeners.add(again);
+    return () => void countListeners.delete(again);
+  }, []);
+  useEffect(() => {
+    let alive = true;
     if (!enabled || !isFirebaseConfigured()) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setApps([]);
+      setCount(0);
       return;
     }
-    return onSnapshot(
-      query(collection(db, "teamApplications"), where("status", "==", "pending")),
-      (snap) => setApps(snap.docs.map((d) => ({ expiresAtMs: ms(d.data().expiresAt) }))),
-      () => setApps([])
-    );
-  }, [enabled]);
-  // The wall clock is read once per snapshot: expiry only matters to the minute, and nothing re-renders just for it.
-  const [now] = useState(() => Date.now());
-  return useMemo(() => apps.filter((a) => effectiveStatus({ status: "pending", expiresAtMs: a.expiresAtMs }, now) === "pending").length, [apps, now]);
+    void pendingCount().then((n) => alive && setCount(n));
+    return () => {
+      alive = false;
+    };
+  }, [enabled, attempt]);
+  return count;
 }
 
 export type ApplicationPrivate = { signals: ApplicationSignals | null; notes: string };
 
-/** The reviewer-only side of one application (signals, notes). Subscribes only while `id` is set (when a row is expanded). */
-export function useApplicationPrivate(id: string | null) {
+/** The reviewer-only side of one application (signals, notes), read ONCE when a row is expanded (and again when `version` changes, after a note is saved). */
+export function useApplicationPrivate(id: string | null, program: ProgramId, version = 0) {
   const [data, setData] = useState<ApplicationPrivate | null>(null);
   useEffect(() => {
+    let alive = true;
     if (!id || !isFirebaseConfigured()) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setData(null);
       return;
     }
-    return onSnapshot(
-      doc(db, "applicationPrivate", id),
-      (snap) => setData(snap.exists() ? { signals: (snap.data().signals as ApplicationSignals) ?? null, notes: String(snap.data().notes ?? "") } : { signals: null, notes: "" }),
-      () => setData({ signals: null, notes: "" })
+    getDoc(programDoc(db, program, "applicationPrivate", id)).then(
+      (snap) => alive && setData(snap.exists() ? { signals: (snap.data().signals as ApplicationSignals) ?? null, notes: String(snap.data().notes ?? "") } : { signals: null, notes: "" }),
+      () => alive && setData({ signals: null, notes: "" })
     );
-  }, [id]);
+    return () => {
+      alive = false;
+    };
+  }, [id, program, version]);
   return data;
 }
 
+/** The blocks of both programs, read ONCE when `enabled`; `refresh()` reads again. */
 export function useApplicationBlocks(enabled: boolean) {
   const [blocks, setBlocks] = useState<ApplicationBlock[]>([]);
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
+    let alive = true;
     if (!enabled || !isFirebaseConfigured()) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setBlocks([]);
       return;
     }
-    return onSnapshot(
-      collection(db, "applicationBlocks"),
-      (snap) => setBlocks(snap.docs.map((d) => ({ id: d.id, type: d.data().type, value: String(d.data().value ?? ""), reason: d.data().reason ?? null, createdAtMs: ms(d.data().createdAt) }))),
-      () => setBlocks([])
+    Promise.all(PROGRAM_IDS.map(async (program) => ({ program, snap: await getDocs(programCollection(db, program, "applicationBlocks")) }))).then(
+      (all) => alive && setBlocks(all.flatMap(({ program, snap }) => snap.docs.map((d) => ({ id: d.id, program, type: d.data().type, value: String(d.data().value ?? ""), reason: d.data().reason ?? null, createdAtMs: ms(d.data().createdAt) })))),
+      () => alive && setBlocks([])
     );
-  }, [enabled]);
-  return blocks;
+    return () => {
+      alive = false;
+    };
+  }, [enabled, attempt]);
+  const refresh = useCallback(() => setAttempt((n) => n + 1), []);
+  return { blocks, refresh };
 }
 
 // --- calls -----------------------------------------------------------------------------------
@@ -179,6 +240,8 @@ export async function fetchStartToken(): Promise<string> {
 }
 
 export type ApplicationSubmission = {
+  /** Which program the team is for. REQUIRED: the first field of the form. */
+  program: ProgramId;
   name: string;
   teamNumber: string;
   teamName: string;
@@ -196,6 +259,7 @@ export function submitApplication(body: ApplicationSubmission): Promise<{ applic
 }
 
 export function decideApplication(
+  program: ProgramId,
   payload:
     | { action: "approve"; applicationId: string }
     | { action: "reject"; applicationId: string; reason: string }
@@ -203,7 +267,7 @@ export function decideApplication(
     | { action: "unblock"; blockId: string }
     | { action: "note"; applicationId: string; notes: string }
 ): Promise<{ teamId?: string }> {
-  return authedApi("/api/admin/applications", { method: "POST", body: payload });
+  return authedApi("/api/admin/applications", { method: "POST", body: { program, ...payload } });
 }
 
 export type ApplicationConfig = { turnstileSecretConfigured: boolean; turnstileSiteKeyConfigured: boolean; emailConfigured: boolean };

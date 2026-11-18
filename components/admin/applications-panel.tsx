@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Check, ChevronDown, ExternalLink, Info, Loader2, ShieldBan, X } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, ExternalLink, Info, Loader2, RefreshCw, ShieldBan, X } from "lucide-react";
+import { PROGRAMS } from "@/config/programs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -16,6 +17,7 @@ import {
   useAllApplications,
   useApplicationBlocks,
   useApplicationPrivate,
+  type ApplicationBlock,
   type ApplicationConfig,
   type TeamApplication,
 } from "@/lib/applications-client";
@@ -43,15 +45,21 @@ const TONE_CLASS: Record<SignalTone, string> = {
 const fmt = (ms: number | null) => (ms === null ? "just now" : new Date(ms).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }));
 
 /**
- * P20: Admin Panel > Team Applications (platform owners only). The review queue: filter by status, open an application
+ * P20: Admin Panel > Team Applications (platform owners only), ONE panel for both programs (each application carries a program badge; it is read once and the
+ * Refresh button reads again). The review queue: filter by status, open an application
  * to see what was submitted and the **verification signals** (email verified, whether FIRST has the team and the name
  * matches, account age, repeats from the same network, CAPTCHA, an existing account), keep private notes, and
  * Approve / Reject (with a reason the applicant sees) / Block (email and/or team number). Approval creates the
  * account in one server transaction and is never automatic. A warning banner appears when Turnstile or email isn't configured.
  */
 export function ApplicationsPanel() {
-  const { applications, loaded } = useAllApplications(true);
-  const blocks = useApplicationBlocks(true);
+  // One-time reads (no listeners): the Refresh button, and every decision, read again.
+  const { applications, loaded, error: loadError, refresh } = useAllApplications(true);
+  const { blocks, refresh: refreshBlocks } = useApplicationBlocks(true);
+  const refreshAll = () => {
+    refresh();
+    refreshBlocks();
+  };
   const [config, setConfig] = useState<ApplicationConfig | null>(null);
   const [filter, setFilter] = useState<Filter>("pending");
   const [openId, setOpenId] = useState<string | null>(null);
@@ -115,8 +123,15 @@ export function ApplicationsPanel() {
         ))}
       </div>
 
+      <div className="flex items-center justify-between gap-3 text-xs text-[var(--muted-foreground)]">
+        <span>{loadError ? "Couldn't read the applications. Try Refresh." : "Both programs, read once when you open this tab."}</span>
+        <Button size="sm" variant="glass" className="gap-1.5" onClick={refreshAll} data-testid="applications-refresh">
+          <RefreshCw className="h-3.5 w-3.5" /> Refresh
+        </Button>
+      </div>
+
       {filter === "blocks" ? (
-        <BlockList />
+        <BlockList blocks={blocks} onChanged={refreshAll} />
       ) : !loaded ? (
         <div className="glass-card h-24 animate-pulse" />
       ) : shown.length === 0 ? (
@@ -124,7 +139,7 @@ export function ApplicationsPanel() {
       ) : (
         <ul className="flex flex-col gap-3">
           {shown.map(({ app, status }) => (
-            <ApplicationRow key={app.id} app={app} status={status} open={openId === app.id} onToggle={() => setOpenId(openId === app.id ? null : app.id)} />
+            <ApplicationRow key={`${app.program}_${app.id}`} app={app} status={status} open={openId === `${app.program}_${app.id}`} onToggle={() => setOpenId(openId === `${app.program}_${app.id}` ? null : `${app.program}_${app.id}`)} onChanged={refreshAll} />
           ))}
         </ul>
       )}
@@ -136,8 +151,10 @@ function statusVariant(status: ApplicationStatus): "success" | "danger" | "warni
   return status === "approved" ? "success" : status === "rejected" || status === "blocked" ? "danger" : status === "expired" ? "warning" : "glass";
 }
 
-function ApplicationRow({ app, status, open, onToggle }: { app: TeamApplication; status: ApplicationStatus; open: boolean; onToggle: () => void }) {
-  const detail = useApplicationPrivate(open ? app.id : null);
+function ApplicationRow({ app, status, open, onToggle, onChanged }: { app: TeamApplication; status: ApplicationStatus; open: boolean; onToggle: () => void; onChanged: () => void }) {
+  const [noteVersion, setNoteVersion] = useState(0);
+  const detail = useApplicationPrivate(open ? app.id : null, app.program, noteVersion);
+  const programLabel = PROGRAMS[app.program].brand.label;
   const [notes, setNotes] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -155,6 +172,7 @@ function ApplicationRow({ app, status, open, onToggle }: { app: TeamApplication;
       await fn();
       setDialog(null);
       setReason("");
+      onChanged();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
@@ -165,6 +183,7 @@ function ApplicationRow({ app, status, open, onToggle }: { app: TeamApplication;
   return (
     <li className="glass-card overflow-hidden" data-testid="application-row" data-status={status}>
       <button type="button" onClick={onToggle} aria-expanded={open} className="flex w-full flex-wrap items-center gap-x-4 gap-y-2 p-4 text-left outline-none hover:bg-white/5 focus-visible:bg-white/5">
+        <Badge variant="outline" data-testid="program-badge">{programLabel}</Badge>
         <span className="text-lg font-semibold tabular-nums">Team {app.teamNumber}</span>
         <span className="min-w-0 flex-1 truncate text-sm text-[var(--muted-foreground)]">
           {app.teamName || "No name"} · {app.applicantName} · {getRole(app.role).label}
@@ -177,6 +196,7 @@ function ApplicationRow({ app, status, open, onToggle }: { app: TeamApplication;
       {open && (
         <div className="flex flex-col gap-5 border-t border-[var(--glass-border)] p-4">
           <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+            <Field label="Program">{PROGRAMS[app.program].brand.fullName}</Field>
             <Field label="Applicant">{app.applicantName}</Field>
             <Field label="Email">{app.applicantEmail}</Field>
             <Field label="Team">
@@ -207,7 +227,7 @@ function ApplicationRow({ app, status, open, onToggle }: { app: TeamApplication;
               <div className="mt-2 h-8 animate-pulse rounded-xl bg-white/5" />
             ) : detail.signals ? (
               <ul className="mt-2 flex flex-wrap gap-2" data-testid="signals">
-                {describeSignals(detail.signals).map((s) => (
+                {describeSignals(detail.signals, programLabel).map((s) => (
                   <li key={s.label} title={s.detail || undefined} className={cn("rounded-full border px-3 py-1 text-xs font-medium", TONE_CLASS[s.tone])}>
                     {s.label}
                   </li>
@@ -235,7 +255,10 @@ function ApplicationRow({ app, status, open, onToggle }: { app: TeamApplication;
               variant="glass"
               className="mt-2"
               disabled={busy !== null || notes === null || notes === (detail?.notes ?? "")}
-              onClick={() => run("note", () => decideApplication({ action: "note", applicationId: app.id, notes: noteText }).then(() => setNotes(null)))}
+              onClick={() => run("note", () => decideApplication(app.program, { action: "note", applicationId: app.id, notes: noteText }).then(() => {
+                  setNotes(null);
+                  setNoteVersion((n) => n + 1);
+                }))}
             >
               {busy === "note" ? "Saving…" : "Save notes"}
             </Button>
@@ -316,17 +339,17 @@ function ApplicationRow({ app, status, open, onToggle }: { app: TeamApplication;
               Cancel
             </Button>
             {dialog === "approve" && (
-              <Button disabled={busy !== null} className="min-w-32 gap-2" onClick={() => run("approve", () => decideApplication({ action: "approve", applicationId: app.id }))}>
+              <Button disabled={busy !== null} className="min-w-32 gap-2" onClick={() => run("approve", () => decideApplication(app.program, { action: "approve", applicationId: app.id }))}>
                 {busy === "approve" && <Loader2 className="h-4 w-4 animate-spin" />} Approve
               </Button>
             )}
             {dialog === "reject" && (
-              <Button variant="danger" disabled={busy !== null || reason.trim().length < 3} className="min-w-32 gap-2" onClick={() => run("reject", () => decideApplication({ action: "reject", applicationId: app.id, reason }))}>
+              <Button variant="danger" disabled={busy !== null || reason.trim().length < 3} className="min-w-32 gap-2" onClick={() => run("reject", () => decideApplication(app.program, { action: "reject", applicationId: app.id, reason }))}>
                 {busy === "reject" && <Loader2 className="h-4 w-4 animate-spin" />} Reject
               </Button>
             )}
             {dialog === "block" && (
-              <Button variant="danger" disabled={busy !== null || (!blockEmail && !blockTeam)} className="min-w-32 gap-2" onClick={() => run("block", () => decideApplication({ action: "block", applicationId: app.id, blockEmail, blockTeam, reason }))}>
+              <Button variant="danger" disabled={busy !== null || (!blockEmail && !blockTeam)} className="min-w-32 gap-2" onClick={() => run("block", () => decideApplication(app.program, { action: "block", applicationId: app.id, blockEmail, blockTeam, reason }))}>
                 {busy === "block" && <Loader2 className="h-4 w-4 animate-spin" />} Block
               </Button>
             )}
@@ -346,15 +369,15 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function BlockList() {
-  const blocks = useApplicationBlocks(true);
+function BlockList({ blocks, onChanged }: { blocks: ApplicationBlock[]; onChanged: () => void }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   if (blocks.length === 0) return <GlassPanel className="py-10 text-center text-sm text-[var(--muted-foreground)]">Nothing is blocked.</GlassPanel>;
   return (
     <ul className="flex flex-col gap-2">
       {blocks.map((b) => (
-        <li key={b.id} className="glass-card flex flex-wrap items-center gap-3 px-4 py-3 text-sm">
+        <li key={`${b.program}_${b.id}`} className="glass-card flex flex-wrap items-center gap-3 px-4 py-3 text-sm">
+          <Badge variant="outline">{PROGRAMS[b.program].brand.label}</Badge>
           <Badge variant="outline">{b.type === "email" ? "Email" : "Team number"}</Badge>
           <span className="min-w-0 flex-1 truncate font-medium">{b.type === "team" ? `Team ${b.value}` : b.value}</span>
           {b.reason && <span className="truncate text-xs text-[var(--muted-foreground)]">{b.reason}</span>}
@@ -363,10 +386,11 @@ function BlockList() {
             variant="glass"
             disabled={busy !== null}
             onClick={async () => {
-              setBusy(b.id);
+              setBusy(`${b.program}_${b.id}`);
               setError(null);
               try {
-                await decideApplication({ action: "unblock", blockId: b.id });
+                await decideApplication(b.program, { action: "unblock", blockId: b.id });
+                onChanged();
               } catch (err) {
                 setError(err instanceof Error ? err.message : "Couldn't unblock.");
               } finally {
@@ -374,7 +398,7 @@ function BlockList() {
               }
             }}
           >
-            {busy === b.id ? "Removing…" : "Unblock"}
+            {busy === `${b.program}_${b.id}` ? "Removing…" : "Unblock"}
           </Button>
         </li>
       ))}

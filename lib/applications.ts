@@ -201,7 +201,7 @@ export type ApplicationSignals = {
 export type SignalTone = "good" | "warn" | "bad" | "neutral";
 
 /** Turns the raw signals into the labelled chips the review queue shows. Pure so the wording and thresholds are tested. */
-export function describeSignals(s: ApplicationSignals): { label: string; detail: string; tone: SignalTone }[] {
+export function describeSignals(s: ApplicationSignals, programLabel = ""): { label: string; detail: string; tone: SignalTone }[] {
   const out: { label: string; detail: string; tone: SignalTone }[] = [];
   out.push(s.emailVerified ? { label: "Email verified", detail: s.signInProvider === "google.com" ? "Verified by Google sign-in" : "Verified by clicking the emailed link", tone: "good" } : { label: "Email not verified", detail: "This should never happen: the route requires it", tone: "bad" });
   if (s.firstApi.status === "found") {
@@ -211,7 +211,7 @@ export function describeSignals(s: ApplicationSignals): { label: string; detail:
         : { label: "Team found on FIRST", detail: `"${s.firstApi.officialName ?? "?"}" (${s.firstApi.season} season), name matches`, tone: "good" }
     );
   } else if (s.firstApi.status === "not-found") {
-    out.push({ label: "Team not on FIRST", detail: `No FRC team with this number is listed for the ${s.firstApi.season} season (a rookie team may not be listed yet)`, tone: "warn" });
+    out.push({ label: "Team not on FIRST", detail: `No ${programLabel ? `${programLabel} ` : ""}team with this number is listed for the ${s.firstApi.season} season (a rookie team may not be listed yet)`, tone: "warn" });
   } else {
     out.push({ label: "FIRST check unavailable", detail: "The team lookup (The Blue Alliance / FIRST) couldn't be reached when this was submitted", tone: "neutral" });
   }

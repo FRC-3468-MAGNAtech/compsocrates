@@ -3,6 +3,8 @@ import { FieldValue, type Firestore } from "firebase-admin/firestore";
 import { programPath } from "@/lib/firebase/paths";
 import { describeAdminProblem } from "@/lib/server/admin-diagnosis";
 import { consumeRateLimit } from "@/lib/server/rate-limit";
+import { MembershipError } from "@/lib/memberships/model";
+import { assertCanFileRequest, recordJoinRequest } from "@/lib/server/join-pointers";
 import type { Caller, RouteResult } from "@/lib/server/join-requests";
 
 /**
@@ -87,11 +89,18 @@ async function fileRequest(db: Firestore, caller: Caller, input: { joinCode: unk
   const name = (typeof input.name === "string" ? input.name.trim() : "") || (caller.name ?? "").trim() || (caller.email ?? "").split("@")[0] || "";
   if (!name || name.length > 80) return fail(400, "bad-name", "Enter your name (80 characters at most).");
 
-  const ref = db.collection(programPath("ftc", "teams")).doc(teamId).collection("joinRequests").doc(caller.uid);
-  const existing = await within("the request check", ref.get());
-  if (existing.exists && existing.data()?.status === "pending") return { status: 200, body: { ok: true, alreadyPending: true, teamId } };
+  const ref = db.doc(`${programPath("ftc", "teams")}/${teamId}/joinRequests/${caller.uid}`);
+  // Several pending requests are allowed (one per team, at most five): the same team twice, or a sixth request, is a 409.
+  try {
+    await within("the request check", assertCanFileRequest(db, "ftc", caller.uid, teamId));
+  } catch (err) {
+    if (err instanceof MembershipError) return fail(err.status, err.code.replace(/_/g, "-"), err.message);
+    throw err;
+  }
 
   // A new request replaces a decided one (an old denial), so the person can ask again.
   await within("saving the request", ref.set({ uid: caller.uid, name, status: "pending", createdAt: FieldValue.serverTimestamp() }));
-  return { status: 200, body: { ok: true, alreadyPending: false, teamId } };
+  // The account's private pointer, so the screen can show this request after a reload (best effort; the request exists either way).
+  await within("remembering the request", recordJoinRequest(db, "ftc", caller.uid, teamId, caller.uid));
+  return { status: 200, body: { ok: true, alreadyPending: false, teamId, requestId: caller.uid } };
 }

@@ -45,6 +45,7 @@ import { teamAuditDoc } from "@/lib/server/audit";
 import { countActive, isQuotaError, parseProgram } from "@/lib/server/memberships";
 import { consumeRateLimit } from "@/lib/server/rate-limit";
 import { getMembershipsEnabled } from "@/lib/server/team-settings";
+import { assertCanFileRequest, recordJoinRequest } from "@/lib/server/join-pointers";
 
 /**
  * Memberships build 2, server side: join lookup, join request, approve and deny, leave, remove, role edit. ONE implementation for every program: the program
@@ -230,7 +231,10 @@ export async function requestJoin(db: Firestore, caller: Actor, input: RequestJo
     const asked = strictRequestedRole(input.requestedRole);
     const requestedRole = allowChoice && asked ? asked : PROGRAMS[c.program].membership.defaultJoinRole;
 
-    return db.runTransaction(async (txn): Promise<FlowResult> => {
+    // Build 3: several pending requests are allowed (one per team, at most 5). A second request to the same team, or a sixth, is a 409.
+    await assertCanFileRequest(db, c.program, caller.uid, team.id);
+
+    const filed = await db.runTransaction(async (txn): Promise<FlowResult> => {
       const uRef = userRef(c, caller.uid);
       const reqRef = r.layout === "perTeam" ? requestRef(c, team.id, caller.uid) : null;
       const [userSnap, memSnap, existingFlat, existingPerTeam] = await Promise.all([
@@ -265,6 +269,9 @@ export async function requestJoin(db: Firestore, caller: Actor, input: RequestJo
       txn.set(ref, doc);
       return ok({ alreadyPending: false, requestId: ref.id, status: "pending", teamId: team.id });
     });
+    // A program that keeps requests under each team remembers this one in the account's private pointer (best effort; nothing for a flat program).
+    if (filed.body.alreadyPending === false && typeof filed.body.requestId === "string") await recordJoinRequest(db, c.program, caller.uid, team.id, filed.body.requestId);
+    return filed;
   });
 }
 
@@ -607,7 +614,7 @@ export async function readCreationState(db: Firestore, txn: Transaction, program
 }
 
 /** WRITE half for a team's creator: a verified, admin, owner membership. Refuses (409 `membership_limit`) at five active teams. */
-export function writeCreatorMembership(txn: Transaction, program: ProgramId, created: { state: VerifiedState; active: number }, input: { uid: string; teamId: string; name: string; teamLabel?: string; role: string; nowMs: number }): void {
+export function writeCreatorMembership(txn: Transaction, program: ProgramId, created: { state: VerifiedState; active: number }, input: { uid: string; teamId: string; name: string; teamLabel?: string; role: string; fieldTeamIds?: string[] | null; nowMs: number }): void {
   if (created.active >= MAX_ACTIVE_MEMBERSHIPS) throw new MembershipError(409, "membership_limit", `An account can hold at most ${MAX_ACTIVE_MEMBERSHIPS} active teams.`);
-  writeVerifiedMembership(txn, program, created.state, { uid: input.uid, teamId: input.teamId, name: input.name, teamLabel: input.teamLabel, role: input.role, isAdmin: true, isOwner: true, fieldTeamIds: null, nowMs: input.nowMs });
+  writeVerifiedMembership(txn, program, created.state, { uid: input.uid, teamId: input.teamId, name: input.name, teamLabel: input.teamLabel, role: input.role, isAdmin: true, isOwner: true, fieldTeamIds: input.fieldTeamIds ?? null, nowMs: input.nowMs });
 }

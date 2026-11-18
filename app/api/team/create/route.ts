@@ -1,12 +1,10 @@
-import { createTeamForCaller } from "@/lib/server/team-create";
-import { readJsonBody, withCaller } from "@/lib/server/route-helpers";
+import { NextResponse } from "next/server";
 
 /**
- * Creates a new CS-shaped team (`teams/{CODE}`: teamName, teamNumber as a string, verifiedOwnerId, selectedEvents), makes the
- * caller its team admin and owner, and disables further public creation, all inside one Firestore transaction, so two
- * simultaneous attempts can't both succeed. See lib/server/team-create.ts. Body: `{ teamNumber, teamName?, role?, name? }`.
+ * Retired (memberships build 3): a team is created only from an approved application (`/api/applications`, approved by the platform owner in the Admin Panel),
+ * in BOTH programs. This route answers 410 Gone for every caller and writes nothing.
  */
 export async function POST(request: Request) {
-  const body = await readJsonBody(request);
-  return withCaller(request, (db, caller) => createTeamForCaller(db, caller, { teamNumber: body.teamNumber, teamName: body.teamName, role: body.role, name: body.name }));
+  void request;
+  return NextResponse.json({ ok: false, code: "gone", error: "Teams are created from applications now. Apply for a team instead." }, { status: 410 });
 }
