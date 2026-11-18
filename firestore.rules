@@ -1299,28 +1299,9 @@ service cloud.firestore {
         // Session A: a signed-in person with no profile yet starts a team. The id is a random 8-character join code (never the team
         // number, see data/ftc/enrollment.ts), the owner is the caller, and the same batch must write the caller's own profile on this
         // team (checked with getAfter), so a team never exists without its admin. Everything else stays server-only or admin-only.
-        allow create: if ftc_isSignedIn()
-          && ftc_teamCreationOpen()
-          && teamId.matches('^[A-HJ-NP-Z2-9]{8}$')
-          && !exists(/databases/$(database)/documents/programs/ftc/users/$(request.auth.uid))
-          && request.resource.data.keys().hasOnly(['number', 'name', 'fieldTeams', 'fieldTeamIdList', 'fieldTeamNumbers', 'location', 'ownerUid', 'joinCode',
-            'activeEventCode', 'activeSeasonId', 'activeEvent', 'activeEventCodes', 'activeEvents', 'createdAt'])
-          && request.resource.data.keys().hasAll(['number', 'name', 'fieldTeams', 'fieldTeamIdList', 'fieldTeamNumbers', 'ownerUid', 'joinCode', 'createdAt'])
-          && request.resource.data.ownerUid == request.auth.uid
-          && request.resource.data.joinCode == teamId
-          && request.resource.data.number is int && request.resource.data.number > 0 && request.resource.data.number < 100000
-          && request.resource.data.name is string && request.resource.data.name.size() >= 1 && request.resource.data.name.size() <= 80
-          && (!('location' in request.resource.data) || (request.resource.data.location is string && request.resource.data.location.size() <= 80))
-          && ftc_validFieldTeams()
-          && request.resource.data.fieldTeams.size() == 1
-          && request.resource.data.fieldTeams[0].number == request.resource.data.number
-          && request.resource.data.fieldTeamIdList == [request.resource.data.fieldTeams[0].id]
-          && request.resource.data.fieldTeamNumbers == [request.resource.data.number]
-          && request.resource.data.get('activeEventCode', null) == null
-          && request.resource.data.get('activeEventCodes', []) == []
-          && request.resource.data.get('activeEvents', []) == []
-          && request.resource.data.createdAt == request.time
-          && getAfter(/databases/$(database)/documents/programs/ftc/users/$(request.auth.uid)).data.teamId == teamId;
+        // CLOSED (memberships build 3, deploy by hand AFTER the app that no longer offers it): a client can no longer start a team. A team comes only from an APPLICATION the
+        // platform owner approved, written by the Admin SDK (which bypasses these rules). The old rule (open while the platform owner's switch was on) is in git history.
+        allow create: if false;
 
         // Admins of *this* team can still update its settings directly
         // (active events/season — see lib/team.ts's setActiveEvents) the same
@@ -1428,20 +1409,9 @@ service cloud.firestore {
         // Session A: a person creates their OWN profile, only as the admin and owner of a team created in the same batch (the team
         // must not exist before the batch, and its owner must be the caller). That is the only way to get admin rights from a client:
         // an existing team can never be claimed, and joining someone else's team needs an approval a later session adds.
-        allow create: if ftc_isSignedIn() && request.auth.uid == uid
-          && ftc_teamCreationOpen()
-          && request.resource.data.teamId is string
-          && !exists(/databases/$(database)/documents/programs/ftc/teams/$(request.resource.data.teamId))
-          && getAfter(/databases/$(database)/documents/programs/ftc/teams/$(request.resource.data.teamId)).data.ownerUid == request.auth.uid
-          && request.resource.data.keys().hasOnly(['name', 'email', 'teamId', 'primaryRole', 'secondaryRoles', 'isAdmin', 'isOwner', 'fieldTeamIds', 'themeId', 'createdAt'])
-          && request.resource.data.keys().hasAll(['name', 'teamId', 'primaryRole', 'secondaryRoles', 'isAdmin', 'isOwner', 'fieldTeamIds', 'createdAt'])
-          && request.resource.data.name is string && request.resource.data.name.size() >= 1 && request.resource.data.name.size() <= 80
-          && request.resource.data.get('email', '') is string
-          && request.resource.data.isAdmin == true && request.resource.data.isOwner == true
-          && request.resource.data.primaryRole in ftc_validRoleIds()
-          && request.resource.data.secondaryRoles == []
-          && request.resource.data.fieldTeamIds == getAfter(/databases/$(database)/documents/programs/ftc/teams/$(request.resource.data.teamId)).data.fieldTeamIdList
-          && request.resource.data.createdAt == request.time;
+        // CLOSED (memberships build 3, same deploy as the team create above): the owner's own profile in the batch that created a team. The approve batch just below (an admin
+        // creating the APPLICANT's profile for a request they approve) is unchanged and stays open while the memberships switch is OFF.
+        allow create: if false;
 
         // Batch 1: approving a join request. An admin or owner of the request's own team (never the applicant) creates the applicant's profile in
         // the SAME batch that marks their pending request approved (get = before, getAfter = after). The profile is a plain member: the lowest role
