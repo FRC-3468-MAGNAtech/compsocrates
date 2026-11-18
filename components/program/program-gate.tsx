@@ -9,8 +9,7 @@ import { useAuth } from "@/lib/auth";
 import { useRouter } from "@/lib/program/navigation";
 import { useProgram, useProgramConfig } from "@/lib/program/context";
 import { ProgramSetupFrame } from "@/components/program/setup-frame";
-import { TeamSetup } from "@/components/program/team-setup";
-import { useProgramData } from "@/lib/program/data";
+import { TeamSetupScreen } from "@/components/team-setup/team-setup-screen";
 
 type Membership = "loading" | "none" | "left" | "member" | { error: string };
 
@@ -32,7 +31,6 @@ export function membershipOfProfile(exists: boolean, data: { teamId?: unknown } 
 export function ProgramGate() {
   const program = useProgram();
   const config = useProgramConfig();
-  const data = useProgramData();
   const { user, loading } = useAuth();
   const router = useRouter();
   const [membership, setMembership] = useState<Membership>("loading");
@@ -53,17 +51,12 @@ export function ProgramGate() {
 
   return (
     <ProgramSetupFrame>
-      {(membership === "none" || membership === "left") && data ? (
-        <TeamSetup hasProfile={membership === "left"} />
+      {membership === "none" || membership === "left" ? (
+        <TeamSetupScreen onComplete={() => router.replace("/dashboard")} />
       ) : (
       <div className="glass-card flex flex-col gap-2 p-6">
         <h1 className="text-xl font-semibold">{config.brand.fullName}</h1>
         {membership === "loading" && <p className="text-sm text-[var(--muted-foreground)]">Checking your {config.brand.label} team...</p>}
-        {(membership === "none" || membership === "left") && (
-          <p className="text-sm text-[var(--muted-foreground)]">
-            This account has no {config.brand.label} team yet. Accounts moved from the previous {config.brand.label} site appear here once the data import has run.
-          </p>
-        )}
         {membership === "member" && (
           <p className="text-sm text-[var(--muted-foreground)]">
             Your {config.brand.label} team is set up. The {config.brand.label} pages are being connected to the shared app and will appear here.

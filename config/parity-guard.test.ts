@@ -18,7 +18,6 @@ const SCAN = ["app", "components"];
 const PORT_READERS: Record<string, string> = {
   "app/(app)/[program]/analytics/match-scout/page.tsx": "own-entry store: who may import CSV / recalculate accuracy (a permission, not a layout)",
   "app/(app)/[program]/changelog/page.tsx": "mark-seen: stamps lastSeenChangelogAt on the program's own user document through its port (the entries themselves come from the one platform feed)",
-  "app/(app)/[program]/layout.tsx": "ported programs get their enrollment gate; the frame around it is the shared ProgramSetupFrame",
   "app/(app)/[program]/practice-scouting/page.tsx": "own session store: placeholder video and the unreadable-sessions notice (accepted FTC-only)",
   "app/(app)/[program]/scout/page.tsx": "own entry store for accuracy recompute",
   "components/admin/backups-panel.tsx": "which export runs (the program's own collections, team-scoped) and the form used for CSV columns when a team has no entries; the panel is shared",
@@ -28,8 +27,6 @@ const PORT_READERS: Record<string, string> = {
   "components/practice/match-select.tsx": "a match with no video uses the timer placeholder (data, not layout)",
   "components/practice/session-screen.tsx": "built-in match form with alliance roles",
   "components/program/program-auth.tsx": "supplies the program's own profile",
-  "components/program/program-gate.tsx": "enrollment for a program with a port",
-  "components/program/team-setup.tsx": "enrollment writes through the port; the card is shared",
   "components/team/account-teams-section.tsx": "its writes (add, rename, remove, assign) and the team-name lookup go through the program's port; shown only where the program has several teams per account (ProgramConfig.multiTeam)",
   "components/team/join-requests-panel.tsx": "which source the same panel reads",
 };

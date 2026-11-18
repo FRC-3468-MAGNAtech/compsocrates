@@ -9,7 +9,6 @@ import { GlassPanel } from "@/components/ui/glass-panel";
 import { Input, Label } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { GoogleButton } from "@/components/auth/google-button";
-import { TeamEnrollmentFields, TeamEnrollmentScreen, useTeamEnrollment } from "@/components/auth/team-enrollment";
 import { useAuth } from "@/lib/auth";
 import { SignedOutOnly } from "@/components/marketing/auth-actions";
 import { cardEntranceVariants } from "@/lib/motion";
@@ -32,7 +31,6 @@ export default function SignupPage() {
   const router = useRouter();
   const {
     user,
-    profile,
     loading,
     signup,
     loginWithGoogle,
@@ -41,7 +39,6 @@ export default function SignupPage() {
     completeGoogleLink,
     dismissGoogleLinkPrompt,
   } = useAuth();
-  const enrollment = useTeamEnrollment();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -50,62 +47,20 @@ export default function SignupPage() {
   const [error, setError] = useState<string | null>(null);
   const [linkPassword, setLinkPassword] = useState("");
   const [linkSubmitting, setLinkSubmitting] = useState(false);
-  // Set once enroll() has actually succeeded server-side, so the effect
-  // below can wait for useAuth's own `profile` listener to catch up before
-  // navigating — see the matching comment in TeamEnrollmentScreen. Without
-  // this, navigating right after enroll() resolves raced the listener: if
-  // `profile` was still the pre-enrollment `null` snapshot on the next
-  // render, the `user && !profile` branch below would render the
-  // enrollment screen all over again instead of reaching /dashboard.
-  const [enrolled, setEnrolled] = useState(false);
-  // P20: set while an applicant's new account is being sent on to /apply, so the join screen below doesn't flash in between.
-  const [applying, setApplying] = useState(false);
-
-  // CS user docs exist from signup with `teamId: ""`: only a profile with a team goes to the dashboard.
+  // Sign-up no longer asks for a team: the account is made, then the person goes to the dashboard. The shell takes it from there: the Join / Apply screen (memberships
+  // OFF, as before) or the limited personal dashboard (memberships ON). Someone who is already signed in (a Google sign-in, an old tab) is sent the same way.
   useEffect(() => {
-    if (!loading && user && profile?.teamId) router.replace("/dashboard");
-  }, [loading, user, profile, router]);
-
-  useEffect(() => {
-    if (!enrolled) return;
-    if (profile?.teamId) {
-      router.push("/dashboard");
-      return;
-    }
-    // Fail-safe: proceed anyway if the listener hasn't caught up after a
-    // few seconds, same reasoning as TeamEnrollmentScreen's own effect.
-    const timeout = setTimeout(() => router.push("/dashboard"), 5000);
-    return () => clearTimeout(timeout);
-  }, [enrolled, profile, router]);
-
-  // Google created the account but there's no team yet (no profile, or a CS profile with an empty teamId, which also covers a
-  // pending join request) — hand off to the same join/create/pending screen Finish Setup uses, instead of duplicating it.
-  if (!loading && user && !profile?.teamId && !enrolled && !applying && !submitting) {
-    return <TeamEnrollmentScreen greeting={user.displayName ? `Hi, ${user.displayName}` : undefined} onComplete={() => router.push("/dashboard")} />;
-  }
+    if (!loading && user) router.replace("/dashboard");
+  }, [loading, user, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSubmitting(true);
     try {
-      if (enrollment.mode === "apply" && enrollment.teamCreationEnabled === false) {
-        // P20: apply instead of joining: create the account (which sends the verification email), then on to the application.
-        setApplying(true);
-        await signup(name, email, password);
-        router.push("/apply");
-        return;
-      }
       await signup(name, email, password);
-      const result = await enrollment.enroll(name);
-      if (result.requested) {
-        // Joining is an approval queue (CS): the request is filed, the user is not on the team yet. Finish Setup shows the pending state.
-        router.push("/apply-to-team");
-        return;
-      }
-      setEnrolled(true); // a created team: stays "submitting" (see below) until the effect above navigates
+      router.push("/dashboard");
     } catch (err) {
-      setApplying(false);
       setError(authErrorMessage(err));
       setSubmitting(false);
     }
@@ -231,8 +186,6 @@ export default function SignupPage() {
                 required
               />
             </div>
-
-            <TeamEnrollmentFields enrollment={enrollment} />
 
             {error && <p className="text-sm text-red-400">{error}</p>}
 
