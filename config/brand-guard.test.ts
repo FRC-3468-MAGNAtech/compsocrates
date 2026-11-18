@@ -50,6 +50,9 @@ const FTC_ALLOWED: Record<string, string> = {
   ".env.example": "lists the per-program environment variables",
   // Shared source that maps a program id or an FTC provider (the program seam itself)
   "lib/server/env.ts": "the one reader of environment variables, including the FTC ones",
+  "lib/server/application-teams.ts": "memberships build 3: ONE table of each program's team document builders (the program-scoped ones live in data/cs and data/ftc), keyed by program id",
+  "lib/server/practice-sharing.ts": "memberships build 3: ONE table of each program's session and entry builders for share on join, keyed by program id",
+  "lib/server/application-decisions.ts": "memberships build 3: the one approval; it passes the owner's robot-team list (a field of the program's membership shape) to the verified membership",
   "lib/events/actions.ts": "dispatches event data calls to the FTC provider",
   "lib/events/matches-internal.ts": "the session-less match fetch: dispatches to the FTC provider like actions.ts (live-score poller)",
   "lib/platform-changelog/v2-entry.ts": "the approved v2.0.0 release notes: user-facing text that names both programs and the games on purpose (one module shared by the editor template and the seed script)",

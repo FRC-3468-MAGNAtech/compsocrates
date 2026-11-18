@@ -1,6 +1,7 @@
 import "server-only";
 import type { Firestore, Transaction } from "firebase-admin/firestore";
 import { generateTeamCode } from "@/data/cs/join-requests";
+import { DEFAULT_RUN_WRITES, MAX_RUN_WRITES } from "@/lib/deletion/constants";
 
 export const APP_SETTINGS_PATH = "appSettings/global";
 
@@ -65,4 +66,36 @@ export async function getMembershipsEnabled(db: Firestore, nowMs: number = Date.
 /** Test hook: forget the cached kill-switch answer. */
 export function resetMembershipsEnabledCache(): void {
   membershipsEnabledCache = null;
+}
+
+/**
+ * appSettings/global.accountDeletionEnabled and accountDeletionRunBudget (additive, memberships build 4). The kill switch for account deletion: missing = OFF; only an
+ * explicit `true` turns it on, so while it is OFF the routes answer 404 `deletion_disabled` and the dialog and the Admin Panel tab are hidden. `accountDeletionRunBudget`
+ * is the most documents one run may write (a positive integer; missing or invalid = 3,000; never more than 10,000), so the owner can lower it on a busy day.
+ * Read ONCE per ~30 s per server instance (the production project is on the free read quota); a failed read throws and is not cached.
+ */
+export type AccountDeletionSettings = { enabled: boolean; runWrites: number };
+const ACCOUNT_DELETION_TTL_MS = 30_000;
+let accountDeletionCache: { value: AccountDeletionSettings; at: number } | null = null;
+
+export function parseRunBudget(raw: unknown): number {
+  if (typeof raw !== "number" || !Number.isFinite(raw) || !Number.isInteger(raw) || raw <= 0) return DEFAULT_RUN_WRITES;
+  return Math.min(raw, MAX_RUN_WRITES);
+}
+
+export async function getAccountDeletionSettings(db: Firestore, nowMs: number = Date.now()): Promise<AccountDeletionSettings> {
+  if (accountDeletionCache && nowMs - accountDeletionCache.at < ACCOUNT_DELETION_TTL_MS) return accountDeletionCache.value;
+  const data = (await db.doc(APP_SETTINGS_PATH).get()).data();
+  const value = { enabled: data?.accountDeletionEnabled === true, runWrites: parseRunBudget(data?.accountDeletionRunBudget) };
+  accountDeletionCache = { value, at: nowMs };
+  return value;
+}
+
+export async function getAccountDeletionEnabled(db: Firestore, nowMs: number = Date.now()): Promise<boolean> {
+  return (await getAccountDeletionSettings(db, nowMs)).enabled;
+}
+
+/** Test hook: forget the cached answer. */
+export function resetAccountDeletionSettingsCache(): void {
+  accountDeletionCache = null;
 }

@@ -70,6 +70,8 @@ const TAB_LABELS: Record<AdminTab, string> = {
   "platform-credits": "Credits",
   // Memberships build 2: the platform owner verifies a team's existing admins (shown only while the memberships switch is ON)
   "verify-admins": "Verify admins",
+  // Memberships build 4: opaque ids and statuses of account deletions in progress (platform owner; shown only while the deletion switch is ON)
+  "account-deletions": "Account deletions",
   // Which environment variables the server cannot find (names only); admin-only
   "setup-check": "Setup Check",
 };

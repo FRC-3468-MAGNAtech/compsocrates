@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAdminFirestore } from "@/lib/firebase/admin";
 import { avatarStoreHost } from "@/lib/server/avatar-blobs";
-import { getAdminsSeeAllProfiles, getAvatarUploadsEnabled, getMembershipsEnabled, getTeamCreationEnabled } from "@/lib/server/team-settings";
+import { getAccountDeletionEnabled, getAdminsSeeAllProfiles, getAvatarUploadsEnabled, getMembershipsEnabled, getTeamCreationEnabled } from "@/lib/server/team-settings";
 
 /**
  * The one piece of server state the logged-out Signup page needs (whether
@@ -17,7 +17,7 @@ import { getAdminsSeeAllProfiles, getAvatarUploadsEnabled, getMembershipsEnabled
  * are served from, or null when uploads are not set up on this server). The browser trusts an uploaded picture only on that host.
  *
  * Memberships build 2 adds `membershipsEnabled` (a boolean and nothing else, missing or unreadable = false), through the same ~30 s cached helper the server
- * routes use, so the browser learns the kill switch without a Firestore read of its own.
+ * routes use, so the browser learns the kill switch without a Firestore read of its own. Memberships build 4 adds `accountDeletionEnabled` the same way (missing = false).
  */
 export async function GET() {
   const avatarBlobHost = avatarStoreHost();
@@ -25,11 +25,12 @@ export async function GET() {
   if (!db) {
     // Firebase Admin isn't configured — fail closed (no Create option)
     // rather than guessing, same convention as lib/server/require-user.ts.
-    return NextResponse.json({ teamCreationEnabled: false, adminsSeeAllProfiles: true, avatarUploadsEnabled: false, membershipsEnabled: false, avatarBlobHost });
+    return NextResponse.json({ teamCreationEnabled: false, adminsSeeAllProfiles: true, avatarUploadsEnabled: false, membershipsEnabled: false, accountDeletionEnabled: false, avatarBlobHost });
   }
   const teamCreationEnabled = await getTeamCreationEnabled(db);
   const adminsSeeAllProfiles = await getAdminsSeeAllProfiles(db);
   const avatarUploadsEnabled = await getAvatarUploadsEnabled(db);
   const membershipsEnabled = await getMembershipsEnabled(db).catch(() => false);
-  return NextResponse.json({ teamCreationEnabled, adminsSeeAllProfiles, avatarUploadsEnabled, membershipsEnabled, avatarBlobHost });
+  const accountDeletionEnabled = await getAccountDeletionEnabled(db).catch(() => false);
+  return NextResponse.json({ teamCreationEnabled, adminsSeeAllProfiles, avatarUploadsEnabled, membershipsEnabled, accountDeletionEnabled, avatarBlobHost });
 }

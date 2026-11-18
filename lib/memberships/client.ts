@@ -14,13 +14,22 @@ let knownEnabled = false;
 /** True once the switch's answer has arrived (a failure counts as an answer: OFF). */
 let settled = false;
 
+let configPromise: Promise<Record<string, unknown> | null> | null = null;
+/** The public config, fetched ONCE per page load and shared by every switch that lives in it (memberships, account deletion). A failure is null. */
+export function publicConfigOnce(): Promise<Record<string, unknown> | null> {
+  if (!configPromise) {
+    configPromise = fetch("/api/public/config")
+      .then((res) => (res.ok ? (res.json() as Promise<Record<string, unknown>>) : null))
+      .catch(() => null);
+  }
+  return configPromise;
+}
+
 /** Is the kill switch ON? Asked once per page load; a failure or a missing answer is OFF. */
 export function membershipsEnabled(): Promise<boolean> {
   if (!enabledPromise) {
-    enabledPromise = fetch("/api/public/config")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((json: { membershipsEnabled?: unknown } | null) => json?.membershipsEnabled === true)
-      .catch(() => false)
+    enabledPromise = publicConfigOnce()
+      .then((json) => json?.membershipsEnabled === true)
       .then((value) => {
         knownEnabled = value;
         settled = true;
@@ -32,6 +41,7 @@ export function membershipsEnabled(): Promise<boolean> {
 
 /** Test hook: forget the answer, or set it. */
 export function resetMembershipsEnabled(value?: boolean): void {
+  configPromise = null;
   enabledPromise = value === undefined ? null : Promise.resolve(value);
   knownEnabled = value === true;
   settled = value !== undefined;

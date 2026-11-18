@@ -1,5 +1,6 @@
 import { BRAND } from "@/config/brand";
 import { CURRENT_GAME_ID } from "@/config/games";
+import { FRC_DELETION_ENTRIES } from "@/data/cs/deletion-entries";
 import { DEFAULT_ROLE_ID } from "@/lib/roles";
 import { ADMIN_TAB_IDS, type ProgramConfig } from "./types";
 
@@ -43,6 +44,7 @@ export const FRC_PROGRAM: ProgramConfig = {
   achievementMetrics: "all",
   multiTeam: false,
   // Memberships: CS's own user-document field names (`role`, `roles`, `isTeamAdmin`).
+  deletion: { entries: FRC_DELETION_ENTRIES },
   membership: {
     defaultJoinRole: DEFAULT_ROLE_ID,
     userFields: { role: "role", roles: "roles", secondaryRoles: "secondaryRoles", isAdmin: "isTeamAdmin", isOwner: "isOwner" },

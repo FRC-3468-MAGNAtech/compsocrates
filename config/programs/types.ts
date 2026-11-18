@@ -3,6 +3,7 @@
  * so a component asks `useProgram()` instead of naming a program. Pure data, safe to import from client code.
  */
 
+import type { RegistryEntry } from "@/lib/deletion/registry";
 import type { RadarProfile } from "@/config/games/radar";
 import type { EventKeyShape } from "@/lib/events/event-key";
 
@@ -117,6 +118,7 @@ export const ADMIN_TAB_IDS = [
   "platform-changelog",
   "platform-credits",
   "verify-admins",
+  "account-deletions",
   "setup-check",
 ] as const;
 export type AdminTabId = (typeof ADMIN_TAB_IDS)[number];
@@ -187,6 +189,8 @@ export type ProgramConfig = {
   radar: Readonly<Record<string, RadarProfile>>;
   /** How an account's membership in a team maps onto this program's user document (lib/server/memberships.ts). Data only. */
   membership: ProgramMembership;
+  /** Account deletion: this program's own person-data entries (`lib/deletion/registry.ts`). Data only. */
+  deletion: { readonly entries: readonly RegistryEntry[] };
 };
 
 /**
