@@ -21,6 +21,7 @@ import { SiteFooter } from "@/components/layout/site-footer";
 import { LiveMatchPill } from "@/components/layout/live-match-pill";
 import { ScoresReadyWatcher } from "@/components/layout/scores-ready-watcher";
 import { ReadMeterBridge } from "@/components/layout/read-meter-bridge";
+import { showsLivePill } from "@/lib/live/pill-pages";
 import { TeamAssignmentsWatcher } from "@/components/layout/team-assignments-watcher";
 import { useAuth } from "@/lib/auth";
 import { useConnectionNotice } from "@/lib/use-connection-state";
@@ -125,7 +126,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
             <VerifyEmailBanner className="mb-4" />
             <OwnershipTransferBanner className="mb-4" />
             <ReadFailureBanner className="mb-4" />
-            {features.live && !personal && <LiveMatchPill />}
+            {features.live && !personal && showsLivePill(pathname) && <LiveMatchPill />}
             <PageTransition>
               {/* The setup route shows the one Join / Apply screen. A path whose data layer is not connected for this program shows a notice, never the shared page (it
                   would read another program's data). In the personal shell only the personal pages are reachable (the route above), so the team page guard is skipped. */}
