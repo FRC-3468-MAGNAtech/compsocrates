@@ -53,12 +53,12 @@ export async function setAdminsSeeAllProfiles(enabled: boolean): Promise<void> {
 }
 
 /** Called right after every sign-in — see app/api/auth/sync-roles/route.ts and lib/auth.tsx. */
-export async function syncRoles(): Promise<{ changed: boolean; ownerPendingVerification: boolean }> {
-  if (!auth.currentUser) return { changed: false, ownerPendingVerification: false };
+export async function syncRoles(): Promise<{ changed: boolean; ownerPendingVerification: boolean; ok: boolean }> {
+  if (!auth.currentUser) return { changed: false, ownerPendingVerification: false, ok: false };
   try {
     const result = await authedPost("/api/auth/sync-roles", {});
-    return { changed: Boolean(result.changed), ownerPendingVerification: Boolean(result.ownerPendingVerification) };
+    return { changed: Boolean(result.changed), ownerPendingVerification: Boolean(result.ownerPendingVerification), ok: true };
   } catch {
-    return { changed: false, ownerPendingVerification: false };
+    return { changed: false, ownerPendingVerification: false, ok: false };
   }
 }

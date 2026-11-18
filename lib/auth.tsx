@@ -26,6 +26,7 @@ import type { CsUserDoc } from "@/data/cs/types";
 import { csUserToProfile, profilePatchToCsUser } from "@/data/cs/users";
 import { auth, db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { syncRoles } from "@/lib/team-enrollment";
+import { clearSignInSyncMarker, syncRolesThrottled } from "@/lib/sign-in-sync";
 import type { RoleId } from "@/lib/roles";
 import type { AvatarChoice } from "@/lib/profile/config";
 
@@ -149,13 +150,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const rawUserDoc = useRef<CsUserDoc | null>(null);
   const [ownerPendingVerification, setOwnerPendingVerification] = useState(false);
 
-  const onSignedIn = async (signedInUser: FirebaseUser) => {
+  // `restore`: a session found again on page load (not a person signing in just now): the sync runs at most once per 10 minutes per browser session (lib/sign-in-sync.ts).
+  const onSignedIn = async (signedInUser: FirebaseUser, opts: { restore?: boolean } = {}) => {
     setLinkedProviders(signedInUser.providerData.map((p) => p.providerId));
     await syncServerSession(signedInUser);
     // Grants platform-owner access (from RELEASE_OWNER_UIDS / RELEASE_OWNER_EMAILS) idempotently on
     // every sign-in. If it actually changed anything, the custom claims on
     // this session are stale until the token is force-refreshed.
-    const { changed, ownerPendingVerification: pending } = await syncRoles();
+    const { changed, ownerPendingVerification: pending } = await syncRolesThrottled(signedInUser.uid, syncRoles, { force: !opts.restore });
     setOwnerPendingVerification(pending);
     if (changed) {
       await signedInUser.getIdToken(true);
@@ -189,7 +191,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         void syncServerSession(null);
         return;
       }
-      void onSignedIn(u);
+      void onSignedIn(u, { restore: true });
     });
     return unsubscribe;
   }, []);
@@ -312,6 +314,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     clearLegacyCache(); // the device copy of the legacy rows belongs to this sign-in
+    clearSignInSyncMarker();
     await signOut(auth);
   };
 
