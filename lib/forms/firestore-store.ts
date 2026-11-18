@@ -1,6 +1,6 @@
 "use client";
 
-import { collection, doc, getDoc, getDocs, onSnapshot, query, runTransaction, updateDoc, where, type Unsubscribe } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, onSnapshot, query, runTransaction, updateDoc, where, type Unsubscribe } from "@/lib/firebase/metered";
 import { db } from "@/lib/firebase/client";
 import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
 import { programPath } from "@/lib/firebase/paths";

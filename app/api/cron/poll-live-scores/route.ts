@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { DEFAULT_PROGRAM, PROGRAM_IDS, type ProgramId } from "@/config/programs/types";
 import { firebaseAdminProblem, getAdminFirestore, getAdminMessaging } from "@/lib/firebase/admin";
+import { meterDb } from "@/lib/server/read-meter";
 import { cronSecret } from "@/lib/server/env";
 import { liveDataWarnings } from "@/lib/server/live-env";
 import { resolvePendingLiveMatches } from "@/lib/live/resolve-pending";
@@ -36,7 +37,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: false, error: "Unauthorized." }, { status: 401 });
   }
 
-  const db = getAdminFirestore();
+  const db = meterDb(getAdminFirestore(), "api/cron/poll-live-scores");
   if (!db) return NextResponse.json({ ok: false, error: firebaseAdminProblem() ?? "Server isn't configured." }, { status: 503 });
   const messaging = getAdminMessaging();
 

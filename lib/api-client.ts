@@ -20,7 +20,7 @@ export class ApiError extends Error {
  * way lib/team-enrollment.ts does, but keeping the status, `code` and `fields` so callers can react to a specific
  * refusal ("email-unverified", "reauth-required", ...). Throws ApiError on any non-2xx or `{ ok: false }` answer.
  */
-export async function authedApi<T = Record<string, unknown>>(path: string, init: { method?: "GET" | "POST" | "PUT" | "DELETE"; body?: unknown; timeoutMs?: number } = {}): Promise<T> {
+export async function authedApi<T = Record<string, unknown>>(path: string, init: { method?: "GET" | "POST" | "PUT" | "DELETE"; body?: unknown; timeoutMs?: number; keepalive?: boolean } = {}): Promise<T> {
   if (!auth.currentUser) throw new ApiError("Not signed in.", 401, "not-signed-in", null);
   const idToken = await auth.currentUser.getIdToken();
   const method = init.method ?? (init.body === undefined ? "GET" : "POST");
@@ -34,6 +34,7 @@ export async function authedApi<T = Record<string, unknown>>(path: string, init:
       headers: { Authorization: `Bearer ${idToken}`, ...(init.body === undefined ? {} : { "Content-Type": "application/json" }) },
       body: init.body === undefined ? undefined : JSON.stringify(init.body),
       signal: controller?.signal,
+      ...(init.keepalive ? { keepalive: true } : {}),
     });
   } catch (err) {
     if (controller?.signal.aborted) throw new ApiError("The server took too long to answer. Check your connection and try again.", 504, "timeout", null);

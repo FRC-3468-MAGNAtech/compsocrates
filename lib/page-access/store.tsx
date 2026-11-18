@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { collection, doc, onSnapshot, query, runTransaction, serverTimestamp, setDoc, where } from "firebase/firestore";
+import { collection, doc, onSnapshot, query, runTransaction, serverTimestamp, setDoc, where } from "@/lib/firebase/metered";
 import { useAuth } from "@/lib/auth";
 import { buildAuditEntry, newAuditLogRef } from "@/lib/audit-log";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";

@@ -1,6 +1,6 @@
 "use client";
 
-import { onSnapshot } from "firebase/firestore";
+import { onSnapshot } from "@/lib/firebase/metered";
 import { useEffect, useState } from "react";
 import { normalizeEventKey } from "@/config/event";
 import { CS_MATCH_ASSIGNMENTS, csRowsToSlots, isTeamMirrorRow, type CsAssignmentRow } from "@/data/cs/assignments";

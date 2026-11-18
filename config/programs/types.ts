@@ -119,6 +119,7 @@ export const ADMIN_TAB_IDS = [
   "platform-credits",
   "verify-admins",
   "account-deletions",
+  "read-usage",
   "setup-check",
 ] as const;
 export type AdminTabId = (typeof ADMIN_TAB_IDS)[number];
@@ -143,6 +144,8 @@ export type ProgramConfig = {
    * other program: every program collection lives under it (see lib/firebase/paths.ts).
    */
   firestorePrefix: string;
+  /** The program's collection names (relative to `firestorePrefix`) the read estimate counts before a heavy admin tool runs (lib/read-meter/estimate.ts). */
+  readEstimate: { entries: string; sessions: string; library: string; auditLog: string; members: string };
   /** App paths (without the program segment) that exist only for another program and are shown greyed out here. */
   unavailablePaths: readonly string[];
   /**

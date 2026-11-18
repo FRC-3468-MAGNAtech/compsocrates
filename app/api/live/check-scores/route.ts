@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { firebaseAdminProblem, getAdminFirestore, getAdminMessaging } from "@/lib/firebase/admin";
+import { meterDb } from "@/lib/server/read-meter";
 import { checkSession } from "@/lib/server/require-user";
 import { liveDataWarnings } from "@/lib/server/live-env";
 import { liveProgramStore, programFromBody } from "@/lib/server/live-program";
@@ -43,7 +44,7 @@ export async function POST(request: Request) {
   }
   lastCallByUid.set(callKey, Date.now());
 
-  const db = getAdminFirestore();
+  const db = meterDb(getAdminFirestore(), "api/live/check-scores");
   if (!db) return NextResponse.json({ ok: false, error: firebaseAdminProblem() ?? "Server isn't configured." }, { status: 503 });
   const messaging = getAdminMessaging();
 

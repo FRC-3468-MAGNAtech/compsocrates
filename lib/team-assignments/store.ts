@@ -1,6 +1,6 @@
 "use client";
 
-import { collection, onSnapshot, query, where, type Query } from "firebase/firestore";
+import { collection, onSnapshot, query, where, type Query } from "@/lib/firebase/metered";
 import { useEffect, useMemo, useState } from "react";
 import { normalizeEventKey } from "@/config/event";
 import { CS_MATCH_ASSIGNMENTS, CS_PIT_ASSIGNMENTS, CS_TEAM_ASSIGNMENTS, csTeamRowsToDocs, eventKeyVariants, planAssignmentWrite, teamsToCsRows, type CsAssignmentRow } from "@/data/cs/assignments";

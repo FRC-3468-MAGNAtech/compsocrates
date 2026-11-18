@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import { doc, onSnapshot, runTransaction } from "firebase/firestore";
+import { doc, onSnapshot, runTransaction } from "@/lib/firebase/metered";
 import type { CsTeamDoc } from "@/data/cs/types";
 import { csPickListMeta, csPickListToPicked, pickedToCsPickList } from "@/data/cs/pick-list";
 import { buildAuditEntry, newAuditLogRef } from "@/lib/audit-log";

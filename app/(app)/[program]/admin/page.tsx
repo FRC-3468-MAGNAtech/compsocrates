@@ -35,6 +35,8 @@ import { AdminsSeeProfilesSetting } from "@/components/admin/admins-see-profiles
 import { AvatarUploadsSetting } from "@/components/admin/avatar-uploads-setting";
 import { PlatformChangelogPanel } from "@/components/admin/platform-changelog-panel";
 import { PlatformCreditsPanel } from "@/components/admin/platform-credits-panel";
+import { ReadUsagePanel } from "@/components/admin/read-usage-panel";
+import { HeavyReadGate } from "@/components/admin/heavy-read-gate";
 import { VerifyAdminsPanel } from "@/components/admin/verify-admins-panel";
 import { AccountDeletionsPanel } from "@/components/admin/account-deletions-panel";
 import { useAccountDeletionEnabled } from "@/lib/deletion/client";
@@ -74,6 +76,8 @@ const TAB_LABELS: Record<AdminTab, string> = {
   "verify-admins": "Verify admins",
   // Memberships build 4: opaque ids and statuses of account deletions in progress (platform owner; shown only while the deletion switch is ON)
   "account-deletions": "Account deletions",
+  // Read meter (platform owner only; the same tab in every program): documents read per page and collection, by day, against the free allowance
+  "read-usage": "Read usage",
   // Which environment variables the server cannot find (names only); admin-only
   "setup-check": "Setup Check",
 };
@@ -185,12 +189,28 @@ export default function AdminPanelPage() {
       {tab === "achievements" && <AchievementsPanel />}
       {tab === "submissions" && <SubmissionControlsPanel />}
       {tab === "entries" && <EntriesPanel />}
-      {tab === "sessions" && <SessionsPanel />}
+      {tab === "sessions" && (
+        <HeavyReadGate tool="sessions">
+          <SessionsPanel />
+        </HeavyReadGate>
+      )}
       {tab === "match-scout-ids" && <MatchScoutIdsPanel />}
       {tab === "practice-session-ids" && <PracticeSessionIdsPanel />}
-      {tab === "rescore" && <RescorePanel />}
-      {tab === "audit-log" && <AuditLogPanel />}
-      {tab === "backups" && <BackupsPanel />}
+      {tab === "rescore" && (
+        <HeavyReadGate tool="rescore">
+          <RescorePanel />
+        </HeavyReadGate>
+      )}
+      {tab === "audit-log" && (
+        <HeavyReadGate tool="audit-log">
+          <AuditLogPanel />
+        </HeavyReadGate>
+      )}
+      {tab === "backups" && (
+        <HeavyReadGate tool="backups">
+          <BackupsPanel />
+        </HeavyReadGate>
+      )}
       {tab === "applications" && isPlatformOwner && <ApplicationsPanel />}
       {tab === "templates" && isPlatformOwner && <ReviewPanelHost />}
       {tab === "recovery" && isPlatformOwner && <RecoveryPanel />}
@@ -198,6 +218,7 @@ export default function AdminPanelPage() {
       {tab === "platform-credits" && isPlatformOwner && <PlatformCreditsPanel />}
       {tab === "verify-admins" && isPlatformOwner && <VerifyAdminsPanel />}
       {tab === "account-deletions" && isPlatformOwner && <AccountDeletionsPanel />}
+      {tab === "read-usage" && isPlatformOwner && <ReadUsagePanel />}
       {tab === "setup-check" && <SetupCheckPanel />}
     </div>
   );

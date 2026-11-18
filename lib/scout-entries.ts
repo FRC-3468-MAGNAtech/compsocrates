@@ -15,7 +15,7 @@ import {
   type QueryConstraint,
   type QueryDocumentSnapshot,
   type Unsubscribe,
-} from "firebase/firestore";
+} from "@/lib/firebase/metered";
 import { useEffect, useState } from "react";
 import { expandEventKeyAliases, normalizeEventKey } from "@/config/event";
 import { csDocsToScoutEntries, csDocToScoutEntry, entryFlagStatePatch, flagStateDocId, indexFlagStates, scoutEntryToCsDoc, scoutEntryToCsPatch } from "@/data/cs/scouting";

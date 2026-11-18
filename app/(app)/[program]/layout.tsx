@@ -20,6 +20,7 @@ import { LibraryBackfill } from "@/components/admin/library-backfill";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { LiveMatchPill } from "@/components/layout/live-match-pill";
 import { ScoresReadyWatcher } from "@/components/layout/scores-ready-watcher";
+import { ReadMeterBridge } from "@/components/layout/read-meter-bridge";
 import { TeamAssignmentsWatcher } from "@/components/layout/team-assignments-watcher";
 import { useAuth } from "@/lib/auth";
 import { useConnectionNotice } from "@/lib/use-connection-state";
@@ -145,6 +146,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
           </main>
           <SiteFooter className="mt-10" />
         </div>
+        <ReadMeterBridge />
         {features.practice && features.live && !personal && <ScoresReadyWatcher />}
         {features.assignments && !personal && <TeamAssignmentsWatcher />}
         {profile?.isAdmin && features.library && !personal && <LibraryBackfill />}

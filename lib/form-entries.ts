@@ -1,6 +1,6 @@
 "use client";
 
-import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where, writeBatch, type QueryConstraint } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where, writeBatch, type QueryConstraint } from "@/lib/firebase/metered";
 import { buildAuditEntry, newAuditLogRef } from "@/lib/audit-log";
 import { useEffect, useMemo, useState } from "react";
 import { CURRENT_GAME_ID, GAME_ID_LIST, seasonIdOfGame } from "@/config/games";

@@ -1,6 +1,6 @@
 "use client";
 
-import { collection, doc, onSnapshot, query, serverTimestamp, setDoc, where } from "firebase/firestore";
+import { collection, doc, onSnapshot, query, serverTimestamp, setDoc, where } from "@/lib/firebase/metered";
 import { useEffect, useMemo, useState } from "react";
 import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";

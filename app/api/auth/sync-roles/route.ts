@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdminAuth, getAdminFirestore } from "@/lib/firebase/admin";
+import { meterDb } from "@/lib/server/read-meter";
 import { verifyBearerToken } from "@/lib/server/require-user";
 import { isOwnerEmail } from "@/lib/server/owner-admin";
 import { syncRolesForCaller } from "@/lib/server/sync-roles";
@@ -14,7 +15,7 @@ export async function POST(request: Request) {
   const decoded = await verifyBearerToken(request);
   if (!decoded) return NextResponse.json({ ok: false, error: "Not signed in." }, { status: 401 });
 
-  const db = getAdminFirestore();
+  const db = meterDb(getAdminFirestore(), "api/auth/sync-roles");
   const adminAuth = getAdminAuth();
   if (!db || !adminAuth) return NextResponse.json({ ok: false, error: "Server isn't configured." }, { status: 503 });
 

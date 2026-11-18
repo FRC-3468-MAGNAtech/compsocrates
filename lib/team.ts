@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { doc, onSnapshot, setDoc, updateDoc } from "firebase/firestore";
+import { doc, onSnapshot, setDoc, updateDoc } from "@/lib/firebase/metered";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
 import type { EventInfo } from "@/lib/events/types";
 import type { AccountTeam } from "@/lib/team-number";

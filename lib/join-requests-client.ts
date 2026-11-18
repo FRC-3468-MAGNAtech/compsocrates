@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { collection, onSnapshot, query, where } from "@/lib/firebase/metered";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { readJoinRequest, type CsJoinRequestDoc, type JoinRequest } from "@/data/cs/join-requests";
 import { authedApi } from "@/lib/api-client";

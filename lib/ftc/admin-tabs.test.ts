@@ -5,15 +5,20 @@ import { activeAdminTab, resolveAdminTabs } from "@/lib/admin/tabs";
 
 // FRC's Admin Panel tab list as it was before the per-program config (the order of the page's label table).
 const FRC_BEFORE = ["match-library", "forms", "page-access", "sidebar", "achievements", "submissions", "entries", "sessions", "match-scout-ids", "practice-session-ids", "rescore", "audit-log", "backups", "applications", "templates", "recovery", "platform-changelog", "platform-credits", "setup-check"];
-const PLATFORM = ["applications", "templates", "recovery", "platform-changelog", "platform-credits", "verify-admins"];
+const PLATFORM = ["applications", "templates", "recovery", "platform-changelog", "platform-credits", "verify-admins", "read-usage"];
 const owner = { isPlatformOwner: true, canManageForms: true };
 const plainAdmin = { isPlatformOwner: false, canManageForms: true };
 
 describe("admin tab resolver", () => {
   it("FRC is unchanged: every tab in the old order for an owner, platform tabs hidden for an admin, Forms by permission", () => {
     // Memberships build 2 adds ONE id ("verify-admins", a platform tab); with the memberships switch OFF the list an owner sees is exactly the old one.
-    expect([...ADMIN_TAB_IDS].filter((t) => t !== "verify-admins" && t !== "account-deletions")).toEqual(FRC_BEFORE);
-    expect(resolveAdminTabs(PROGRAMS.frc.admin, owner)).toEqual(FRC_BEFORE);
+    expect([...ADMIN_TAB_IDS].filter((t) => t !== "verify-admins" && t !== "account-deletions" && t !== "read-usage")).toEqual(FRC_BEFORE);
+    // The read meter adds ONE platform-owner tab ("read-usage", before Setup Check); nothing else moves.
+    expect(resolveAdminTabs(PROGRAMS.frc.admin, owner).filter((t) => t !== "read-usage")).toEqual(FRC_BEFORE);
+    expect(resolveAdminTabs(PROGRAMS.frc.admin, owner)).toContain("read-usage");
+    expect(resolveAdminTabs(PROGRAMS.ftc.admin, owner)).toContain("read-usage");
+    expect(resolveAdminTabs(PROGRAMS.frc.admin, plainAdmin)).not.toContain("read-usage");
+    expect(resolveAdminTabs(PROGRAMS.ftc.admin, plainAdmin)).not.toContain("read-usage");
     expect(resolveAdminTabs(PROGRAMS.frc.admin, plainAdmin)).toEqual(FRC_BEFORE.filter((t) => !PLATFORM.includes(t)));
     expect(resolveAdminTabs(PROGRAMS.frc.admin, { isPlatformOwner: false, canManageForms: false })).not.toContain("forms");
     expect(PROGRAMS.frc.admin.platformSettings).toBe(true);

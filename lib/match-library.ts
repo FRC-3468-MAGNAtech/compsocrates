@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { collection, doc, getDoc, getDocs, onSnapshot, setDoc, updateDoc } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, onSnapshot, setDoc, updateDoc } from "@/lib/firebase/metered";
 import { isValidAllianceTeams } from "@/config/alliance";
 import { normalizeEventKey } from "@/config/event";
 import { CS_PRACTICE_MATCHES, csPracticeMatchesToLibrary, mergeLibraryMatches } from "@/data/cs/practice";

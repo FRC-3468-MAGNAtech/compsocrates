@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { plainAvatar } from "@/lib/avatar/model";
-import { doc, onSnapshot, serverTimestamp, writeBatch } from "firebase/firestore";
+import { doc, onSnapshot, serverTimestamp, writeBatch } from "@/lib/firebase/metered";
 import { buildAuditEntry, newAuditLogRef } from "@/lib/audit-log";
 import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";

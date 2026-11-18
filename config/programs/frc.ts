@@ -33,6 +33,7 @@ export const FRC_PROGRAM: ProgramConfig = {
     },
   },
   firestorePrefix: "",
+  readEstimate: { entries: "scouting", sessions: "practiceSessions", library: "libraryMatches", auditLog: "auditLog", members: "users" },
   unavailablePaths: [],
   pagesConnected: true,
   connection: {

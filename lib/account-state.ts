@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useSyncExternalStore } from "react";
-import { getDocs, query, where } from "firebase/firestore";
+import { getDocs, query, where } from "@/lib/firebase/metered";
 import { db } from "@/lib/firebase/client";
 import { programCollection } from "@/lib/firebase/paths";
 import { useAuth, type UserDoc } from "@/lib/auth";

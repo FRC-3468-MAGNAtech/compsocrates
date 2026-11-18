@@ -19,6 +19,7 @@ import { useActiveForm, useForms } from "@/lib/forms/forms-context";
 import { entriesToCsv } from "@/lib/analytics/csv";
 import { currentEventName } from "@/lib/events/event-names";
 import { recomputeAfterSave, recomputeForEvent } from "@/lib/analytics/recompute";
+import { confirmHeavyRead } from "@/components/admin/heavy-read-gate";
 import { canRecalculateAccuracy } from "@/lib/analytics/recompute-policy";
 import { canImportCsv } from "@/lib/analytics/csv-import";
 import { useProgramData } from "@/lib/program/data";
@@ -136,6 +137,7 @@ export default function MatchScoutAnalyticsPage() {
 
   const handleRecalculate = async () => {
     if (!eventCode || !teamId) return;
+    if (!(await confirmHeavyRead("accuracy-recompute", program, teamId))) return;
     setRecalculating(true);
     setRecalcError(null);
     try {

@@ -11,7 +11,7 @@
  * Practice flags (`excluded`, `flags[].dismissed`) live ON the session document: there is no flag-state collection.
  * The published library matches a practice flow lists are read through the library port (`data/ftc/library.ts`), not here.
  */
-import { deleteDoc, getDoc, getDocs, limit, onSnapshot, query, serverTimestamp, updateDoc, where, type DocumentReference, type Query, type QuerySnapshot, type Unsubscribe } from "firebase/firestore";
+import { deleteDoc, getDoc, getDocs, limit, onSnapshot, query, serverTimestamp, updateDoc, where, type DocumentReference, type Query, type QuerySnapshot, type Unsubscribe } from "@/lib/firebase/metered";
 import { db } from "@/lib/firebase/client";
 import { programCollection, programDoc, programPath } from "@/lib/firebase/paths";
 import { tryClaimDoc } from "@/lib/claim-doc";

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { collection, deleteDoc, doc, getDocs, onSnapshot, query, runTransaction, updateDoc, where } from "firebase/firestore";
+import { collection, deleteDoc, doc, getDocs, onSnapshot, query, runTransaction, updateDoc, where } from "@/lib/firebase/metered";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { describeFirestoreError, reportFirestoreError, type FirestoreFailure } from "@/lib/firestore-errors";
 import {

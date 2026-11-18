@@ -1,7 +1,7 @@
 // Reads for the FTC backup file (Admin Panel > Backups), all under `programs/ftc/`, all equality queries on the team (no orderBy, no collection group, no new index).
 // Read only: nothing here writes. The pure rules (what is never exported) are in lib/ftc/backup.ts.
 
-import { collection, doc, getDoc, getDocs, query, where, type DocumentData, type Query } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, query, where, type DocumentData, type Query } from "@/lib/firebase/metered";
 import { db } from "@/lib/firebase/client";
 import { programCollection, programDoc, programPath } from "@/lib/firebase/paths";
 import { describeFirestoreError, failureExplanation } from "@/lib/firestore-errors";

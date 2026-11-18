@@ -1,6 +1,6 @@
 "use client";
 
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { collection, onSnapshot, query, where } from "@/lib/firebase/metered";
 import { useEffect, useState } from "react";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { reportFirestoreError } from "@/lib/firestore-errors";

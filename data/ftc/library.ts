@@ -7,7 +7,7 @@
  * API-imported docs (`origin == 'api'`, public competition data) and a team's own hand-made docs (`teamId == <mine>`), and the rules can prove a list query
  * only from its constraints: `origin == 'api'` for the first, `teamId == <mine>` for the second (see the `programs/ftc` block of firestore.rules).
  */
-import { deleteField, getDocs, onSnapshot, query, where, writeBatch, type Query, type Unsubscribe, type WriteBatch } from "firebase/firestore";
+import { deleteField, getDocs, onSnapshot, query, where, writeBatch, type Query, type Unsubscribe, type WriteBatch } from "@/lib/firebase/metered";
 import { db } from "@/lib/firebase/client";
 import { programCollection, programDoc } from "@/lib/firebase/paths";
 import { buildAuditEntry, newAuditLogRef } from "@/lib/audit-log";

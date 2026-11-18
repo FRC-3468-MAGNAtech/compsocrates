@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { getDocs, query, where } from "firebase/firestore";
+import { getDocs, query, where } from "@/lib/firebase/metered";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { programCollection } from "@/lib/firebase/paths";
 import { isFirestoreDenied } from "@/lib/team-roster-errors";

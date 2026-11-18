@@ -25,7 +25,7 @@ import {
   type QueryDocumentSnapshot,
   type QuerySnapshot,
   type Unsubscribe,
-} from "firebase/firestore";
+} from "@/lib/firebase/metered";
 import { db } from "@/lib/firebase/client";
 import { programCollection, programDoc, programPath } from "@/lib/firebase/paths";
 import { reportFirestoreError, type FirestoreFailure } from "@/lib/firestore-errors";

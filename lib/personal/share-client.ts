@@ -1,6 +1,6 @@
 "use client";
 
-import { collection, doc, getCountFromServer, getDoc, query, setDoc, where } from "firebase/firestore";
+import { collection, doc, getCountFromServer, getDoc, query, setDoc, where } from "@/lib/firebase/metered";
 import { db } from "@/lib/firebase/client";
 import { programPath } from "@/lib/firebase/paths";
 import type { ProgramId } from "@/config/programs/types";

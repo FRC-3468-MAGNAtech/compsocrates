@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { onSnapshot } from "firebase/firestore";
+import { onSnapshot } from "@/lib/firebase/metered";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { programDoc, programPath } from "@/lib/firebase/paths";
 import { failureDetails, reportFirestoreError } from "@/lib/firestore-errors";

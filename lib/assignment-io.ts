@@ -1,6 +1,6 @@
 "use client";
 
-import { collection, doc, getDocs, query, where, writeBatch, type Query } from "firebase/firestore";
+import { collection, doc, getDocs, query, where, writeBatch, type Query } from "@/lib/firebase/metered";
 import { eventKeyVariants, type AssignmentWritePlan, type CsAssignmentRow } from "@/data/cs/assignments";
 import type { CsUserDoc } from "@/data/cs/types";
 import { csUserToMember } from "@/data/cs/users";

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { getDoc, getDocs, query, where, type DocumentData, type QueryDocumentSnapshot } from "firebase/firestore";
+import { getDoc, getDocs, query, where, type DocumentData, type QueryDocumentSnapshot } from "@/lib/firebase/metered";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { authedApi } from "@/lib/api-client";
 import { programCollection, programDoc } from "@/lib/firebase/paths";

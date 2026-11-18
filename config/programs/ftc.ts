@@ -44,6 +44,7 @@ export const FTC_PROGRAM: ProgramConfig = {
     },
   },
   firestorePrefix: "programs/ftc/",
+  readEstimate: { entries: "scoutEntries", sessions: "practiceSessions", library: "libraryMatches", auditLog: "auditLog", members: "users" },
   unavailablePaths: FTC_UNAVAILABLE_PATHS,
   pagesConnected: true,
   // The shell is mounted, but only the pages listed here have a program-aware data layer: the scout page, Active Events, the Match List, the six other forms and
@@ -97,7 +98,7 @@ export const FTC_PROGRAM: ProgramConfig = {
   },
   // Only the tabs whose data layer is ported, in the shared order. Not listed, so they do not exist here: Entries, the two ID tools, Setup Check and the platform-owner tabs
   // (Team Applications, Template Review, Recovery). The team's own templates live inside the Forms tab (as in the other program), without public sharing.
-  admin: { tabs: ["match-library", "forms", "page-access", "sidebar", "achievements", "submissions", "sessions", "rescore", "audit-log", "backups", "applications", "platform-changelog", "platform-credits", "verify-admins", "account-deletions"], platformSettings: false, templateSharing: false },
+  admin: { tabs: ["match-library", "forms", "page-access", "sidebar", "achievements", "submissions", "sessions", "rescore", "audit-log", "backups", "applications", "platform-changelog", "platform-credits", "verify-admins", "account-deletions", "read-usage"], platformSettings: false, templateSharing: false },
   achievementMetrics: "all",
   multiTeam: true,
   // Memberships: the program's own user-document field names (`primaryRole`, `isAdmin`, `fieldTeamIds`; no `roles` array).

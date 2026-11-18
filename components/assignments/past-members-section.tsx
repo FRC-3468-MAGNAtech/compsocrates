@@ -6,7 +6,7 @@ import { LoadError } from "@/components/practice/load-error";
 import { pastMembersAccess } from "@/components/assignments/past-members-access";
 import { Badge } from "@/components/ui/badge";
 import { GlassPanel } from "@/components/ui/glass-panel";
-import { getDocs, query, where } from "firebase/firestore";
+import { getDocs, query, where } from "@/lib/firebase/metered";
 import { db } from "@/lib/firebase/client";
 import { programCollection } from "@/lib/firebase/paths";
 import { describeFirestoreError, reportFirestoreError, type FirestoreFailure } from "@/lib/firestore-errors";

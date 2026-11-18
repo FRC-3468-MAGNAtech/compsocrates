@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { collection, doc, getDoc, getDocs, onSnapshot, query, setDoc, updateDoc, where, writeBatch, type WriteBatch } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, onSnapshot, query, setDoc, updateDoc, where, writeBatch, type WriteBatch } from "@/lib/firebase/metered";
 import { buildAuditEntry, newAuditLogRef } from "@/lib/audit-log";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { getEvent } from "@/lib/events/actions";

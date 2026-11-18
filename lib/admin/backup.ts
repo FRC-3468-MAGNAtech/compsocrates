@@ -1,6 +1,6 @@
 "use client";
 
-import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, query, where } from "@/lib/firebase/metered";
 import { db } from "@/lib/firebase/client";
 import { downloadTextFile } from "@/lib/download";
 import { logAuditEvent } from "@/lib/audit-log";

@@ -6,7 +6,7 @@
  * NO collection-group query (docs/SECURITY-NOTES.md 3a): "who is scouting live on my team" derives the match keys from the team's own open live sessions
  * (`teamId ==`, `kind == "live"`) and reads each match's `scouts` by path with `teamId ==` (what the rules need to allow the list). Equality-only, no orderBy.
  */
-import { collection, deleteDoc, doc, onSnapshot, query, serverTimestamp, setDoc, where, type Unsubscribe } from "firebase/firestore";
+import { collection, deleteDoc, doc, onSnapshot, query, serverTimestamp, setDoc, where, type Unsubscribe } from "@/lib/firebase/metered";
 import { db } from "@/lib/firebase/client";
 import { programPath } from "@/lib/firebase/paths";
 import { reportFirestoreError, type FirestoreFailure } from "@/lib/firestore-errors";

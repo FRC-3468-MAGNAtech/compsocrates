@@ -7,7 +7,7 @@ import {
   serverTimestamp,
   setDoc,
   updateDoc,
-} from "firebase/firestore";
+} from "@/lib/firebase/metered";
 import { useEffect, useState } from "react";
 import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
 import { useProgramConfig } from "@/lib/program/context";

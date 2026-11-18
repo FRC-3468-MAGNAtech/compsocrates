@@ -1,6 +1,6 @@
 "use client";
 
-import { deleteField, doc, getDoc, setDoc } from "firebase/firestore";
+import { deleteField, doc, getDoc, setDoc } from "@/lib/firebase/metered";
 import { useEffect, useMemo, useState } from "react";
 import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
 import { programData, useProgramData } from "@/lib/program/data";

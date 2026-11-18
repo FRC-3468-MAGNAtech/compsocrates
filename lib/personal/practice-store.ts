@@ -1,6 +1,6 @@
 "use client";
 
-import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, limit, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, limit, query, serverTimestamp, updateDoc, where } from "@/lib/firebase/metered";
 import { db } from "@/lib/firebase/client";
 import { programPath } from "@/lib/firebase/paths";
 import type { ProgramId } from "@/config/programs/types";

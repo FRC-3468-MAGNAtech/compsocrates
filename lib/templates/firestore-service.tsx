@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { addDoc, collection, deleteDoc, deleteField, doc, getDoc, getDocs, onSnapshot, query, updateDoc, where, type DocumentData, type Query } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, deleteField, doc, getDoc, getDocs, onSnapshot, query, updateDoc, where, type DocumentData, type Query } from "@/lib/firebase/metered";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { DEFAULT_PROGRAM } from "@/config/programs/types";
 import { programPath } from "@/lib/firebase/paths";

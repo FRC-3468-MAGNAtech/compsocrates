@@ -6,7 +6,7 @@
  * one, reads the caller's own player doc by path (`teamId ==`, `uid ==`: a query, not a get, because a get of a player doc that does not exist is denied).
  * A roster read carries `teamId ==` too, as the rules require. Equality-only, no orderBy, no new index.
  */
-import { collection, deleteDoc, doc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where, type Unsubscribe } from "firebase/firestore";
+import { collection, deleteDoc, doc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where, type Unsubscribe } from "@/lib/firebase/metered";
 import { db } from "@/lib/firebase/client";
 import { programCollection, programDoc, programPath } from "@/lib/firebase/paths";
 import { tryClaimDoc } from "@/lib/claim-doc";

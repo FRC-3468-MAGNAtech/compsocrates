@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { collection, doc, getDoc, onSnapshot, runTransaction, serverTimestamp, type Firestore } from "firebase/firestore";
+import { collection, doc, getDoc, onSnapshot, runTransaction, serverTimestamp, type Firestore } from "@/lib/firebase/metered";
 import { storageKey } from "@/config/brand";
 import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
 import { buildAuditEntry } from "@/lib/audit-log";

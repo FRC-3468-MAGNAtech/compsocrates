@@ -1,3 +1,4 @@
+import { meterDb } from "@/lib/server/read-meter";
 import { sharePractice } from "@/lib/server/practice-sharing";
 import { membershipRoute } from "@/lib/server/membership-route";
 
@@ -8,5 +9,5 @@ import { membershipRoute } from "@/lib/server/membership-route";
 export const maxDuration = 60;
 
 export async function POST(request: Request) {
-  return membershipRoute(request, (db, actor, body) => sharePractice(db, actor, { program: body.program }), 55_000);
+  return membershipRoute(request, (db, actor, body) => sharePractice(meterDb(db, "api/team/share-practice"), actor, { program: body.program }), 55_000);
 }

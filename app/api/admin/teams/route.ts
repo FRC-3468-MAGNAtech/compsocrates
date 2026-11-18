@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdminFirestore } from "@/lib/firebase/admin";
+import { meterDb } from "@/lib/server/read-meter";
 import { verifyBearerToken } from "@/lib/server/require-user";
 import { isPlatformOwnerToken } from "@/lib/server/owner-admin";
 import { readTeamIdentity } from "@/lib/team-number";
@@ -15,7 +16,7 @@ export async function GET(request: Request) {
   const decoded = await verifyBearerToken(request);
   if (!decoded) return NextResponse.json({ ok: false, error: "Not signed in." }, { status: 401 });
   if (!isPlatformOwnerToken(decoded)) return NextResponse.json({ ok: false, error: "Only the platform owner can see this." }, { status: 403 });
-  const db = getAdminFirestore();
+  const db = meterDb(getAdminFirestore(), "api/admin/teams");
   if (!db) return NextResponse.json({ ok: false, error: "Server isn't configured." }, { status: 503 });
 
   // CS admins: `isTeamAdmin`, and the legacy `role == "coach"` the production rules also treat as admin (D6).

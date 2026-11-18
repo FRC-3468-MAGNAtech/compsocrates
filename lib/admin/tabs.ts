@@ -3,7 +3,7 @@ import type { AdminTabId, ProgramAdmin } from "@/config/programs/types";
 // The one resolver of the Admin Panel's tab list: the program's own list (`ProgramConfig.admin.tabs`), then who is looking. Pure.
 
 /** Tabs only a platform owner sees. */
-export const PLATFORM_TABS: readonly AdminTabId[] = ["applications", "templates", "recovery", "platform-changelog", "platform-credits", "verify-admins", "account-deletions"];
+export const PLATFORM_TABS: readonly AdminTabId[] = ["applications", "templates", "recovery", "platform-changelog", "platform-credits", "verify-admins", "account-deletions", "read-usage"];
 
 /** `accountDeletionEnabled`: the account deletion kill switch (the "Account deletions" tab exists only while it is ON; missing = OFF). */
 /** `membershipsEnabled`: the memberships kill switch (the "Verify admins" tab exists only while it is ON; missing = OFF). */

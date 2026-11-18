@@ -20,7 +20,7 @@ import {
   type AuthError,
   type User as FirebaseUser,
 } from "firebase/auth";
-import { doc, onSnapshot, setDoc } from "firebase/firestore";
+import { doc, onSnapshot, setDoc } from "@/lib/firebase/metered";
 import type { CsUserDoc } from "@/data/cs/types";
 import { csUserToProfile, profilePatchToCsUser } from "@/data/cs/users";
 import { auth, db, isFirebaseConfigured } from "@/lib/firebase/client";

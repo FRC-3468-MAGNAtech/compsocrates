@@ -1,4 +1,5 @@
 import { applyWrite, listFeed } from "@/lib/server/platform-changelog";
+import { meterDb } from "@/lib/server/read-meter";
 import { fail, withOwner, withViewer } from "@/lib/server/platform-route";
 import { readJsonBody } from "@/lib/server/route-helpers";
 
@@ -8,7 +9,7 @@ import { readJsonBody } from "@/lib/server/route-helpers";
  */
 export async function GET(request: Request) {
   const wantDrafts = new URL(request.url).searchParams.get("drafts") === "1";
-  return withViewer(request, (db, viewer) => listFeed(db, viewer, wantDrafts));
+  return withViewer(request, (db, viewer) => listFeed(meterDb(db, "api/platform/changelog"), viewer, wantDrafts));
 }
 
 export async function POST(request: Request) {

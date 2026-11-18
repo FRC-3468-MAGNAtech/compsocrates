@@ -8,7 +8,7 @@ import {
   onSnapshot,
   serverTimestamp,
   updateDoc,
-} from "firebase/firestore";
+} from "@/lib/firebase/metered";
 import { useEffect, useMemo, useState } from "react";
 import { finalizeSessions, usePracticeExtras } from "@/lib/practice-extras";
 import { csSessionToPractice, practicePatchToCsFields, type SessionWriteContext } from "@/data/cs/practice";

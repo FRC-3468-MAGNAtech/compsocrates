@@ -9,7 +9,7 @@
  * practice sessions; a failure is reported and surfaced as `error`, never as a silently empty list.
  */
 
-import { collection, getDocs, query, where, type QueryDocumentSnapshot } from "firebase/firestore";
+import { collection, getDocs, query, where, type QueryDocumentSnapshot } from "@/lib/firebase/metered";
 import { useEffect, useMemo, useState } from "react";
 import { applySessionExclusions, assignSessionOwners, csSessionToPractice, excludedSessionIds, mergeSessionsById, sessionBelongsToTeam, type SessionMember } from "@/data/cs/practice";
 import { describeFirestoreError, reportFirestoreError, type FirestoreFailure } from "@/lib/firestore-errors";

@@ -10,6 +10,8 @@ import { canImportCsv, planCsvImport, runCsvImport, type CsvImportPlan, type Csv
 import { formatMatch } from "@/lib/analytics/game-schema";
 import { useAuth } from "@/lib/auth";
 import { useProgramData } from "@/lib/program/data";
+import { useProgram } from "@/lib/program/context";
+import { confirmHeavyRead } from "@/components/admin/heavy-read-gate";
 import { entryPayloadFor, saveEntry, type ScoutEntry } from "@/lib/scout-entries";
 import { calculateScore } from "@/lib/forms/scoring";
 import { normalizeValues } from "@/lib/forms/values";
@@ -49,6 +51,7 @@ export function ImportCsvDialog({
   // A program with its own data port imports through it: a preview with row errors, stable ids, batches of 400 and a result summary.
   // The default program keeps the import it always had.
   const port = useProgramData();
+  const program = useProgram();
   const { profile } = useAuth();
   const [plan, setPlan] = useState<CsvImportPlan | null>(null);
   const [result, setResult] = useState<CsvImportResult | null>(null);
@@ -92,6 +95,7 @@ export function ImportCsvDialog({
 
   const confirmPortImport = async () => {
     if (!port || !plan) return;
+    if (!(await confirmHeavyRead("csv-import", program, teamId))) return;
     setImporting(true);
     setImportError(null);
     try {
@@ -123,6 +127,7 @@ export function ImportCsvDialog({
   };
 
   const confirmImport = async () => {
+    if (!(await confirmHeavyRead("csv-import", program, teamId))) return;
     setImporting(true);
     try {
       await Promise.all(

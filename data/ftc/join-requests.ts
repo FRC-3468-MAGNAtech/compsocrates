@@ -8,7 +8,7 @@
  *   `users` create) check the two halves against each other with getAfter, so neither can happen alone.
  * Queries are equality-only and by path under the team (no collection group, no orderBy); the list is sorted in `ftcDocsToJoinRequests` (join-request-docs.ts).
  */
-import { collection, getDoc, onSnapshot, query, serverTimestamp, updateDoc, where, writeBatch, type Unsubscribe } from "firebase/firestore";
+import { collection, getDoc, onSnapshot, query, serverTimestamp, updateDoc, where, writeBatch, type Unsubscribe } from "@/lib/firebase/metered";
 import { db } from "@/lib/firebase/client";
 import { programDoc, programPath } from "@/lib/firebase/paths";
 import { reportFirestoreError, type FirestoreFailure } from "@/lib/firestore-errors";

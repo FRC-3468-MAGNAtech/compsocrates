@@ -1,6 +1,6 @@
 "use client";
 
-import { deleteDoc, doc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
+import { deleteDoc, doc, onSnapshot, serverTimestamp, setDoc } from "@/lib/firebase/metered";
 import { useEffect, useState } from "react";
 import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
 import { useProgramConfig } from "@/lib/program/context";

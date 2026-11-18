@@ -1,6 +1,6 @@
 "use client";
 
-import { onSnapshot } from "firebase/firestore";
+import { onSnapshot } from "@/lib/firebase/metered";
 import { useEffect, useMemo, useState } from "react";
 import { getSeasonFromEventKey, normalizeEventKey } from "@/config/event";
 import {
