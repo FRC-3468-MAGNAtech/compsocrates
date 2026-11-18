@@ -1,0 +1,260 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`the Scout page's scouted marks (team picker) > marks every robot already scouted for a match, from the full team feed 1`] = `
+[
+  [
+    [
+      254,
+      "scouted",
+    ],
+  ],
+  [
+    [
+      254,
+      "scouted",
+    ],
+  ],
+  [
+    [
+      971,
+      "scouted",
+    ],
+  ],
+  [
+    [
+      118,
+      "scouted",
+    ],
+  ],
+  [
+    [
+      971,
+      "scouted",
+    ],
+  ],
+  [
+    [
+      118,
+      "scouted",
+    ],
+  ],
+  [],
+]
+`;
+
+exports[`the entries every stats page is built from (Analytics, dashboards, Scout Accuracy) > Analytics event options for a season 1`] = `
+[
+  "2026arli",
+  "2026lake",
+]
+`;
+
+exports[`the entries every stats page is built from (Analytics, dashboards, Scout Accuracy) > Analytics team stats and the ranking 1`] = `
+[
+  {
+    "n": 2,
+    "name": null,
+    "team": 118,
+  },
+  {
+    "n": 2,
+    "name": "Cheesy",
+    "team": 254,
+  },
+  {
+    "n": 2,
+    "name": null,
+    "team": 971,
+  },
+]
+`;
+
+exports[`the entries every stats page is built from (Analytics, dashboards, Scout Accuracy) > Analytics team stats and the ranking 2`] = `
+[
+  [
+    118,
+    1,
+  ],
+  [
+    254,
+    1,
+  ],
+  [
+    971,
+    1,
+  ],
+]
+`;
+
+exports[`the entries every stats page is built from (Analytics, dashboards, Scout Accuracy) > Scout Accuracy / My Scouting numbers 1`] = `
+[
+  {
+    "accuracy": null,
+    "rank": null,
+    "uid": "u0",
+  },
+  {
+    "accuracy": null,
+    "rank": null,
+    "uid": "u1",
+  },
+]
+`;
+
+exports[`the entries every stats page is built from (Analytics, dashboards, Scout Accuracy) > Scout Accuracy / My Scouting numbers 2`] = `
+[
+  {
+    "accuracy": 85,
+    "rank": 1,
+    "uid": "u0",
+  },
+  {
+    "accuracy": 70,
+    "rank": 2,
+    "uid": "u1",
+  },
+]
+`;
+
+exports[`the entries every stats page is built from (Analytics, dashboards, Scout Accuracy) > role dashboard widgets (coverage, flagged, practice activity) 1`] = `
+{
+  "percent": 75,
+  "scouted": 3,
+  "total": 4,
+  "zero": [
+    1678,
+  ],
+}
+`;
+
+exports[`the entries every stats page is built from (Analytics, dashboards, Scout Accuracy) > role dashboard widgets (coverage, flagged, practice activity) 2`] = `
+{
+  "fullyScouted": 0,
+  "missing": [],
+  "percent": null,
+  "playedMatches": 0,
+}
+`;
+
+exports[`the entries every stats page is built from (Analytics, dashboards, Scout Accuracy) > role dashboard widgets (coverage, flagged, practice activity) 3`] = `
+[
+  "a1",
+  "a2",
+  "a3",
+  "a4",
+  "old-id",
+  "old-name",
+]
+`;
+
+exports[`the entries every stats page is built from (Analytics, dashboards, Scout Accuracy) > role dashboard widgets (coverage, flagged, practice activity) 4`] = `
+{
+  "scouts": 0,
+  "sessions": 0,
+}
+`;
+
+exports[`the entries every stats page is built from (Analytics, dashboards, Scout Accuracy) > role dashboard widgets (coverage, flagged, practice activity) 5`] = `1`;
+
+exports[`useTeamLiveSessions: what the shell's ScoresReadyWatcher is given > delivers the team's live sessions; the watcher keeps only the signed-in person's own 1`] = `
+[
+  [
+    "live1",
+    80,
+  ],
+  [
+    "live4",
+    80,
+  ],
+  [
+    "live7",
+    80,
+  ],
+]
+`;
+
+exports[`useTeamLiveSessions: what the shell's ScoresReadyWatcher is given > delivers the team's live sessions; the watcher keeps only the signed-in person's own 2`] = `[]`;
+
+exports[`useTeamScoutEntries: what the team feed delivers (legacy merge included) > merges the team's rows with legacy rows (by scoutId and by name), drops other teams' rows, applies flag states 1`] = `
+[
+  {
+    "event": "2026arli",
+    "flags": [
+      {
+        "addedAt": "2023-11-14T22:13:20.000Z",
+        "id": "cs-manual",
+        "note": "odd",
+        "reason": "Other",
+      },
+    ],
+    "id": "a1",
+    "match": 1,
+    "scout": "Scout 0",
+    "source": "event",
+    "team": 254,
+    "total": 10,
+    "type": "Qualification",
+    "uid": "u0",
+  },
+  {
+    "event": "2026arli",
+    "flags": [],
+    "id": "a2",
+    "match": 2,
+    "scout": "Scout 1",
+    "source": "event",
+    "team": 254,
+    "total": 10,
+    "type": "Qualification",
+    "uid": "u1",
+  },
+  {
+    "event": "2026arli",
+    "flags": [],
+    "id": "a3",
+    "match": 3,
+    "scout": "Scout 0",
+    "source": "event",
+    "team": 971,
+    "total": 10,
+    "type": "Qualification",
+    "uid": "u0",
+  },
+  {
+    "event": "2026arli",
+    "flags": [],
+    "id": "a4",
+    "match": 4,
+    "scout": "Scout 0",
+    "source": "event",
+    "team": 118,
+    "total": 10,
+    "type": "Qualification",
+    "uid": "u0",
+  },
+  {
+    "event": "2026arli",
+    "flags": [],
+    "id": "old-id",
+    "match": 5,
+    "scout": "Scout 0",
+    "source": "event",
+    "team": 971,
+    "total": 10,
+    "type": "Qualification",
+    "uid": "u0",
+  },
+  {
+    "event": "2026arli",
+    "flags": [],
+    "id": "old-name",
+    "match": 6,
+    "scout": "Scout 1",
+    "source": "event",
+    "team": 118,
+    "total": 10,
+    "type": "Qualification",
+    "uid": "",
+  },
+]
+`;
