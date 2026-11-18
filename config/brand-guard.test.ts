@@ -48,6 +48,7 @@ const FTC_ALLOWED: Record<string, string> = {
   // Documentation at the root and config
   "CLAUDE.md": "documents both programs and the sibling read-only reference folders",
   ".env.example": "lists the per-program environment variables",
+  "scripts/dev-emu-seed.ts": "synthetic emulator data for both programs (a developer script that names the programs on purpose; never run by the build or tests)",
   // Shared source that maps a program id or an FTC provider (the program seam itself)
   "lib/server/env.ts": "the one reader of environment variables, including the FTC ones",
   "lib/server/application-teams.ts": "memberships build 3: ONE table of each program's team document builders (the program-scoped ones live in data/cs and data/ftc), keyed by program id",

@@ -63,6 +63,7 @@ const formLib = await import("@/lib/forms/new-form");
 const portableLib = await import("@/lib/forms/portable");
 const { FieldValue } = await import("firebase-admin/firestore");
 const { GET: publicConfig } = await import("@/app/api/public/config/route");
+const { invalidateAppSettingsCache } = await import("@/lib/server/team-settings");
 const { getAdminAuth, getAdminFirestore } = await import("@/lib/firebase/admin");
 
 /** The two application routes take a REQUIRED program since memberships build 3; these tests are the root program's, so it is added unless a test names one. */
@@ -277,28 +278,40 @@ describe("POST /api/team/join (approval queue)", () => {
 
 describe("GET /api/public/config", () => {
   const settingsRef = () => getAdminFirestore()!.doc("appSettings/global");
+  // The route serves a 30 s per-instance snapshot of the settings document (the toggle routes drop it; the tests drop it by hand after changing the document).
+  const freshConfig = async () => {
+    invalidateAppSettingsCache();
+    return (await publicConfig()).json();
+  };
 
   it("a missing document means creation OFF, avatar uploads OFF and admins-see-profiles ON, and the read writes nothing", async () => {
     await settingsRef().delete();
-    const body = await (await publicConfig()).json();
+    const body = await freshConfig();
     expect(body).toMatchObject({ teamCreationEnabled: false, avatarUploadsEnabled: false, adminsSeeAllProfiles: true });
     expect((await settingsRef().get()).exists).toBe(false);
   });
 
   it("a document without the fields means the same, and the read leaves it exactly as it was", async () => {
     await settingsRef().set({ somethingElse: 1 });
-    const body = await (await publicConfig()).json();
+    const body = await freshConfig();
     expect(body).toMatchObject({ teamCreationEnabled: false, avatarUploadsEnabled: false, adminsSeeAllProfiles: true });
     expect((await settingsRef().get()).data()).toEqual({ somethingElse: 1 });
   });
 
   it("creation and uploads are on only when the field is explicitly true", async () => {
     await settingsRef().set({ teamCreationEnabled: true, avatarUploadsEnabled: true, adminsSeeAllProfiles: false });
-    expect(await (await publicConfig()).json()).toMatchObject({ teamCreationEnabled: true, avatarUploadsEnabled: true, adminsSeeAllProfiles: false });
+    expect(await freshConfig()).toMatchObject({ teamCreationEnabled: true, avatarUploadsEnabled: true, adminsSeeAllProfiles: false });
     await settingsRef().set({ teamCreationEnabled: "yes", avatarUploadsEnabled: 1 });
-    expect(await (await publicConfig()).json()).toMatchObject({ teamCreationEnabled: false, avatarUploadsEnabled: false });
+    expect(await freshConfig()).toMatchObject({ teamCreationEnabled: false, avatarUploadsEnabled: false });
   });
 
+  it("serves a document change from the shared snapshot within 30 s, and an invalidation shows it at once", async () => {
+    await settingsRef().set({ teamCreationEnabled: false });
+    expect(await freshConfig()).toMatchObject({ teamCreationEnabled: false });
+    await settingsRef().set({ teamCreationEnabled: true });
+    expect(await (await publicConfig()).json()).toMatchObject({ teamCreationEnabled: false }); // still the snapshot
+    expect(await freshConfig()).toMatchObject({ teamCreationEnabled: true });
+  });
 });
 
 describe("POST /api/auth/sync-roles", () => {

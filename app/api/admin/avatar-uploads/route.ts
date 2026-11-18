@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getAdminFirestore } from "@/lib/firebase/admin";
 import { verifyBearerToken } from "@/lib/server/require-user";
 import { isPlatformOwnerToken } from "@/lib/server/owner-admin";
-import { APP_SETTINGS_PATH } from "@/lib/server/team-settings";
+import { APP_SETTINGS_PATH, invalidateAppSettingsCache } from "@/lib/server/team-settings";
 
 /**
  * Platform-owner-only switch backing Admin Panel's "Profile picture uploads" toggle. Writes the additive field `avatarUploadsEnabled` on appSettings/global
@@ -22,5 +22,6 @@ export async function POST(request: Request) {
   if (typeof enabled !== "boolean") return NextResponse.json({ ok: false, error: "Missing 'enabled' boolean." }, { status: 400 });
 
   await db.doc(APP_SETTINGS_PATH).set({ avatarUploadsEnabled: enabled }, { merge: true });
+  invalidateAppSettingsCache(); // the shared settings snapshot shows the change at once on this instance (others within 30 s)
   return NextResponse.json({ ok: true, avatarUploadsEnabled: enabled });
 }

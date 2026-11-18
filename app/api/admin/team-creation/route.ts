@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getAdminFirestore } from "@/lib/firebase/admin";
 import { verifyBearerToken } from "@/lib/server/require-user";
 import { isPlatformOwnerToken } from "@/lib/server/owner-admin";
-import { APP_SETTINGS_PATH } from "@/lib/server/team-settings";
+import { APP_SETTINGS_PATH, invalidateAppSettingsCache } from "@/lib/server/team-settings";
 
 /**
  * Platform-owner-only switch backing Admin Panel's "Allow team creation" toggle (P20: a *team* owner can't turn
@@ -27,5 +27,6 @@ export async function POST(request: Request) {
   }
 
   await db.doc(APP_SETTINGS_PATH).set({ teamCreationEnabled: enabled }, { merge: true });
+  invalidateAppSettingsCache(); // the shared settings snapshot shows the change at once on this instance (others within 30 s)
   return NextResponse.json({ ok: true, teamCreationEnabled: enabled });
 }
