@@ -1,6 +1,7 @@
 "use client";
 
-import { createContext, useContext, useEffect, useSyncExternalStore, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
+import { clearLegacyCache } from "@/lib/legacy-cache";
 import { BRAND } from "@/config/brand";
 import { DEFAULT_PROGRAM, isProgramId, type ProgramId } from "@/config/programs/types";
 import { programConfig } from "@/config/programs";
@@ -50,6 +51,12 @@ export function rememberProgram(id: ProgramId): void {
 
 export function ProgramProvider({ program, children }: { program: ProgramId; children: ReactNode }) {
   useEffect(() => rememberProgram(program), [program]);
+  // A program switch inside one visit drops the device copy of the legacy rows (the first run only records the program).
+  const shown = useRef(program);
+  useEffect(() => {
+    if (shown.current !== program) clearLegacyCache();
+    shown.current = program;
+  }, [program]);
   return <ProgramContext.Provider value={program}>{children}</ProgramContext.Provider>;
 }
 

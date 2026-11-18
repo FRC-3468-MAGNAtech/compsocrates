@@ -23,6 +23,8 @@ import { useAllTeamPracticeSessions, useTeamLiveSessions } from "@/lib/practice-
 import { useTeamActiveLiveScouts } from "@/lib/live-presence";
 import { useAllLibraryMatches } from "@/lib/match-library";
 import { useTeamMembers } from "@/lib/team-members";
+import { resetLegacyRowsMemoryForTests } from "@/lib/scout-entries";
+import { clearPracticeExtrasCache } from "@/lib/practice-extras";
 
 /** The synthetic team behind every number below. */
 export const DATASET: fx.Scale = { members: 20, entries: 1234, legacyRows: 40, otherTeamRows: 150, flagStates: 60, liveSessions: 160, soloSessions: 90, libraryMatches: 500 };
@@ -66,6 +68,30 @@ const pages: Record<string, (team: string) => void> = {
   "Analytics (entries + all sessions + all library matches)": useAnalyticsPage,
   "Team Coach dashboard (entries, members x2, all sessions)": useCoachDashboard,
 };
+
+/** The same page opened AGAIN on the same device inside 6 hours: the module memory is gone (a reload) but the device copy of the legacy rows stays. */
+async function measureRepeat(page: (team: string) => void): Promise<number> {
+  n += 1;
+  const team = `HT-${n}`;
+  const store = new Map<string, string>();
+  vi.stubGlobal("window", { localStorage: { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k) } });
+  try {
+    fake.resetFake();
+    fx.seedDataset(DATASET, team);
+    const first = rt.renderHook(() => page(team));
+    await rt.settle(12);
+    first.unmount();
+    resetLegacyRowsMemoryForTests();
+    clearPracticeExtrasCache();
+    fake.resetBilling();
+    const again = rt.renderHook(() => page(team));
+    await rt.settle(12);
+    again.unmount();
+    return fake.billing.total;
+  } finally {
+    vi.unstubAllGlobals();
+  }
+}
 
 const BEFORE: Record<string, number> = {
   "app shell (live sessions + live presence listeners)": 9,
@@ -141,3 +167,20 @@ describe("the sidebar changelog unread dot: feed fetches for one mount plus five
 });
 // Before the 10-minute minimum interval this was 6 (one on mount, one on every refocus).
 const BEFORE_DOT_FETCHES = 1;
+
+// Pages that read the legacy fallbacks, opened a second time on the same device within 6 hours. Before the device copy these cost the same as the first open
+// (Scout page 4,162, Analytics 5,493, Team Coach dashboard 5,032 on this dataset).
+describe("documents billed when the same page is opened again within 6 hours (legacy rows remembered)", () => {
+  const AGAIN: Record<string, [(team: string) => void, number]> = {
+    "Scout page, repeat visit": [useScoutPage, 1294],
+    "Analytics, repeat visit": [useAnalyticsPage, 2124],
+    "Team Coach dashboard, repeat visit": [useCoachDashboard, 1664],
+  };
+  for (const [name, [page, expected]] of Object.entries(AGAIN)) {
+    it(name, async () => {
+      const total = await measureRepeat(page);
+      console.info("[read-counts] " + name + ": " + total);
+      expect(total).toBe(expected);
+    });
+  }
+});

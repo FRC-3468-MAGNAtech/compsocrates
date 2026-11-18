@@ -25,6 +25,7 @@ import { auth, db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
 import { programData, useProgramData } from "@/lib/program/data";
 import { loadRosterExtras } from "@/lib/team-roster";
+import { clearLegacyCache, legacyCacheKey, readLegacy, writeLegacy } from "@/lib/legacy-cache";
 import type { FirestoreFailure } from "@/lib/firestore-errors";
 import { assertSubmissionOpen, type SubmissionGateInput } from "@/lib/forms/submission-guard";
 import type { MatchType } from "@/lib/events/types";
@@ -304,6 +305,15 @@ function chunk<T>(items: readonly T[], size: number): T[][] {
 function loadLegacyRows(teamId: string): Promise<RawRow[]> {
   const cached = fallbackCache.get(teamId);
   if (cached) return cached;
+  // The kept rows are remembered on this device for 6 hours (lib/legacy-cache.ts), so the two `in` queries below run once per 6 hours instead of on every page load.
+  const uid = auth.currentUser?.uid ?? null;
+  const persistKey = uid ? legacyCacheKey({ uid, program: DEFAULT_PROGRAM, teamId }) : null;
+  const remembered = persistKey ? readLegacy<RawRow[]>("entries", persistKey) : null;
+  if (remembered) {
+    const hit = Promise.resolve(remembered);
+    fallbackCache.set(teamId, hit);
+    return hit;
+  }
   const task = (async () => {
     const members = await getDocs(query(collection(db, "users"), where("teamId", "==", teamId)));
     // The roster seam: members whose active team is another one still have legacy rows here. Nothing extra is read while the memberships switch is OFF.
@@ -320,7 +330,9 @@ function loadLegacyRows(teamId: string): Promise<RawRow[]> {
         if (str(d.data().teamId).trim() === "" && !byId.has(d.id)) byId.set(d.id, toRaw(d));
       }
     }
-    return [...byId.values()];
+    const kept = [...byId.values()];
+    if (persistKey) writeLegacy("entries", persistKey, kept.map((r) => ({ id: r.id, data: r.data, pending: false })));
+    return kept;
   })().catch((err) => {
     console.warn("legacy scouting rows fallback failed:", err);
     fallbackCache.delete(teamId);
@@ -328,6 +340,11 @@ function loadLegacyRows(teamId: string): Promise<RawRow[]> {
   });
   fallbackCache.set(teamId, task);
   return task;
+}
+
+/** Test hook: forget this page load's in-memory copy, as a reload does (the device copy is cleared by `clearLegacyCache`). */
+export function resetLegacyRowsMemoryForTests(): void {
+  fallbackCache.clear();
 }
 
 function mergeRows(primary: readonly RawRow[], extra: readonly RawRow[]): RawRow[] {
@@ -605,6 +622,7 @@ export async function updateEntry(id: string, patch: Partial<ScoutEntry>, option
   // A namespaced program stores flags, accuracy and exclusion on the entry itself and writes through its own port.
   const data = programData(program);
   if (data) return data.scoutEntries.update(id, patch);
+  clearLegacyCache(); // this device just changed a row the remembered legacy copy may hold
   const ref = doc(db, COLLECTION, id);
   const flagRef = doc(db, FLAG_COLLECTION, flagStateDocId(id));
   const [snap, flagSnap] = await Promise.all([getDoc(ref), getDoc(flagRef).catch(() => null)]);
@@ -628,6 +646,7 @@ export async function updateEntry(id: string, patch: Partial<ScoutEntry>, option
 export async function deleteEntry(id: string, program: ProgramId = DEFAULT_PROGRAM): Promise<void> {
   const data = programData(program);
   if (data) return data.scoutEntries.delete(id);
+  clearLegacyCache();
   await deleteDoc(doc(db, COLLECTION, id));
   // Best effort: a flag state with no entry is harmless (readers match flag states to entries by id).
   await deleteDoc(doc(db, FLAG_COLLECTION, flagStateDocId(id))).catch(() => {});

@@ -1,4 +1,5 @@
 // The one way a rescore (events or sessions) writes: in chunks of 400 (Firestore's batch limit is 500), every write of a chunk attempted, the first failure
+import { clearLegacyCache } from "@/lib/legacy-cache";
 // stopping the run AFTER its chunk with an exact count of what went through. Safe to re-run: a rescore plan is rebuilt from the current data, and re-applying an
 // already-applied plan writes the same values again. Pure apart from the writes it is given.
 
@@ -24,6 +25,7 @@ export function chunkWrites<T>(items: readonly T[], size: number = RESCORE_CHUNK
 }
 
 export async function runRescoreWrites(writes: readonly (() => Promise<void>)[], onProgress?: (done: number, total: number) => void, size: number = RESCORE_CHUNK_SIZE): Promise<{ written: number }> {
+  clearLegacyCache(); // rescoring rewrites rows the remembered legacy copy may hold
   let done = 0;
   for (const group of chunkWrites(writes, size)) {
     const results = await Promise.allSettled(group.map((write) => write()));

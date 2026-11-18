@@ -13,7 +13,9 @@ import { collection, getDocs, query, where, type QueryDocumentSnapshot } from "@
 import { useEffect, useMemo, useState } from "react";
 import { applySessionExclusions, assignSessionOwners, csSessionToPractice, excludedSessionIds, mergeSessionsById, sessionBelongsToTeam, type SessionMember } from "@/data/cs/practice";
 import { describeFirestoreError, reportFirestoreError, type FirestoreFailure } from "@/lib/firestore-errors";
-import { db, isFirebaseConfigured } from "@/lib/firebase/client";
+import { auth, db, isFirebaseConfigured } from "@/lib/firebase/client";
+import { DEFAULT_PROGRAM } from "@/config/programs/types";
+import { legacyCacheKey, readLegacy, writeLegacy } from "@/lib/legacy-cache";
 import type { PracticeSession } from "@/lib/practice-sessions";
 import { useTeamMembers } from "@/lib/team-members";
 
@@ -52,16 +54,28 @@ async function fetchExtras(teamId: string, members: readonly SessionMember[]): P
   };
 
   const sessions: PracticeSession[] = [];
+  // Sessions with an EMPTY teamId (the only ones the team query cannot see) are remembered on this device for 6 hours (lib/legacy-cache.ts): the two member `in` queries
+  // below return everything the members ever wrote and cost about twice the team's sessions on every page load. Sessions stamped with this team are not kept: the team
+  // query supplies them fresh, and the team query's copy wins the merge anyway. The team's exclusions (flag states) are always read fresh.
+  const uid = auth.currentUser?.uid ?? null;
+  const persistKey = uid ? legacyCacheKey({ uid, program: DEFAULT_PROGRAM, teamId, extra: members.map((m) => `${m.uid}:${m.name}`).sort().join(",") }) : null;
+  const remembered = persistKey ? readLegacy<PracticeSession[]>("sessions", persistKey) : null;
+  const legacyOnly: PracticeSession[] = [];
   const keep = (snap: QueryDocumentSnapshot) => {
     const data = snap.data();
     if (!sessionBelongsToTeam(data, teamId)) return;
     const s = csSessionToPractice(snap.id, data, teamId);
-    if (s) sessions.push(s);
+    if (!s) return;
+    sessions.push(s);
+    if (!String(data.teamId ?? data.team ?? "").trim()) legacyOnly.push(s);
   };
 
   const uids = [...new Set(members.map((m) => m.uid).filter(Boolean))];
   const names = [...new Set(members.map((m) => m.name.trim()).filter(Boolean))];
-  const reads: Promise<void>[] = [
+  if (remembered) sessions.push(...remembered);
+  const reads: Promise<void>[] = remembered
+    ? []
+    : [
     ...chunk(uids).map(async (ids) => {
       try {
         (await getDocs(query(collection(db, "practiceSessions"), where("scoutId", "in", ids)))).docs.forEach(keep);
@@ -91,6 +105,7 @@ async function fetchExtras(teamId: string, members: readonly SessionMember[]): P
   );
 
   await Promise.all(reads);
+  if (!remembered && !error && persistKey) writeLegacy("sessions", persistKey, legacyOnly);
   return { extras: { sessions: mergeSessionsById([], sessions), excluded, members }, error };
 }
 

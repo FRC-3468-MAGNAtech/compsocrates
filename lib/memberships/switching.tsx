@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth";
 import { useProgram } from "@/lib/program/context";
 import { refreshAccountState } from "@/lib/account-state";
 import { invalidateRoster } from "@/lib/team-roster";
+import { clearLegacyCache } from "@/lib/legacy-cache";
 import { membershipApi } from "@/lib/memberships/client";
 import { friendlyMembershipError, MEMBERSHIP_TEXT } from "@/lib/memberships/strings";
 
@@ -56,6 +57,7 @@ export function TeamSwitchProvider({ children }: { children: ReactNode }) {
     if (target !== null && currentTeam === target) {
       stopTimer();
       invalidateRoster();
+      clearLegacyCache(); // another team: the remembered legacy rows belong to the old one
       refreshAccountState(uid);
       // Deliberate: ends the hold in the same pass that clears the caches.
       // eslint-disable-next-line react-hooks/set-state-in-effect

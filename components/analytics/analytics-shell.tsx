@@ -3,6 +3,7 @@
 import { Suspense } from "react";
 import { AnalyticsTabs } from "@/components/layout/analytics-tabs";
 import { AnalyticsFilterBar } from "@/components/analytics/filter-bar";
+import { RefreshOldDataButton } from "@/components/analytics/refresh-old-data-button";
 import { AnalyticsFilterProvider } from "@/lib/analytics/filter-context";
 import { AnalyticsDataProvider, useAnalyticsData } from "@/lib/analytics/data-context";
 import { upcomingGameFor, upcomingGameNote } from "@/lib/analytics/event-defaults";
@@ -26,6 +27,9 @@ export function AnalyticsShell({ children }: { children: React.ReactNode }) {
           <AnalyticsTabs />
           <div className="mb-4">
             <AnalyticsFilterBar />
+            <div className="mt-1 flex justify-end">
+              <RefreshOldDataButton />
+            </div>
           </div>
           <AnalyticsBody>{children}</AnalyticsBody>
         </AnalyticsDataProvider>

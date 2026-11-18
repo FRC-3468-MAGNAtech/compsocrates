@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { clearLegacyCache } from "@/lib/legacy-cache";
 import {
   createUserWithEmailAndPassword,
   getRedirectResult,
@@ -310,6 +311,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
+    clearLegacyCache(); // the device copy of the legacy rows belongs to this sign-in
     await signOut(auth);
   };
 
