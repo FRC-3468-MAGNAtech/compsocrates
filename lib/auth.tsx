@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { PROFILE_RETRY_MS, readFailureMeansNoProfile } from "@/lib/profile-read-failure";
 import { clearLegacyCache } from "@/lib/legacy-cache";
+import { clearTeamLabelCache } from "@/lib/team-label-cache";
 import {
   createUserWithEmailAndPassword,
   getRedirectResult,
@@ -330,6 +331,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     clearLegacyCache(); // the device copy of the legacy rows belongs to this sign-in
+    clearTeamLabelCache(); // and so do the remembered team labels
     clearSignInSyncMarker();
     await signOut(auth);
   };

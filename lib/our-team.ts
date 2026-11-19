@@ -18,6 +18,7 @@ import { storageKey } from "@/config/brand";
 import { useAuth } from "@/lib/auth";
 import { useProgramConfig } from "@/lib/program/context";
 import { useTeamDoc } from "@/lib/team";
+import { composeTeamIdentity } from "@/lib/team-label";
 import { readTeamIdentity, type AccountTeam, type TeamIdentitySource } from "@/lib/team-number";
 
 export type OurTeam = {
@@ -27,6 +28,11 @@ export type OurTeam = {
   name: string | null;
   /** False until the team doc (and the user's profile) have loaded, so "no team" never flashes. */
   loaded: boolean;
+  /**
+   * The TEAM-level identity (not the robot team being viewed as): the team's own number, or its robot teams' numbers joined with " + ", and the organization name when set, else the
+   * robot teams' names, else the team's name (`composeTeamIdentity`). Absent until the team document has loaded, and in plain test contexts.
+   */
+  teamLevel?: { number: string | null; name: string | null };
 };
 
 /** The fields of a team doc this module reads: CS's raw `teamNumber` (string) / `teamName`, or the adapter's `number` / `name`. */
@@ -115,7 +121,15 @@ export function OurTeamProvider({ children }: { children: ReactNode }) {
     [teamDocId, picks]
   );
 
-  const ours = useMemo(() => (chosen.selected ? { number: chosen.selected.number, name: chosen.selected.name, loaded: loadedAll } : ourTeamFrom(team, loadedAll)), [chosen.selected, team, loadedAll]);
+  const teamLevel = useMemo(() => {
+    if (!team) return undefined;
+    const identity = composeTeamIdentity({ number: team.number > 0 ? team.number : null, name: team.name, org: team.accountName, robots: accountTeams });
+    return identity ? { number: identity.number || null, name: identity.name || null } : undefined;
+  }, [team, accountTeams]);
+  const ours = useMemo(
+    () => ({ ...(chosen.selected ? { number: chosen.selected.number, name: chosen.selected.name, loaded: loadedAll } : ourTeamFrom(team, loadedAll)), ...(teamLevel ? { teamLevel } : {}) }),
+    [chosen.selected, team, loadedAll, teamLevel]
+  );
   const choice = useMemo(() => ({ teams: chosen.teams, selectedId: chosen.selected?.id ?? null, select }), [chosen, select]);
 
   return createElement(OurTeamContext.Provider, { value: ours }, createElement(AccountTeamContext.Provider, { value: choice }, children));

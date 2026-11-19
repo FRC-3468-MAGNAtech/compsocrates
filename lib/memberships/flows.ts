@@ -4,6 +4,7 @@
  * `ProgramConfig.membership`.
  */
 import { PROGRAMS } from "@/config/programs";
+import { composeTeamIdentity } from "@/lib/team-label";
 import { parseTeamNumber, readTeamIdentity, teamLabel } from "@/lib/team-number";
 import { DEFAULT_ROLE_ID, isRoleId, normalizeLegacyRole, sortRolesCanonical, type RoleId } from "@/lib/roles";
 import {
@@ -233,19 +234,9 @@ export function teamSnapshotOfDoc(program: ProgramId, team: Doc): TeamSnapshot |
         .map((r) => (r && typeof r === "object" ? { number: parseTeamNumber(snapText((r as { number?: unknown }).number)), name: snapText((r as { name?: unknown }).name) } : null))
         .filter((r): r is { number: number; name: string } => r !== null && r.number !== null)
     : [];
-  const org = snapText((team as Record<string, unknown>).accountName);
   const own = readTeamIdentity(team as { teamNumber?: unknown; teamName?: unknown; number?: unknown; name?: unknown });
-  let number: string;
-  let name: string;
-  if (robots.length >= 2) {
-    number = robots.map((r) => r.number).join(" + ");
-    name = org || robots.map((r) => r.name).filter((n) => n !== "").join(" + ");
-  } else {
-    number = own.number !== null ? String(own.number) : robots[0] ? String(robots[0].number) : "";
-    name = org || own.name || robots[0]?.name || "";
-  }
-  if (number === "" && name === "") return null;
-  return { teamNumber: number.slice(0, 120), teamName: name.slice(0, 120) };
+  const identity = composeTeamIdentity({ number: own.number, name: own.name, org: snapText((team as Record<string, unknown>).accountName), robots });
+  return identity ? { teamNumber: identity.number, teamName: identity.name } : null;
 }
 
 /** The patch that restores a PAST membership of the same team: active again, `rejoinedAt` set, the original `joinedAt` kept, the role set fresh by the approver. */
