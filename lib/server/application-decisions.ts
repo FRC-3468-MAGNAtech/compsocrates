@@ -99,7 +99,7 @@ export async function approveApplication(
     }
     if (created) {
       try {
-        writeCreatorMembership(txn, program, created, { uid: app.applicantUid, teamId: code, name: String(app.applicantName ?? ""), teamLabel: plan.teamLabel, role: plan.role, fieldTeamIds: plan.fieldTeamIds, nowMs });
+        writeCreatorMembership(txn, program, created, { uid: app.applicantUid, teamId: code, name: String(app.applicantName ?? ""), teamLabel: plan.teamLabel, snapshot: plan.snapshot, role: plan.role, fieldTeamIds: plan.fieldTeamIds, nowMs });
       } catch (err) {
         if (err instanceof MembershipError) throw new RouteError(err.status, err.code, err.message);
         throw err;

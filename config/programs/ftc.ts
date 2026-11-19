@@ -110,6 +110,7 @@ export const FTC_PROGRAM: ProgramConfig = {
     flows: {
       ownerFields: ["ownerUid"],
       assignableListField: "fieldTeamIdList",
+      robotTeamsField: "fieldTeams",
       legacyAdminRole: null,
       leaveExtras: {},
       teamLookup: "idOrJoinCode",

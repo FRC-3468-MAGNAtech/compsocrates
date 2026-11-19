@@ -345,3 +345,45 @@ describe("the kill switch and the sign-in hook", () => {
     await expect(ensureMembershipsOnSignIn(db(), "u1", NOW)).resolves.toEqual({});
   });
 });
+
+describe("the identity snapshot (teamNumber, teamName)", () => {
+  const team = (over: Record<string, unknown> = {}) => ({ teamNumber: "3468", teamName: "MAGNAtech", joinCode: "AAA111", ...over });
+
+  it("the sign-in sync gives a NEW membership its snapshot (one team-document read), and an OLD active one once, then never again", async () => {
+    fake.seed("users/u1", rootUser());
+    fake.seed("teams/AAA111", team());
+    expect(await ensureMembership(db(), "frc", "u1", NOW)).toBe("created");
+    expect(fake.read("memberships/AAA111_u1")).toMatchObject({ teamNumber: "3468", teamName: "MAGNAtech" });
+    // an older membership with none: filled in once
+    fake.seed("memberships/AAA111_u1", member("AAA111", "u1"));
+    expect(await ensureMembership(db(), "frc", "u1", NOW)).toBe("exists");
+    expect(fake.read("memberships/AAA111_u1")).toMatchObject({ teamNumber: "3468", teamName: "MAGNAtech" });
+    // renamed team: a membership that has a snapshot is NOT rewritten and costs no team-document read
+    fake.seed("teams/AAA111", team({ teamName: "Renamed" }));
+    const reads = watchReads(fake);
+    await ensureMembership(db(), "frc", "u1", NOW);
+    expect(reads).not.toContain("teams/AAA111");
+    expect(fake.read("memberships/AAA111_u1")).toMatchObject({ teamName: "MAGNAtech" });
+  });
+
+  it("a team with no readable identity writes nothing and does not fail", async () => {
+    fake.seed("users/u1", rootUser());
+    fake.seed("teams/AAA111", { joinCode: "AAA111" });
+    expect(await ensureMembership(db(), "frc", "u1", NOW)).toBe("created");
+    const stored = fake.read("memberships/AAA111_u1") as Record<string, unknown>;
+    expect(stored.teamName).toBeUndefined();
+    expect(stored.teamNumber).toBeUndefined();
+  });
+
+  it("a switch fills in both teams' snapshots when they have none, and the stored values never hold the team id", async () => {
+    fake.seed("users/u1", rootUser());
+    fake.seed("memberships/AAA111_u1", member("AAA111", "u1"));
+    fake.seed("memberships/BBB222_u1", member("BBB222", "u1"));
+    fake.seed("teams/AAA111", team());
+    fake.seed("teams/BBB222", team({ teamNumber: "254", teamName: "Cheesy", joinCode: "BBB222" }));
+    await switchActiveTeam(db(), "frc", "u1", "BBB222", NOW);
+    expect(fake.read("memberships/AAA111_u1")).toMatchObject({ teamNumber: "3468", teamName: "MAGNAtech" });
+    expect(fake.read("memberships/BBB222_u1")).toMatchObject({ teamNumber: "254", teamName: "Cheesy" });
+    expect(JSON.stringify([fake.read("memberships/AAA111_u1"), fake.read("memberships/BBB222_u1")])).not.toMatch(/"team(Number|Name)":"(AAA111|BBB222)"/);
+  });
+});

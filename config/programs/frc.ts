@@ -53,6 +53,7 @@ export const FRC_PROGRAM: ProgramConfig = {
     flows: {
       ownerFields: ["verifiedOwnerId", "ownerUid"],
       assignableListField: null,
+      robotTeamsField: null,
       legacyAdminRole: "coach",
       leaveExtras: { specialRole: null, specialRoles: [] },
       teamLookup: "id",

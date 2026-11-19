@@ -4,7 +4,7 @@
  * `ProgramConfig.membership`.
  */
 import { PROGRAMS } from "@/config/programs";
-import { readTeamIdentity, teamLabel } from "@/lib/team-number";
+import { parseTeamNumber, readTeamIdentity, teamLabel } from "@/lib/team-number";
 import { DEFAULT_ROLE_ID, isRoleId, normalizeLegacyRole, sortRolesCanonical, type RoleId } from "@/lib/roles";
 import {
   MembershipError,
@@ -183,7 +183,7 @@ export function clearedUserPatch(program: ProgramId, remove: unknown): Record<st
 }
 
 /** A VERIFIED membership: created by a server flow that checked the join (approval, creation, transfer, rejoin). */
-export function buildVerifiedMembership(input: { program: ProgramId; uid: string; teamId: string; name: string; teamLabel?: string; role: string; isAdmin?: boolean; isOwner?: boolean; fieldTeamIds: string[] | null; nowMs: number }): MembershipDoc {
+export function buildVerifiedMembership(input: { program: ProgramId; uid: string; teamId: string; name: string; teamLabel?: string; snapshot?: TeamSnapshot | null; role: string; isAdmin?: boolean; isOwner?: boolean; fieldTeamIds: string[] | null; nowMs: number }): MembershipDoc {
   const hasRoles = !!PROGRAMS[input.program].membership.userFields.roles;
   return {
     uid: input.uid,
@@ -196,6 +196,7 @@ export function buildVerifiedMembership(input: { program: ProgramId; uid: string
     fieldTeamIds: PROGRAMS[input.program].membership.userFields.fieldTeamIds ? input.fieldTeamIds : null,
     name: input.name.slice(0, 120),
     ...(input.teamLabel ? { teamLabel: input.teamLabel.slice(0, 120) } : {}),
+    ...(input.snapshot ?? {}),
     status: "active",
     origin: "verified",
     joinedAt: input.nowMs,
@@ -212,8 +213,43 @@ export function teamLabelOfDoc(team: Doc): string {
   return name ?? "";
 }
 
+/** The identity snapshot a membership carries (`teamNumber`, `teamName`; see MembershipDoc). */
+export type TeamSnapshot = { teamNumber: string; teamName: string };
+
+const snapText = (v: unknown): string => (typeof v === "string" ? v.trim() : typeof v === "number" && Number.isFinite(v) ? String(v) : "");
+
+/**
+ * Pure: the identity snapshot of a team document, for the membership. Never throws, never contains an id.
+ *  - SEVERAL robot teams (`ProgramConfig.membership.flows.robotTeamsField`): the number is their numbers joined with " + ", the name the organization name (`accountName`) when set, else their names joined with " + ".
+ *  - otherwise the team's own number, and the organization name when set, else the team's own name.
+ * Null when neither a number nor a name can be read (nothing is written then).
+ */
+export function teamSnapshotOfDoc(program: ProgramId, team: Doc): TeamSnapshot | null {
+  if (!team) return null;
+  const field = PROGRAMS[program].membership.flows.robotTeamsField;
+  const raw = field ? (team as Record<string, unknown>)[field] : null;
+  const robots = Array.isArray(raw)
+    ? raw
+        .map((r) => (r && typeof r === "object" ? { number: parseTeamNumber(snapText((r as { number?: unknown }).number)), name: snapText((r as { name?: unknown }).name) } : null))
+        .filter((r): r is { number: number; name: string } => r !== null && r.number !== null)
+    : [];
+  const org = snapText((team as Record<string, unknown>).accountName);
+  const own = readTeamIdentity(team as { teamNumber?: unknown; teamName?: unknown; number?: unknown; name?: unknown });
+  let number: string;
+  let name: string;
+  if (robots.length >= 2) {
+    number = robots.map((r) => r.number).join(" + ");
+    name = org || robots.map((r) => r.name).filter((n) => n !== "").join(" + ");
+  } else {
+    number = own.number !== null ? String(own.number) : robots[0] ? String(robots[0].number) : "";
+    name = org || own.name || robots[0]?.name || "";
+  }
+  if (number === "" && name === "") return null;
+  return { teamNumber: number.slice(0, 120), teamName: name.slice(0, 120) };
+}
+
 /** The patch that restores a PAST membership of the same team: active again, `rejoinedAt` set, the original `joinedAt` kept, the role set fresh by the approver. */
-export function restoredMembershipPatch(input: { program: ProgramId; name: string; teamLabel?: string; role: string; fieldTeamIds: string[] | null; nowMs: number }): Record<string, unknown> {
+export function restoredMembershipPatch(input: { program: ProgramId; name: string; teamLabel?: string; snapshot?: TeamSnapshot | null; role: string; fieldTeamIds: string[] | null; nowMs: number }): Record<string, unknown> {
   const f = PROGRAMS[input.program].membership.userFields;
   return {
     status: "active",
@@ -229,6 +265,7 @@ export function restoredMembershipPatch(input: { program: ProgramId; name: strin
     fieldTeamIds: f.fieldTeamIds ? input.fieldTeamIds : null,
     name: input.name.slice(0, 120),
     ...(input.teamLabel ? { teamLabel: input.teamLabel.slice(0, 120) } : {}),
+    ...(input.snapshot ?? {}),
     updatedAt: input.nowMs,
   };
 }

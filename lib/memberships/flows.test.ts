@@ -10,6 +10,7 @@ import {
   guardEnding,
   guardSelfDemotion,
   isRequestableRole,
+  teamSnapshotOfDoc,
   mergeRosterRows,
   parseAccessChanges,
   pickNextActive,
@@ -149,5 +150,26 @@ describe("memberships that end, restart or move the pointer", () => {
     expect(teamLabelOfDoc({ teamNumber: "3468", teamName: "MAGNAtech" })).toBe("Team 3468 · MAGNAtech");
     expect(teamLabelOfDoc({ number: 35792, name: "" })).toBe("Team 35792");
     expect(teamLabelOfDoc({})).toBe("");
+  });
+});
+
+describe("teamSnapshotOfDoc (the identity snapshot a membership carries)", () => {
+  it("is the team's own number and name for a team with one number (FRC)", () => {
+    expect(teamSnapshotOfDoc("frc", { teamNumber: "3468", teamName: "MAGNAtech" })).toEqual({ teamNumber: "3468", teamName: "MAGNAtech" });
+    expect(teamSnapshotOfDoc("frc", { teamNumber: "3468", teamName: "MAGNAtech", accountName: "  Our Club " })).toEqual({ teamNumber: "3468", teamName: "Our Club" });
+  });
+  it("joins the robot teams' numbers with \" + \" when there are several, and names them, unless an organization name is set (FTC)", () => {
+    const team = { number: 35792, name: "Rebels A", fieldTeams: [{ id: "a", number: 35792, name: "MAGNAtech Rebels A" }, { id: "b", number: 35794, name: "MAGNAtech Rebels B" }] };
+    expect(teamSnapshotOfDoc("ftc", team)).toEqual({ teamNumber: "35792 + 35794", teamName: "MAGNAtech Rebels A + MAGNAtech Rebels B" });
+    expect(teamSnapshotOfDoc("ftc", { ...team, accountName: "MAGNAtech" })).toEqual({ teamNumber: "35792 + 35794", teamName: "MAGNAtech" });
+  });
+  it("uses the team's own number and name when it has one robot team, and nothing when nothing can be read", () => {
+    expect(teamSnapshotOfDoc("ftc", { number: 35792, name: "Rebels A", fieldTeams: [{ id: "a", number: 35792, name: "Rebels A" }] })).toEqual({ teamNumber: "35792", teamName: "Rebels A" });
+    expect(teamSnapshotOfDoc("ftc", {})).toBeNull();
+    expect(teamSnapshotOfDoc("ftc", null)).toBeNull();
+  });
+  it("never reads the join code or any id", () => {
+    const out = JSON.stringify(teamSnapshotOfDoc("frc", { teamNumber: "3468", teamName: "MAGNAtech", joinCode: "W0065V", id: "W0065V" }));
+    expect(out).not.toContain("W0065V");
   });
 });

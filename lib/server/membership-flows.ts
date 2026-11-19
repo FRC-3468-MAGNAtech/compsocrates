@@ -6,6 +6,8 @@ import { programPath } from "@/lib/firebase/paths";
 import {
   ALLOW_ROLE_CHOICE_FIELD,
   teamLabelOfDoc,
+  teamSnapshotOfDoc,
+  type TeamSnapshot,
   accessMembershipPatch,
   accessUserPatch,
   buildVerifiedMembership,
@@ -338,15 +340,16 @@ export async function decideJoin(db: Firestore, actor: Actor, input: DecideInput
       const name = requestedName || nameSnapshot(c.program, target) || "Member";
       const fieldTeamIds = teamAssignable(c, team);
       const label = teamLabelOfDoc(team);
+      const snapshot = teamSnapshotOfDoc(c.program, team);
       const mRef = membershipRef(c, teamId, targetUid);
       const restored = !!targetMem && targetMem.status === "past";
       let snapshotDoc: MembershipDoc;
       if (restored) {
-        const patch = restoredMembershipPatch({ program: c.program, name, teamLabel: label, role, fieldTeamIds, nowMs });
+        const patch = restoredMembershipPatch({ program: c.program, name, teamLabel: label, snapshot, role, fieldTeamIds, nowMs });
         txn.update(mRef, patch);
         snapshotDoc = { ...(targetMem as MembershipDoc), ...(patch as Partial<MembershipDoc>) } as MembershipDoc;
       } else {
-        snapshotDoc = buildVerifiedMembership({ program: c.program, uid: targetUid, teamId, name, teamLabel: label, role, fieldTeamIds, nowMs });
+        snapshotDoc = buildVerifiedMembership({ program: c.program, uid: targetUid, teamId, name, teamLabel: label, snapshot, role, fieldTeamIds, nowMs });
         const problem = membershipProblem(snapshotDoc as unknown as Record<string, unknown>);
         if (problem) throw new Error(`membership failed validation: ${problem}`);
         txn.create(mRef, snapshotDoc);
@@ -564,13 +567,13 @@ export async function readVerifiedState(db: Firestore, txn: Transaction, program
  * WRITE half: makes the person's membership of the team VERIFIED with the given role flags. Creates it, or upgrades the existing one in place (keeps `joinedAt`,
  * an ended one is restored with `rejoinedAt`). The server flow calling this has itself checked who the person is on the team.
  */
-export function writeVerifiedMembership(txn: Transaction, program: ProgramId, state: VerifiedState, input: { uid: string; teamId: string; name: string; teamLabel?: string; role: string; isAdmin: boolean; isOwner: boolean; fieldTeamIds: string[] | null; nowMs: number }): void {
+export function writeVerifiedMembership(txn: Transaction, program: ProgramId, state: VerifiedState, input: { uid: string; teamId: string; name: string; teamLabel?: string; snapshot?: TeamSnapshot | null; role: string; isAdmin: boolean; isOwner: boolean; fieldTeamIds: string[] | null; nowMs: number }): void {
   if (!state.existing) {
-    const doc = buildVerifiedMembership({ program, uid: input.uid, teamId: input.teamId, name: input.name, teamLabel: input.teamLabel, role: input.role, isAdmin: input.isAdmin, isOwner: input.isOwner, fieldTeamIds: input.fieldTeamIds, nowMs: input.nowMs });
+    const doc = buildVerifiedMembership({ program, uid: input.uid, teamId: input.teamId, name: input.name, teamLabel: input.teamLabel, snapshot: input.snapshot, role: input.role, isAdmin: input.isAdmin, isOwner: input.isOwner, fieldTeamIds: input.fieldTeamIds, nowMs: input.nowMs });
     txn.create(state.ref, doc);
     return;
   }
-  const patch: Record<string, unknown> = { origin: "verified", isAdmin: input.isAdmin, isOwner: input.isOwner, name: input.name.slice(0, 120), updatedAt: input.nowMs, status: "active", leftAt: null, endedBy: null, ...(input.teamLabel ? { teamLabel: input.teamLabel.slice(0, 120) } : {}) };
+  const patch: Record<string, unknown> = { origin: "verified", isAdmin: input.isAdmin, isOwner: input.isOwner, name: input.name.slice(0, 120), updatedAt: input.nowMs, status: "active", leftAt: null, endedBy: null, ...(input.teamLabel ? { teamLabel: input.teamLabel.slice(0, 120) } : {}), ...(input.snapshot ?? {}) };
   if (state.existing.status === "past") patch.rejoinedAt = input.nowMs;
   txn.update(state.ref, patch);
 }
@@ -596,13 +599,13 @@ export async function readOwnerTransferState(db: Firestore, txn: Transaction, pr
  * WRITE half: the new owner's membership becomes VERIFIED, admin and owner (made from their user document when they have none yet), and the previous owner's
  * membership, when there is one, loses only the owner flag (they stay an admin). The transfer route has itself checked who may transfer to whom.
  */
-export function writeOwnerTransfer(txn: Transaction, program: ProgramId, state: OwnerTransferState, input: { teamId: string; newUid: string; newUser: DocumentData | undefined; teamLabel?: string; nowMs: number }): void {
+export function writeOwnerTransfer(txn: Transaction, program: ProgramId, state: OwnerTransferState, input: { teamId: string; newUid: string; newUser: DocumentData | undefined; teamLabel?: string; snapshot?: TeamSnapshot | null; nowMs: number }): void {
   const { newOwner, oldOwner } = state;
   if (newOwner.existing) {
-    txn.update(newOwner.ref, { origin: "verified", isAdmin: true, isOwner: true, status: "active", leftAt: null, endedBy: null, updatedAt: input.nowMs, ...(input.teamLabel ? { teamLabel: input.teamLabel } : {}), ...(newOwner.existing.status === "past" ? { rejoinedAt: input.nowMs } : {}) });
+    txn.update(newOwner.ref, { origin: "verified", isAdmin: true, isOwner: true, status: "active", leftAt: null, endedBy: null, updatedAt: input.nowMs, ...(input.teamLabel ? { teamLabel: input.teamLabel } : {}), ...(input.snapshot ?? {}), ...(newOwner.existing.status === "past" ? { rejoinedAt: input.nowMs } : {}) });
   } else {
     const built = buildMembershipFromUser(program, input.newUid, { ...input.newUser, teamId: input.teamId }, input.nowMs);
-    if (built.ok) txn.create(newOwner.ref, { ...built.doc, origin: "verified", isAdmin: true, isOwner: true, ...(input.teamLabel ? { teamLabel: input.teamLabel } : {}) });
+    if (built.ok) txn.create(newOwner.ref, { ...built.doc, origin: "verified", isAdmin: true, isOwner: true, ...(input.teamLabel ? { teamLabel: input.teamLabel } : {}), ...(input.snapshot ?? {}) });
   }
   if (oldOwner?.existing && oldOwner.existing.status === "active") txn.update(oldOwner.ref, { isOwner: false, updatedAt: input.nowMs });
 }
@@ -614,7 +617,7 @@ export async function readCreationState(db: Firestore, txn: Transaction, program
 }
 
 /** WRITE half for a team's creator: a verified, admin, owner membership. Refuses (409 `membership_limit`) at five active teams. */
-export function writeCreatorMembership(txn: Transaction, program: ProgramId, created: { state: VerifiedState; active: number }, input: { uid: string; teamId: string; name: string; teamLabel?: string; role: string; fieldTeamIds?: string[] | null; nowMs: number }): void {
+export function writeCreatorMembership(txn: Transaction, program: ProgramId, created: { state: VerifiedState; active: number }, input: { uid: string; teamId: string; name: string; teamLabel?: string; snapshot?: TeamSnapshot | null; role: string; fieldTeamIds?: string[] | null; nowMs: number }): void {
   if (created.active >= MAX_ACTIVE_MEMBERSHIPS) throw new MembershipError(409, "membership_limit", `An account can hold at most ${MAX_ACTIVE_MEMBERSHIPS} active teams.`);
-  writeVerifiedMembership(txn, program, created.state, { uid: input.uid, teamId: input.teamId, name: input.name, teamLabel: input.teamLabel, role: input.role, isAdmin: true, isOwner: true, fieldTeamIds: input.fieldTeamIds ?? null, nowMs: input.nowMs });
+  writeVerifiedMembership(txn, program, created.state, { uid: input.uid, teamId: input.teamId, name: input.name, teamLabel: input.teamLabel, snapshot: input.snapshot, role: input.role, isAdmin: true, isOwner: true, fieldTeamIds: input.fieldTeamIds ?? null, nowMs: input.nowMs });
 }

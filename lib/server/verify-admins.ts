@@ -2,7 +2,7 @@ import "server-only";
 import type { DocumentData, Firestore } from "firebase-admin/firestore";
 import { PROGRAMS } from "@/config/programs";
 import { programPath } from "@/lib/firebase/paths";
-import { rosterRowFromUser, teamLabelOfDoc, teamOwnerUid, userIsAdmin, userIsOwner } from "@/lib/memberships/flows";
+import { rosterRowFromUser, teamLabelOfDoc, teamSnapshotOfDoc, teamOwnerUid, userIsAdmin, userIsOwner } from "@/lib/memberships/flows";
 import { MembershipError, buildMembershipFromUser, membershipKey, pointerOf, readMembership, readRoleSnapshot, type MembershipDoc, type ProgramId } from "@/lib/memberships/model";
 import { platformAuditDoc } from "@/lib/server/audit";
 import { flowFail, runFlow, type Actor, type FlowResult } from "@/lib/server/membership-flows";
@@ -122,6 +122,7 @@ export async function verifyAdmins(db: Firestore, owner: Actor, input: VerifyInp
       }
       const ownerUid = teamOwnerUid(program, teamSnap.data());
       const label = teamLabelOfDoc(teamSnap.data());
+      const snapshot = teamSnapshotOfDoc(program, teamSnap.data());
       const reads = await Promise.all(
         uids.map(async (uid) => {
           const key = membershipKey(teamId, uid);
@@ -157,14 +158,14 @@ export async function verifyAdmins(db: Firestore, owner: Actor, input: VerifyInp
           }
           const isOwner = userIsOwner(program, r.user) || r.uid === ownerUid;
           if (r.mem) {
-            writes.push(() => txn.update(ref, { origin: "verified", verifiedBy: owner.uid, verifiedAt: nowMs, isAdmin: true, isOwner, updatedAt: nowMs, ...(label ? { teamLabel: label } : {}) }));
+            writes.push(() => txn.update(ref, { origin: "verified", verifiedBy: owner.uid, verifiedAt: nowMs, isAdmin: true, isOwner, updatedAt: nowMs, ...(label ? { teamLabel: label } : {}), ...(snapshot ?? {}) }));
           } else {
             const built = buildMembershipFromUser(program, r.uid, r.user, typeof r.user?.createdAt === "number" ? r.user.createdAt : nowMs);
             if (!built.ok) {
               skipped.push({ uid: r.uid, reason: "not_found" });
               continue;
             }
-            writes.push(() => txn.create(ref, { ...built.doc, origin: "verified", verifiedBy: owner.uid, verifiedAt: nowMs, isAdmin: true, isOwner, ...(label ? { teamLabel: label } : {}) }));
+            writes.push(() => txn.create(ref, { ...built.doc, origin: "verified", verifiedBy: owner.uid, verifiedAt: nowMs, isAdmin: true, isOwner, ...(label ? { teamLabel: label } : {}), ...(snapshot ?? {}) }));
           }
           verified.push(r.uid);
           continue;
@@ -175,7 +176,7 @@ export async function verifyAdmins(db: Firestore, owner: Actor, input: VerifyInp
             already.push(r.uid);
             continue;
           }
-          writes.push(() => txn.update(ref, { origin: "verified", verifiedBy: owner.uid, verifiedAt: nowMs, updatedAt: nowMs, ...(label ? { teamLabel: label } : {}) }));
+          writes.push(() => txn.update(ref, { origin: "verified", verifiedBy: owner.uid, verifiedAt: nowMs, updatedAt: nowMs, ...(label ? { teamLabel: label } : {}), ...(snapshot ?? {}) }));
           verified.push(r.uid);
           continue;
         }

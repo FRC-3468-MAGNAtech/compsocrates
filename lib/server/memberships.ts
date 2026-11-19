@@ -17,6 +17,7 @@ import {
   type MembershipDoc,
   type ProgramId,
 } from "@/lib/memberships/model";
+import { teamSnapshotOfDoc, type TeamSnapshot } from "@/lib/memberships/flows";
 import { getMembershipsEnabled } from "@/lib/server/team-settings";
 
 export * from "@/lib/memberships/model";
@@ -35,6 +36,15 @@ export * from "@/lib/memberships/model";
 
 const memberships = (db: Firestore, program: ProgramId) => db.collection(programPath(program, "memberships"));
 const users = (db: Firestore, program: ProgramId) => db.collection(programPath(program, "users"));
+
+/** Does the membership already carry its identity snapshot? (Written once, by server code; older memberships have none.) */
+const hasSnapshot = (m: MembershipDoc | null): boolean => !!m && (m.teamNumber !== undefined || m.teamName !== undefined);
+
+/** ONE team-document read, inside the transaction, for the snapshot a membership lacks. Null when the team or its identity cannot be read (nothing is written then). */
+async function readTeamSnapshot(db: Firestore, txn: Transaction, program: ProgramId, teamId: string): Promise<TeamSnapshot | null> {
+  const snap = await txn.get(db.collection(programPath(program, "teams")).doc(teamId));
+  return snap.exists ? teamSnapshotOfDoc(program, snap.data()) : null;
+}
 
 /** Is `value` a program id of this app? (`unknown_program` is a 400 for a route.) */
 export function parseProgram(value: unknown): { ok: true; program: ProgramId } | { ok: false; status: 400; code: "program_required" | "unknown_program"; error: string } {
@@ -67,9 +77,19 @@ export async function ensureMembershipForUser(db: Firestore, program: ProgramId,
   if (problem) throw new Error(`membership failed validation: ${problem}`);
   const ref = memberships(db, program).doc(built.id);
   return db.runTransaction(async (txn): Promise<EnsureResult> => {
-    if ((await txn.get(ref)).exists) return "exists";
+    const existingSnap = await txn.get(ref);
+    if (existingSnap.exists) {
+      // An older ACTIVE membership with no identity snapshot gets it now: one team-document read, once, then it has one (a label never needs the id).
+      const existing = readMembership(existingSnap.data());
+      if (existing && existing.status === "active" && !hasSnapshot(existing)) {
+        const snapshot = await readTeamSnapshot(db, txn, program, built.doc.teamId);
+        if (snapshot) txn.update(ref, snapshot);
+      }
+      return "exists";
+    }
+    const snapshot = await readTeamSnapshot(db, txn, program, built.doc.teamId);
     if ((await countActive(db, txn, uid)) >= MAX_ACTIVE_MEMBERSHIPS) return "limit";
-    txn.create(ref, built.doc);
+    txn.create(ref, { ...built.doc, ...(snapshot ?? {}) });
     return "created";
   });
 }
@@ -111,9 +131,11 @@ export async function switchActiveTeam(db: Firestore, program: ProgramId, uid: s
     const pointer = pointerOf(user);
     const incomingRoles = roleSnapshotOf(incomingSnap.data());
     if (pointer === teamId) return { program, teamId, previousTeamId: null, role: incomingRoles.role, isAdmin: incomingRoles.isAdmin, changed: false };
+    // The incoming team's identity snapshot, when its membership has none yet (one team-document read, once per membership).
+    const incomingSnapshot = hasSnapshot(incoming) ? null : await readTeamSnapshot(db, txn, program, teamId);
 
     // Outgoing team: read first, write later.
-    let outgoing: { ref: DocumentReference; exists: boolean; past: boolean; doc?: MembershipDoc } | null = null;
+    let outgoing: { ref: DocumentReference; exists: boolean; past: boolean; doc?: MembershipDoc; snapshot?: TeamSnapshot | null } | null = null;
     if (pointer !== "") {
       const key = membershipKey(pointer, uid);
       if (!key.ok) throw new MembershipError(409, "invalid_pointer", "Your current team cannot be saved, so the switch was not made.");
@@ -121,12 +143,14 @@ export async function switchActiveTeam(db: Firestore, program: ProgramId, uid: s
       const snap = await txn.get(ref);
       const existing = snap.exists ? readMembership(snap.data()) : null;
       outgoing = { ref, exists: snap.exists, past: existing?.status === "past" };
+      if (existing?.status !== "past" && !hasSnapshot(existing)) outgoing.snapshot = await readTeamSnapshot(db, txn, program, pointer);
+      if (existing?.status !== "past" && !hasSnapshot(existing)) outgoing.snapshot = await readTeamSnapshot(db, txn, program, pointer);
       if (!snap.exists) {
         const built = buildMembershipFromUser(program, uid, user, nowMs);
         if (!built.ok) throw new MembershipError(409, "invalid_pointer", "Your current team cannot be saved, so the switch was not made.");
         const problem = membershipProblem(built.doc);
         if (problem) throw new Error(`membership failed validation: ${problem}`);
-        outgoing.doc = built.doc;
+        outgoing.doc = { ...built.doc, ...(outgoing.snapshot ?? {}) };
         if ((await countActive(db, txn, uid)) >= MAX_ACTIVE_MEMBERSHIPS) throw new MembershipError(409, "membership_limit", `An account can hold at most ${MAX_ACTIVE_MEMBERSHIPS} active teams.`);
       }
     }
@@ -134,8 +158,9 @@ export async function switchActiveTeam(db: Firestore, program: ProgramId, uid: s
     // Writes.
     if (outgoing) {
       if (outgoing.doc) txn.create(outgoing.ref, outgoing.doc);
-      else if (!outgoing.past) txn.update(outgoing.ref, { ...readRoleSnapshot(program, user), name: nameSnapshot(program, user), updatedAt: nowMs });
+      else if (!outgoing.past) txn.update(outgoing.ref, { ...readRoleSnapshot(program, user), name: nameSnapshot(program, user), updatedAt: nowMs, ...(outgoing.snapshot ?? {}) });
     }
+    if (incomingSnapshot) txn.update(incomingRef, incomingSnapshot);
     txn.update(userRef, { teamId, ...restorePatch(program, incomingRoles, FieldValue.delete()) });
     return { program, teamId, previousTeamId: pointer === "" ? null : pointer, role: incomingRoles.role, isAdmin: incomingRoles.isAdmin, changed: true };
   });

@@ -3,7 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import type { ProgramId } from "@/config/programs/types";
 import { buildBaseUserDoc, buildCreatorUserPatch, buildNewTeamDoc } from "@/data/cs/join-requests";
 import { ftcNewTeamDocs } from "@/data/ftc/enrollment";
-import { teamLabelOfDoc } from "@/lib/memberships/flows";
+import { teamLabelOfDoc, teamSnapshotOfDoc, type TeamSnapshot } from "@/lib/memberships/flows";
 import type { RoleId } from "@/lib/roles";
 
 /**
@@ -21,6 +21,8 @@ export type TeamPlan = {
   /** The role stored on the owner's membership. */
   role: string;
   teamLabel: string;
+  /** The identity snapshot the owner's membership carries. */
+  snapshot: TeamSnapshot | null;
   /** The owner's field teams for the membership (a program that has none: null). */
   fieldTeamIds: string[] | null;
 };
@@ -36,6 +38,7 @@ function rootPlan(i: TeamPlanInput): TeamPlan {
     userPatch: patch,
     role: String(patch.role ?? i.role),
     teamLabel: teamLabelOfDoc({ teamNumber: String(i.teamNumber), teamName: i.teamName }),
+    snapshot: teamSnapshotOfDoc("frc", { teamNumber: String(i.teamNumber), teamName: i.teamName }),
     fieldTeamIds: null,
   };
 }
@@ -50,6 +53,7 @@ function namespacedPlan(i: TeamPlanInput): TeamPlan {
     userPatch,
     role: i.role,
     teamLabel: teamLabelOfDoc(docs.team),
+    snapshot: teamSnapshotOfDoc("ftc", docs.team),
     fieldTeamIds: Array.isArray(docs.user.fieldTeamIds) ? (docs.user.fieldTeamIds as string[]) : null,
   };
 }

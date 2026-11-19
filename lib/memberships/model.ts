@@ -53,6 +53,13 @@ export type MembershipDoc = RoleSnapshot & {
   verifiedAt?: number;
   /** Build 2, additive: the team's label ("Team 3468 · Name") when a build 2 flow made or changed the membership, so the team switcher can name a team the person is not on right now (their rules cannot read it). Absent on older ones. */
   teamLabel?: string;
+  /**
+   * Build 5, additive, written by SERVER code only (`teamSnapshotOfDoc` in flows.ts): the team's identity, so a label never needs the team document or an id. `teamNumber` is the
+   * team number's digits, or the robot teams' numbers joined with " + "; `teamName` is the team's organization name, else the robot teams' names joined, else the team's name.
+   * Not personal data. Absent on older memberships (the switch route and the sign-in sync fill it in, once).
+   */
+  teamNumber?: string;
+  teamName?: string;
 };
 
 export const MEMBERSHIP_LIMITS = { idPart: 128, name: 120, role: 64, listItems: 50, listItem: 100 } as const;
@@ -194,7 +201,7 @@ export function buildMembershipFromUser(program: ProgramId, uid: string, userDoc
   };
 }
 
-const KEYS: readonly string[] = ["uid", "teamId", "role", "roles", "secondaryRoles", "isAdmin", "isOwner", "fieldTeamIds", "name", "status", "origin", "joinedAt", "leftAt", "endedBy", "updatedAt", "rejoinedAt", "verifiedBy", "verifiedAt", "teamLabel"];
+const KEYS: readonly string[] = ["uid", "teamId", "role", "roles", "secondaryRoles", "isAdmin", "isOwner", "fieldTeamIds", "name", "status", "origin", "joinedAt", "leftAt", "endedBy", "updatedAt", "rejoinedAt", "verifiedBy", "verifiedAt", "teamLabel", "teamNumber", "teamName"];
 
 /** Shape and size check of a membership document before it is written. Returns the first problem, or null. Rejects unknown keys (so an email can never ride along). */
 export function membershipProblem(doc: Record<string, unknown>): string | null {
@@ -211,6 +218,7 @@ export function membershipProblem(doc: Record<string, unknown>): string | null {
   if (doc.verifiedBy !== undefined && !isKeyPart(doc.verifiedBy)) return "verifiedBy";
   if (doc.verifiedAt !== undefined && !Number.isFinite(doc.verifiedAt)) return "verifiedAt";
   if (doc.teamLabel !== undefined && (typeof doc.teamLabel !== "string" || doc.teamLabel.length > MEMBERSHIP_LIMITS.name)) return "teamLabel";
+  for (const k of ["teamNumber", "teamName"] as const) if (doc[k] !== undefined && (typeof doc[k] !== "string" || (doc[k] as string).length > MEMBERSHIP_LIMITS.name)) return k;
   if (doc.role !== null && stringOrNull(doc.role, MEMBERSHIP_LIMITS.role) === null) return "role";
   for (const k of ["roles", "secondaryRoles", "fieldTeamIds"] as const) if (doc[k] !== null && listOrNull(doc[k]) === null) return k;
   for (const k of ["isAdmin", "isOwner"] as const) if (doc[k] !== null && typeof doc[k] !== "boolean") return k;
@@ -236,5 +244,7 @@ export function readMembership(data: Record<string, unknown> | undefined | null)
     ...(typeof data.verifiedBy === "string" ? { verifiedBy: data.verifiedBy } : {}),
     ...(typeof data.verifiedAt === "number" ? { verifiedAt: data.verifiedAt } : {}),
     ...(typeof data.teamLabel === "string" && data.teamLabel !== "" ? { teamLabel: data.teamLabel } : {}),
+    ...(typeof data.teamNumber === "string" && data.teamNumber !== "" ? { teamNumber: data.teamNumber } : {}),
+    ...(typeof data.teamName === "string" && data.teamName !== "" ? { teamName: data.teamName } : {}),
   };
 }

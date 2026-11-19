@@ -14,7 +14,7 @@ import type { CsRecord } from "@/data/cs/types";
 import { DEFAULT_PROGRAM } from "@/config/programs/types";
 import { getMembershipsEnabled } from "@/lib/server/team-settings";
 import { readOwnerTransferState, writeOwnerTransfer } from "@/lib/server/membership-flows";
-import { teamLabelOfDoc } from "@/lib/memberships/flows";
+import { teamLabelOfDoc, teamSnapshotOfDoc } from "@/lib/memberships/flows";
 import { TRANSFER_TTL_MS, canCancelTransfer, checkTransferRequest, checkTransferResponse, confirmationMatches, isRecentSignIn, isTeamOwner, readPendingTransfer } from "@/lib/team-owner";
 
 /** A user's display name (CS `displayName`, with the app's `name` as a fallback). */
@@ -189,7 +189,7 @@ async function respond(db: Firestore, decoded: Decoded, user: DocumentData, team
     txn.update(teamRef, { verifiedOwnerId: decoded.uid, pendingTransfer: FieldValue.delete() });
     txn.update(db.collection("users").doc(decoded.uid), { isOwner: true, isTeamAdmin: true });
     if (oldOwnerSnap.exists && currentOwner !== decoded.uid) txn.update(oldOwnerRef, { isOwner: false }); // stays an admin
-    if (owners) writeOwnerTransfer(txn, DEFAULT_PROGRAM, owners, { teamId: teamRef.id, newUid: decoded.uid, newUser: user, teamLabel: teamLabelOfDoc(team), nowMs });
+    if (owners) writeOwnerTransfer(txn, DEFAULT_PROGRAM, owners, { teamId: teamRef.id, newUid: decoded.uid, newUser: user, teamLabel: teamLabelOfDoc(team), snapshot: teamSnapshotOfDoc(DEFAULT_PROGRAM, team), nowMs });
     txn.set(
       db.collection("auditLog").doc(),
       teamAuditDoc(teamRef.id, decoded.uid, myName, "transfer-ownership", { fromUid: currentOwner, fromName: pending.fromName, toUid: decoded.uid, toName: myName }, { verifiedOwnerId: currentOwner }, { verifiedOwnerId: decoded.uid })
@@ -254,7 +254,7 @@ async function forceTransfer(db: Firestore, decoded: Decoded, body: Record<strin
     txn.update(teamRef, { verifiedOwnerId: toUid, pendingTransfer: FieldValue.delete() }); // a pending request from the old owner is void
     txn.update(targetRef, { isOwner: true, isTeamAdmin: true });
     if (oldSnap?.exists && oldOwnerUid) txn.update(db.collection("users").doc(oldOwnerUid), { isOwner: false });
-    if (owners) writeOwnerTransfer(txn, DEFAULT_PROGRAM, owners, { teamId, newUid: toUid, newUser: targetSnap.data(), teamLabel: teamLabelOfDoc(team), nowMs: Date.now() });
+    if (owners) writeOwnerTransfer(txn, DEFAULT_PROGRAM, owners, { teamId, newUid: toUid, newUser: targetSnap.data(), teamLabel: teamLabelOfDoc(team), snapshot: teamSnapshotOfDoc(DEFAULT_PROGRAM, team), nowMs: Date.now() });
     const newName = sanitizeLine(nameOf(targetSnap.data()), 80);
     txn.set(
       db.collection("auditLog").doc(),

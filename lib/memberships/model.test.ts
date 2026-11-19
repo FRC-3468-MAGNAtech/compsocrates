@@ -124,3 +124,14 @@ describe("name, validation, tolerant read", () => {
     expect([e.status, e.code]).toEqual([403, "not_a_member"]);
   });
 });
+
+describe("the identity snapshot fields", () => {
+  it("are accepted as short strings, rejected otherwise, and read back from a stored document", () => {
+    const base = { uid: "u1", teamId: "T1", role: null, roles: null, secondaryRoles: null, isAdmin: null, isOwner: null, fieldTeamIds: null, name: "A", status: "active", origin: "pointer", joinedAt: 1, leftAt: null, endedBy: null, updatedAt: 1 };
+    expect(membershipProblem({ ...base, teamNumber: "35792 + 35794", teamName: "Rebels" })).toBeNull();
+    expect(membershipProblem({ ...base, teamNumber: 3468 })).toBe("teamNumber");
+    expect(membershipProblem({ ...base, teamName: "x".repeat(121) })).toBe("teamName");
+    expect(readMembership({ ...base, teamNumber: "3468", teamName: "MAGNAtech" })).toMatchObject({ teamNumber: "3468", teamName: "MAGNAtech" });
+    expect(readMembership({ ...base, teamNumber: "", teamName: 5 })?.teamNumber).toBeUndefined();
+  });
+});

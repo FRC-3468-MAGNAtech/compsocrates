@@ -117,7 +117,7 @@ export const SHARED_ENTRIES: readonly RegistryEntry[] = [
     id: "memberships", collection: "memberships", action: "rewrite", fields: ["uid", "name", "verifiedBy"],
     finders: [{ kind: "equals", field: "uid" }, { kind: "equals", field: "verifiedBy" }],
     rewrite: { pairs: [{ uid: "uid", name: "name" }, { uid: "verifiedBy" }] }, customStep: "memberships",
-    note: "ended as `deleted`, kept with role and dates; the document is COPIED to {teamId}_{opaque} because the id holds the uid",
+    note: "ended as `deleted`, kept with role and dates; the document is COPIED to {teamId}_{opaque} because the id holds the uid. `teamNumber` and `teamName` (build 5) are the TEAM's identity snapshot, not personal data: kept as they are",
   },
   { id: "notifications", collection: "notifications", action: "delete", fields: ["uid"], finders: [{ kind: "equals", field: "uid" }], note: "score-ready notifications addressed to the person" },
   { id: "personalPractice", collection: "personalPractice", action: "delete", fields: ["uid", "scoutName"], finders: [{ kind: "userTree", subcollections: ["sessions", "entries", "state"] }], note: "private practice (and the share-on-join marker)" },

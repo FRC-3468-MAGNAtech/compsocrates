@@ -228,6 +228,8 @@ export type MembershipFlows = {
   ownerFields: readonly string[];
   /** The team-document field listing the units a new member is assigned to (copied onto a new member), or null when the program has none. */
   assignableListField: string | null;
+  /** The team-document field that lists the robot teams (each `{ number, name }`) of a team that has several, or null. Only the label snapshot reads it (`teamSnapshotOfDoc`). */
+  robotTeamsField: string | null;
   /** A raw role value the program's rules treat as an admin (legacy), or null. */
   legacyAdminRole: string | null;
   /** Extra user-document fields reset when a person's LAST team ends (besides the mapped role, admin, owner and field-team fields). */
