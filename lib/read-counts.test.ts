@@ -62,11 +62,23 @@ function useCoachDashboard(t: string) {
   useTeamMembers(t);
   useAllTeamPracticeSessions(t);
 }
+// Read reduction 2a: the roster and the library on their own, the two datasets the first snapshot routes serve (call sites are as many as the pages above mount).
+function useRosterPage(t: string) {
+  useTeamMembers(t);
+  useTeamMembers(t);
+  useTeamMembers(t);
+}
+function useLibraryPage() {
+  useAllLibraryMatches(true);
+  useAllLibraryMatches(true);
+}
 const pages: Record<string, (team: string) => void> = {
   "app shell (live sessions + live presence listeners)": useShellPage,
   "Scout page (team entries feed)": useScoutPage,
   "Analytics (entries + all sessions + all library matches)": useAnalyticsPage,
   "Team Coach dashboard (entries, members x2, all sessions)": useCoachDashboard,
+  "Roster (members, 3 call sites)": useRosterPage,
+  "Library (all matches, 2 call sites)": useLibraryPage,
 };
 
 /** The same page opened AGAIN on the same device inside 6 hours: the module memory is gone (a reload) but the device copy of the legacy rows stays. */
@@ -98,6 +110,8 @@ const BEFORE: Record<string, number> = {
   "Scout page (team entries feed)": 4162,
   "Analytics (entries + all sessions + all library matches)": 5493,
   "Team Coach dashboard (entries, members x2, all sessions)": 5032,
+  "Roster (members, 3 call sites)": 60,
+  "Library (all matches, 2 call sites)": 1000,
 };
 
 describe("documents billed per page, on the synthetic dataset", () => {

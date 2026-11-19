@@ -1,0 +1,113 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`the practice-session exclusions (flag states) the extras resolve to > excludes exactly the sessions a flag state marks, read for this team only 1`] = `
+[
+  "s2",
+]
+`;
+
+exports[`useAllLibraryMatches: what the library delivers > delivers every published match with its stored fields and id, never a draft 1`] = `
+[
+  {
+    "blue": [
+      1678,
+      148,
+      111,
+    ],
+    "eventCode": "2026arli",
+    "id": "m1",
+    "matchNumber": 1,
+    "matchType": "qualification",
+    "origin": "api",
+    "published": true,
+    "red": [
+      254,
+      971,
+      118,
+    ],
+    "seasonId": "rebuilt",
+  },
+  {
+    "eventCode": "2026arli",
+    "id": "m2",
+    "matchNumber": 2,
+    "matchType": "qualification",
+    "origin": "api",
+    "published": true,
+    "seasonId": "rebuilt",
+  },
+  {
+    "eventCode": "2026lake",
+    "id": "m3",
+    "matchNumber": 3,
+    "matchType": "playoff",
+    "origin": "manual",
+    "published": true,
+    "seasonId": "rebuilt",
+    "teamId": "T-X",
+    "video": {
+      "endSec": 60,
+      "startSec": 5,
+      "youtubeUrl": "https://youtu.be/x",
+    },
+  },
+]
+`;
+
+exports[`useTeamMembers: what the roster delivers > delivers the team's members with their mapped roles, flags, avatar and joined time, and no one from another team 1`] = `
+[
+  {
+    "avatar": undefined,
+    "email": "casey@example.org",
+    "isAdmin": true,
+    "isOwner": false,
+    "joinedAtMs": undefined,
+    "legacyRole": "coach",
+    "name": "Casey Coach",
+    "primaryRole": "team-coach",
+    "secondaryRoles": [],
+    "uid": "u-coach",
+  },
+  {
+    "avatar": {
+      "type": "initials",
+      "value": "",
+    },
+    "email": "lee@example.org",
+    "isAdmin": false,
+    "isOwner": false,
+    "joinedAtMs": 1710000000000,
+    "legacyRole": "lead-scout",
+    "name": "Lee Lead",
+    "primaryRole": "lead-scout",
+    "secondaryRoles": [
+      "pit-scout",
+    ],
+    "uid": "u-lead",
+  },
+  {
+    "avatar": undefined,
+    "email": "olive@example.org",
+    "isAdmin": true,
+    "isOwner": true,
+    "joinedAtMs": 1700000000000,
+    "legacyRole": "lead-scout",
+    "name": "Olive Owner",
+    "primaryRole": "lead-scout",
+    "secondaryRoles": [],
+    "uid": "u-owner",
+  },
+  {
+    "avatar": undefined,
+    "email": "sam@example.org",
+    "isAdmin": false,
+    "isOwner": false,
+    "joinedAtMs": undefined,
+    "legacyRole": "match-scout",
+    "name": "Sam Scout",
+    "primaryRole": "match-scout",
+    "secondaryRoles": [],
+    "uid": "u-scout",
+  },
+]
+`;
