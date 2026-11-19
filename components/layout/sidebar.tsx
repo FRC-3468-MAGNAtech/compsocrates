@@ -26,7 +26,6 @@ import { usePlatformChangelogUnread } from "@/lib/platform-changelog/client";
 import { BRAND, storageKey } from "@/config/brand";
 import { useProgram, useProgramConfig } from "@/lib/program/context";
 import { ProgramSwitcher } from "@/components/program/program-switcher";
-import { FieldTeamSwitcher } from "@/components/program/field-team-switcher";
 import { TeamSwitcher } from "@/components/team/team-switcher";
 
 function NavLink({
@@ -338,7 +337,7 @@ function SidebarInner({
     );
   return (
     <>
-      {/* The team line is data-driven: our team's number and name under the wordmark (lib/our-team.ts; a multi-team switcher would go here). */}
+      {/* The team line is data-driven: our team's number and name under the wordmark (lib/our-team.ts); the one team switcher is just below. */}
       <div className="flex flex-col gap-2">
         <Link href="/dashboard" className="flex items-center gap-2.5 px-1.5 py-1">
           <span
@@ -351,7 +350,7 @@ function SidebarInner({
             <div className="min-w-0">
               <div className="truncate text-sm font-semibold">{BRAND.name}</div>
               {ourNumber !== null && (
-                <div className="truncate text-[11px] text-[var(--muted-foreground)]" data-testid="our-team-line">
+                <div className="break-words text-[11px] leading-snug text-[var(--muted-foreground)]" data-testid="our-team-line">
                   {teamLabel(ourNumber, ourName)}
                 </div>
               )}
@@ -362,7 +361,6 @@ function SidebarInner({
 
       {!collapsed && <ProgramSwitcher className="mb-1" />}
       {!collapsed && <TeamSwitcher className="mb-1" />}
-      {!collapsed && <FieldTeamSwitcher className="mb-1" />}
       <nav className="flex flex-1 flex-col gap-1 overflow-y-auto py-1">
         {resolved.main.map(renderNode)}
         {resolved.footer.length > 0 && <div className="my-2 h-px bg-[var(--glass-border)]" />}

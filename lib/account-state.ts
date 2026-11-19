@@ -7,7 +7,7 @@ import { programCollection } from "@/lib/firebase/paths";
 import { useAuth, type UserDoc } from "@/lib/auth";
 import { reportFirestoreError } from "@/lib/firestore-errors";
 import { useProgram } from "@/lib/program/context";
-import { EMPTY_ROLES, readMembership, type MembershipDoc, type ProgramId } from "@/lib/memberships/model";
+import { EMPTY_ROLES, PROGRAM_IDS, readMembership, type MembershipDoc, type ProgramId } from "@/lib/memberships/model";
 
 /**
  * `useAccountState()`: the account's team state for the CURRENT program, one seam beside `useAuth().profile` (it changes nothing about it). Nothing consumes it
@@ -31,7 +31,11 @@ type Entry = { state: "pending" } | { state: "done"; memberships: MembershipDoc[
 const entries = new Map<string, Entry>();
 const listeners = new Set<() => void>();
 const keyOf = (program: ProgramId, uid: string) => `${program}|${uid}`;
-const notify = () => listeners.forEach((l) => l());
+let version = 0;
+const notify = () => {
+  version += 1;
+  listeners.forEach((l) => l());
+};
 const subscribe = (l: () => void) => {
   listeners.add(l);
   return () => void listeners.delete(l);
@@ -121,6 +125,31 @@ export function useAccountState(): AccountState {
     if (uid && !loading && entry === undefined) void loadAccountMemberships(program, uid);
   }, [program, uid, loading, entry]);
   return deriveAccountState({ program, uid, authLoading: loading, profile, entry });
+}
+
+export type ProgramMemberships = { status: "idle" | "loading" | "ready"; memberships: MembershipDoc[] };
+const IDLE: ProgramMemberships = { status: "idle", memberships: [] };
+
+/**
+ * The account's memberships in EVERY program, for the one team switcher and My teams (the other program's teams). The current program's come from the same cache as `useAccountState`.
+ * `load` is false until the person OPENS the switcher or My teams: until then nothing is read for the other program (the device label cache paints the rows). When `load` turns true each program
+ * not read yet is read ONCE (`uid ==`, at most 5 documents, through the metered door) and kept for the session; `refreshAccountState()` (after a switch, a leave or a join) forgets them
+ * and, while `load` is true, they are read again. A refused read is an empty list (no implicit fallback here: the other program's profile is not loaded).
+ */
+export function useAllProgramMemberships(load: boolean): Record<ProgramId, ProgramMemberships> {
+  const { user, loading } = useAuth();
+  const uid = user?.uid ?? null;
+  const seen = useSyncExternalStore(subscribe, () => version, () => 0);
+  useEffect(() => {
+    if (!load || !uid || loading) return;
+    for (const program of PROGRAM_IDS) if (!entries.has(keyOf(program, uid))) void loadAccountMemberships(program, uid);
+  }, [load, uid, loading, seen]);
+  const out = {} as Record<ProgramId, ProgramMemberships>;
+  for (const program of PROGRAM_IDS) {
+    const entry = uid ? entries.get(keyOf(program, uid)) : undefined;
+    out[program] = !entry ? IDLE : entry.state === "pending" ? { status: "loading", memberships: [] } : { status: "ready", memberships: entry.memberships };
+  }
+  return out;
 }
 
 /** Test hook: forget everything and every listener. */

@@ -61,8 +61,6 @@ const FTC_ALLOWED: Record<string, string> = {
   "lib/memberships/flows.ts": "the pure membership rules: copy the stored per-member robot-team list between a user document and a membership through the program config (`userFields`); the same single named field as the membership model",
   "lib/server/membership-flows.ts": "the server membership flows: read and write that stored robot-team list when a membership is created, restored or ended, through the program config",
   "lib/team-roster.ts": "maps a membership's stored robot-team list onto the roster member (`assignedTeamIds`), the one place the roster seam reads it",
-  "components/program/field-team-switcher.tsx":"the robot-team switcher; its name is fixed by the membership build (the new membership switcher takes the name TeamSwitcher), and it renders only where the program config allows it",
-  "components/layout/sidebar.tsx": "mounts the robot-team switcher (FieldTeamSwitcher) next to the membership TeamSwitcher; both decide for themselves whether to render",
   "lib/server/first-team.ts": "the one server place that maps a program id to its team directory (provider and season) for an application's verification signals",
   "lib/server/live-program.ts": "the one server place that maps a program id to its live and lobby data store, and validates the program a live route is asked for",
   "app/api/ftc/templates/route.ts": "the server route for form templates of an FTC account; hands the call to the FTC-scoped server module",
