@@ -15,6 +15,7 @@ import { applySessionExclusions, assignSessionOwners, csSessionToPractice, exclu
 import { describeFirestoreError, reportFirestoreError, type FirestoreFailure } from "@/lib/firestore-errors";
 import { auth, db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { DEFAULT_PROGRAM } from "@/config/programs/types";
+import { liveFlagDocs } from "@/lib/flag-states";
 import { legacyCacheKey, readLegacy, writeLegacy } from "@/lib/legacy-cache";
 import type { PracticeSession } from "@/lib/practice-sessions";
 import { useTeamMembers } from "@/lib/team-members";
@@ -96,8 +97,10 @@ async function fetchExtras(teamId: string, members: readonly SessionMember[]): P
   reads.push(
     (async () => {
       try {
-        const snap = await getDocs(query(collection(db, "scoutingFlagStates"), where("teamId", "==", teamId)));
-        excluded = excludedSessionIds(snap.docs.map((d) => d.data()));
+        // Read reduction 2a: when the entries feed already listens to this team's flag states, take its documents (no second read of the same collection); otherwise one query, as before.
+        const live = liveFlagDocs(teamId);
+        const docs = live ? await live : (await getDocs(query(collection(db, "scoutingFlagStates"), where("teamId", "==", teamId)))).docs.map((d) => d.data());
+        excluded = excludedSessionIds(docs);
       } catch (err) {
         fail("scoutingFlagStates read failed", err, `scoutingFlagStates where teamId == ${teamId}`);
       }

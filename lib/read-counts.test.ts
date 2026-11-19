@@ -108,9 +108,9 @@ async function measureRepeat(page: (team: string) => void): Promise<number> {
 const BEFORE: Record<string, number> = {
   "app shell (live sessions + live presence listeners)": 9,
   "Scout page (team entries feed)": 4162,
-  "Analytics (entries + all sessions + all library matches)": 5493,
-  "Team Coach dashboard (entries, members x2, all sessions)": 5032,
-  "Roster (members, 3 call sites)": 60,
+  "Analytics (entries + all sessions + all library matches)": 5433, // 5,493 before read reduction 2a: the flag states were read twice (feed + practice extras)
+  "Team Coach dashboard (entries, members x2, all sessions)": 4932, // 5,032 before 2a: also one shared roster listener (3 call sites were 60 reads, now 20)
+  "Roster (members, 3 call sites)": 20, // 60 before 2a (one listener per call site)
   "Library (all matches, 2 call sites)": 1000,
 };
 
@@ -190,8 +190,8 @@ const BEFORE_DOT_FETCHES = 1;
 describe("documents billed when the same page is opened again within 6 hours (legacy rows remembered)", () => {
   const AGAIN: Record<string, [(team: string) => void, number]> = {
     "Scout page, repeat visit": [useScoutPage, 1294],
-    "Analytics, repeat visit": [useAnalyticsPage, 2124],
-    "Team Coach dashboard, repeat visit": [useCoachDashboard, 1664],
+    "Analytics, repeat visit": [useAnalyticsPage, 2044], // 2,124 before 2a
+    "Team Coach dashboard, repeat visit": [useCoachDashboard, 1544], // 1,664 before 2a
   };
   for (const [name, [page, expected]] of Object.entries(AGAIN)) {
     it(name, async () => {

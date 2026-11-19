@@ -26,6 +26,7 @@ import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
 import { programData, useProgramData } from "@/lib/program/data";
 import { loadRosterExtras } from "@/lib/team-roster";
 import { isQuotaExceeded } from "@/lib/quota";
+import { currentFlagStates, subscribeFlagStates } from "@/lib/flag-states";
 import { clearLegacyCache, legacyCacheKey, readLegacy, writeLegacy } from "@/lib/legacy-cache";
 import type { FirestoreFailure } from "@/lib/firestore-errors";
 import { assertSubmissionOpen, type SubmissionGateInput } from "@/lib/forms/submission-guard";
@@ -202,47 +203,7 @@ const IN_LIMIT = 30;
 
 type RawRow = { id: string; data: CsRecord; pending: boolean };
 
-// ---------------------------------------------------------------------------------------------------------------------
-// Flag states: ONE listener per team, shared by every entry subscription
-// ---------------------------------------------------------------------------------------------------------------------
-
-type FlagStore = { listeners: Set<() => void>; states: ReadonlyMap<string, CsFlagState>; unsubscribe: Unsubscribe };
-const flagStores = new Map<string, FlagStore>();
-
-function subscribeFlagStates(teamId: string, onChange: () => void): Unsubscribe {
-  let store = flagStores.get(teamId);
-  if (!store) {
-    const created: FlagStore = { listeners: new Set(), states: new Map(), unsubscribe: () => {} };
-    created.unsubscribe = onSnapshot(
-      query(collection(db, FLAG_COLLECTION), where("teamId", "==", teamId)),
-      (snap) => {
-        created.states = indexFlagStates(snap.docs.map((d) => d.data() as CsFlagState));
-        created.listeners.forEach((listener) => listener());
-      },
-      (err) => {
-        // CS does the same: carry on without flag states.
-        console.warn("scoutingFlagStates subscription failed:", err);
-        if (!isQuotaExceeded(err)) created.states = new Map(); // quota: keep the last flag states
-        created.listeners.forEach((listener) => listener());
-      }
-    );
-    flagStores.set(teamId, created);
-    store = created;
-  }
-  const active = store;
-  active.listeners.add(onChange);
-  return () => {
-    active.listeners.delete(onChange);
-    if (active.listeners.size === 0) {
-      active.unsubscribe();
-      if (flagStores.get(teamId) === active) flagStores.delete(teamId);
-    }
-  };
-}
-
-function currentFlagStates(teamId: string): ReadonlyMap<string, CsFlagState> {
-  return flagStores.get(teamId)?.states ?? new Map();
-}
+// Flag states: ONE listener per team, shared by every entry subscription AND by the practice extras: lib/flag-states.ts.
 
 async function loadFlagStates(teamId: string): Promise<ReadonlyMap<string, CsFlagState>> {
   try {
