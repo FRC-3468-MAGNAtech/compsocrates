@@ -129,6 +129,8 @@ describe("All Members matrix", () => {
     expect(rows).toHaveLength(40);
     expect(html.match(/data-cell/g)).toHaveLength(60 * 40);
     expect(html.match(/tabindex="0"/g)).toHaveLength(1);
-    expect(ms).toBeLessThan(3000);
+    // A budget against a quadratic blow-up (a 2,400-cell matrix renders well under a second alone). 3 s flaked at 3.06 s when the whole suite ran in parallel; 10 s is still
+    // far below what a regression would cost, and the cell-count and tab-stop assertions above are unchanged.
+    expect(ms).toBeLessThan(10_000);
   });
 });

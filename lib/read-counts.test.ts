@@ -120,6 +120,9 @@ vi.mock("@/lib/firebase/admin", () => ({
 }));
 vi.mock("@/lib/server/avatar-blobs", () => ({ avatarStoreHost: () => null }));
 
+// The first dynamic import of a route is slow on a loaded machine (the full suite): the 5 s default timed it out, and the next test then failed by cascade.
+const SERVER_TEST_TIMEOUT_MS = 60_000;
+
 describe("server reads, on a synthetic changelog of 60 entries", () => {
   it("public config: Firestore reads for two calls in a row", async () => {
     const { GET } = await import("@/app/api/public/config/route");
@@ -132,7 +135,7 @@ describe("server reads, on a synthetic changelog of 60 entries", () => {
     await GET();
     console.info("[read-counts] public config: first call " + first + ", second call " + (server.reads - first));
     expect([first, server.reads - first]).toEqual(BEFORE_CONFIG);
-  });
+  }, SERVER_TEST_TIMEOUT_MS);
 
   it("changelog feed: documents read per call, and calls for one mount plus five tab refocuses", async () => {
     server.changelogDocs = 60;
@@ -142,7 +145,7 @@ describe("server reads, on a synthetic changelog of 60 entries", () => {
     // Six feed requests inside a minute (one mount plus five refocuses of the old client): before the 60 s server copy this read 6 x 60 = 360 documents.
     for (let i = 0; i < 6; i += 1) await listFeed(getAdminFirestore() as never, { uid: "u", name: "n", isOwner: false } as never, false, 1_000 + i);
     expect(server.reads).toBe(BEFORE_FEED_DOCS);
-  });
+  }, SERVER_TEST_TIMEOUT_MS);
 });
 // Before the shared snapshot (step B) these were [5, 3]: five reads of appSettings/global on a cold call, three on the next (the uncached getters).
 const BEFORE_CONFIG: [number, number] = [1, 0];
