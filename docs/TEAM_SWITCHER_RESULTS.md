@@ -20,7 +20,14 @@ Branch `release-prep`. Nothing deployed or run against a real project; no rules 
 - Robot teams are listed only under the active team's row (the others' team documents are not readable). With one robot team there is no "View as".
 
 ## Manual check (preview, TEST accounts, switch ON)
-1. /frc and /ftc side by side: one dropdown in the sidebar, drawer and top bar, text wraps, nothing off screen, no id on first load (hard reload, throttle the network). 2. FTC team with two robot teams: trigger shows the selected one, "View as" switches it with no network call. 3. Open the panel: both programs' teams; choose the other program's team: "Switching…", then that program's dashboard on that team. 4. A membership with no profile in that program: the notice, no navigation. 5. Account Settings > My teams lists FRC and FTC rows; Leave works per row. 6. Team Settings: set and clear the organization name. 7. Platform owner: Past Team Members hint shows the link. 8. Switch OFF: only the robot picker, only with 2+ robot teams.
+1. /frc and /ftc side by side: one dropdown in the sidebar, drawer and top bar, text wraps, nothing off screen, no id on first load (hard reload, throttle the network).
+2. FTC team with two robot teams: trigger shows the selected one, "View as" switches it with no network call.
+3. Open the panel: both programs' teams; choose the other program's team: "Switching…", then that program's dashboard on that team.
+4. A membership with no profile in that program: the notice, no navigation.
+5. Account Settings > My teams lists FRC and FTC rows; Leave works per row.
+6. Team Settings: set and clear the organization name.
+7. Platform owner: Past Team Members hint shows the link.
+8. Switch OFF: only the robot picker, only with 2+ robot teams.
 
 ## Rollback
 Switch off (`membershipsEnabled`) for the switcher, My teams and the snapshot writes; or `git revert` the commits (label helper, snapshot, switcher, My teams, hint, organization name). The new membership fields can stay.
