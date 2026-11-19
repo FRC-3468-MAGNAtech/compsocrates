@@ -1,4 +1,4 @@
-import type { AdminTabId, ProgramAdmin } from "@/config/programs/types";
+import { ADMIN_TAB_IDS, type AdminTabId, type ProgramAdmin } from "@/config/programs/types";
 
 // The one resolver of the Admin Panel's tab list: the program's own list (`ProgramConfig.admin.tabs`), then who is looking. Pure.
 
@@ -13,6 +13,11 @@ export type AdminViewer = { isPlatformOwner: boolean; canManageForms: boolean; m
 /** The tabs this program shows to this viewer, in the program's order. A tab the program does not list never appears. */
 export function resolveAdminTabs(admin: ProgramAdmin, viewer: AdminViewer): AdminTabId[] {
   return admin.tabs.filter((tab) => (viewer.isPlatformOwner || !PLATFORM_TABS.includes(tab)) && (!viewer.teamless || PLATFORM_TABS.includes(tab)) && (tab !== "forms" || viewer.canManageForms) && (tab !== "verify-admins" || viewer.membershipsEnabled === true) && (tab !== "account-deletions" || viewer.accountDeletionEnabled === true));
+}
+
+/** The tab a link asks for (`/admin?tab=verify-admins`): a known tab id, else null. Whether it is shown to this viewer is decided later (`activeAdminTab`). */
+export function adminTabFromQuery(raw: string | null | undefined): AdminTabId | null {
+  return (ADMIN_TAB_IDS as readonly string[]).includes(raw ?? "") ? (raw as AdminTabId) : null;
 }
 
 /** The tab to open: the one asked for if it is shown, else the first shown (null when none). */

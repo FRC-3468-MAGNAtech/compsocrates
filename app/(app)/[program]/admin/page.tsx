@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "@/lib/program/navigation";
+import { useRouter, useSearchParams } from "@/lib/program/navigation";
 import { ShieldAlert } from "lucide-react";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Badge } from "@/components/ui/badge";
@@ -25,7 +25,7 @@ import { PageAccessPanel } from "@/components/page-access/page-access-panel";
 import { SubmissionControlsPanel } from "@/components/admin/submission-controls-panel";
 import { ReviewPanelHost } from "@/components/templates/review-panel";
 import { useProgramConfig } from "@/lib/program/context";
-import { activeAdminTab, resolveAdminTabs } from "@/lib/admin/tabs";
+import { activeAdminTab, adminTabFromQuery, resolveAdminTabs } from "@/lib/admin/tabs";
 import type { AdminTabId } from "@/config/programs/types";
 import { usePendingApplicationCount } from "@/lib/applications-client";
 import { useAuth } from "@/lib/auth";
@@ -98,7 +98,9 @@ export default function AdminPanelPage() {
   const [teamCreationEnabled, setTeamCreationEnabledState] = useState<boolean | null>(null);
   const [togglingTeamCreation, setTogglingTeamCreation] = useState(false);
   const [teamCreationError, setTeamCreationError] = useState<string | null>(null);
-  const [wantedTab, setTab] = useState<AdminTab | null>(null);
+  const searchParams = useSearchParams();
+  // A link such as /admin?tab=verify-admins opens that tab (when this viewer is shown it).
+  const [wantedTab, setTab] = useState<AdminTab | null>(() => adminTabFromQuery(searchParams.get("tab")));
   const tab = activeAdminTab(tabs, wantedTab);
 
   useEffect(() => {

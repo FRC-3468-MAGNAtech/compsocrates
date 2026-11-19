@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, History } from "lucide-react";
 import { LoadError } from "@/components/practice/load-error";
 import { pastMembersAccess } from "@/components/assignments/past-members-access";
+import Link from "@/components/program/link";
 import { Badge } from "@/components/ui/badge";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { getDocs, query, where } from "@/lib/firebase/metered";
@@ -19,6 +20,9 @@ import { MEMBERSHIP_TEXT } from "@/lib/memberships/strings";
 import { usePermissions } from "@/lib/permissions";
 import { useProgram } from "@/lib/program/context";
 import { getRole, normalizeLegacyRole } from "@/lib/roles";
+
+/** The Admin Panel's Verify admins tab (`/admin?tab=verify-admins`, read by the admin page). */
+export const VERIFY_ADMINS_HREF = "/admin?tab=verify-admins";
 
 const fmt = (ms: number | null) => (ms && ms > 0 ? new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "unknown");
 
@@ -39,6 +43,7 @@ export function PastMembersSection({ teamId }: { teamId: string }) {
 
 function PastMembers({ teamId }: { teamId: string }) {
   const program = useProgram();
+  const { isPlatformOwner } = usePermissions();
   const state = useAccountState();
   const mine = state.memberships.find((m) => m.teamId === teamId);
   // Mirrors the rule: the reader's own membership of this team is active, an admin one, and VERIFIED (components/assignments/past-members-access.ts).
@@ -91,6 +96,14 @@ function PastMembers({ teamId }: { teamId: string }) {
           {!verified ? (
             <p className="text-sm text-[var(--muted-foreground)]" data-testid="past-members-unverified">
               {MEMBERSHIP_TEXT.past.needsVerification}
+              {isPlatformOwner && (
+                <>
+                  {" "}
+                  <Link href={VERIFY_ADMINS_HREF} className="underline underline-offset-2" data-testid="past-members-verify-link">
+                    {MEMBERSHIP_TEXT.past.verifyLink}
+                  </Link>
+                </>
+              )}
             </p>
           ) : failure ? (
             <LoadError failure={failure} onRetry={() => { setRows(null); setFailure(null); setAttempt((n) => n + 1); }} />
