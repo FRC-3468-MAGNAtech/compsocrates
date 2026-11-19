@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { doc, onSnapshot, setDoc, updateDoc } from "@/lib/firebase/metered";
+import { deleteField, doc, onSnapshot, setDoc, updateDoc } from "@/lib/firebase/metered";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
 import type { EventInfo } from "@/lib/events/types";
 import type { AccountTeam } from "@/lib/team-number";
@@ -174,6 +174,17 @@ export async function setAllowMemberRoleChoice(teamId: string, value: boolean, p
   const data = programData(program);
   if (data) return data.team.setAllowMemberRoleChoice(teamId, value);
   await setDoc(doc(db, "teams", teamId), { allowMemberRoleChoice: value }, { merge: true });
+}
+
+/**
+ * Team Settings: the team's optional organization name (`accountName`, at most 60 characters, the bound the rules in both programs check; empty removes it). It is the name shown for the team in the
+ * team switcher and My teams. Merge write of that one field. Team admins and owners only, by the rules and at the call site.
+ */
+export async function setAccountName(teamId: string, value: string, program: ProgramId = DEFAULT_PROGRAM) {
+  const data = programData(program);
+  if (data) return data.team.setAccountName(teamId, value);
+  const name = value.trim().slice(0, 60);
+  await setDoc(doc(db, "teams", teamId), { accountName: name === "" ? deleteField() : name }, { merge: true });
 }
 
 /** Single-event convenience over setActiveEvents() — replaces the whole selection with this one event (or clears it). */

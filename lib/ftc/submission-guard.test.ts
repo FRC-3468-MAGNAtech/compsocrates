@@ -22,6 +22,7 @@ vi.mock("@/data/ftc/write", () => ({
   setArchivedEvents: (...args: unknown[]) => h.other(...args),
   setFormSubmissionSettings: (...args: unknown[]) => h.other(...args),
   setAllowMemberRoleChoice: (...args: unknown[]) => h.other(...args),
+  setAccountName: (...args: unknown[]) => h.other(...args),
   saveAccountTeams: (...args: unknown[]) => h.other(...args),
   setActiveForm: (...args: unknown[]) => h.other(...args),
   saveFormEntry: (...args: unknown[]) => h.saveForm(...args),

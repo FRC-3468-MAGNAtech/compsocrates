@@ -6,7 +6,7 @@
  * So far: saving, editing and deleting a Match Scout entry, and setting the active events. (Form entries and form publishing are not ported yet.) Editing and deleting are admin-only in the
  * rules; a refusal is reported and rethrown like any other failure.
  */
-import { addDoc, deleteDoc, runTransaction, serverTimestamp, setDoc, updateDoc, writeBatch } from "firebase/firestore";
+import { addDoc, deleteDoc, deleteField, runTransaction, serverTimestamp, setDoc, updateDoc, writeBatch } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { programCollection, programDoc, programPath } from "@/lib/firebase/paths";
 import { reportFirestoreError } from "@/lib/firestore-errors";
@@ -128,6 +128,17 @@ export async function setAllowMemberRoleChoice(teamId: string, value: boolean): 
     await updateDoc(programDoc(db, PROGRAM, TEAMS, teamId), { allowMemberRoleChoice: value === true });
   } catch (err) {
     reportFirestoreError("Couldn't save the join setting", err, `${programPath(PROGRAM, TEAMS)}/${teamId}`);
+    throw err;
+  }
+}
+
+/** Sets the team's optional organization name (`accountName`, at most 60 characters: the rules bound it); an empty name removes the field. Admins and the owner, by the rules. Writes that field and nothing else. */
+export async function setAccountName(teamId: string, value: string): Promise<void> {
+  const name = value.trim().slice(0, 60);
+  try {
+    await updateDoc(programDoc(db, PROGRAM, TEAMS, teamId), { accountName: name === "" ? deleteField() : name });
+  } catch (err) {
+    reportFirestoreError("Couldn't save the organization name", err, `${programPath(PROGRAM, TEAMS)}/${teamId}`);
     throw err;
   }
 }

@@ -127,6 +127,7 @@ const ALLOWED: Record<string, Record<string, string>> = {};
 /** `field -> reason` for the same, in any writer file. */
 const NOT_A_PERSON: Record<string, string> = {
   teamName: "a team's name",
+  accountName: "a team's optional organization name (Team Settings), never a person's name",
   eventName: "an event's name",
   formName: "a form's name",
   fieldName: "a form field's name",
