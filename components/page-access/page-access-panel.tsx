@@ -211,7 +211,7 @@ export function PageAccessPanel() {
   const { profile } = useAuth();
   const teamId = profile?.teamId ?? null;
   const { config } = usePageAccess();
-  const { members } = useTeamMembers(teamId);
+  const { members } = useTeamMembers(teamId, { live: true });
   const { requests } = usePageAccessRequests(teamId, { all: true, uid: null });
   const edit = usePageAccessEditing();
   const [busyId, setBusyId] = useState<string | null>(null);

@@ -13,7 +13,7 @@ vi.mock("@/lib/auth", () => ({ useAuth: () => ({ profile: null, user: { uid: "u1
 const api = vi.hoisted(() => ({ calls: 0 }));
 vi.mock("@/lib/api-client", () => ({ ApiError: class extends Error {}, authedApi: async () => ((api.calls += 1), { entries: [], isOwner: false }) }));
 vi.mock("@/lib/personal/scope", () => ({ personalScopeUid: () => null }));
-vi.mock("@/lib/memberships/client", () => ({ membershipsEnabled: async () => false, useMembershipsEnabled: () => false, membershipApi: {} }));
+vi.mock("@/lib/memberships/client", () => ({ membershipsEnabled: async () => false, useMembershipsEnabled: () => false, membershipApi: {}, publicConfigOnce: async () => null }));
 
 import * as fake from "@/test-stubs/fake-firestore";
 import * as rt from "@/test-stubs/hook-runtime";

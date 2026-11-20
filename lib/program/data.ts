@@ -175,6 +175,8 @@ export type ProgramData = {
     subscribeEvents(teamId: string, seasonId: string | null, onData: (events: LibraryEvent[]) => void, onError: DataError): Unsubscribe;
     /** The SHARED official matches of one season, read once (published, `origin == "api"`): what an account with no team practises on. Never a team's hand-made matches. */
     fetchSharedMatches(seasonId: string): Promise<{ matches: LibraryMatch[]; unreadable: number }>;
+    /** Read reduction 2a: the program's own converter for the raw `{ id, data }` documents a library snapshot carries (the same one `subscribeMatches` applies). Absent = this program reads its library directly. */
+    snapshotRows?(rows: readonly { id: string; data: Record<string, unknown> }[]): { matches: LibraryMatch[]; unreadable: number };
     /** One event's, one season's or all matches; `includeUnpublished` is for admins (a scout's query must ask for published only). */
     subscribeMatches(teamId: string, filter: { eventCode?: string | null; seasonId?: string | null; includeUnpublished: boolean }, onData: (matches: LibraryMatch[], unreadable: number) => void, onError: DataError): Unsubscribe;
     /** Creates a hand-made event owned by the actor's team (no API key needed). */

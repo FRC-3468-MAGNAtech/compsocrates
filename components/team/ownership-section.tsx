@@ -32,7 +32,7 @@ export function OwnershipSection() {
   const { isOwner } = usePermissions();
   const teamId = profile?.teamId ?? null;
   const { team, loaded } = useTeamDoc(teamId);
-  const { members } = useTeamMembers(teamId);
+  const { members } = useTeamMembers(teamId, { live: true });
   // `Date.now()` once per mount: the expiry shown is to the day, and the server enforces the real clock.
   const [now] = useState(() => Date.now());
 

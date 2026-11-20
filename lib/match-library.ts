@@ -13,6 +13,9 @@ import { describeFirestoreError, reportFirestoreError, type FirestoreFailure } f
 import { libraryAllQuery, libraryEventQuery, librarySeasonQuery } from "@/lib/practice-queries";
 import { useAuth } from "@/lib/auth";
 import { useProgramData } from "@/lib/program/data";
+import { useProgram } from "@/lib/program/context";
+import { SnapshotMismatch, isQuotaFailure, loadSnapshot, onSnapshotRefreshed, useSnapshotDecision, type SnapshotLoad } from "@/lib/snapshot/client";
+import type { SnapshotDoc } from "@/lib/snapshot/model";
 import { personalScopeUid } from "@/lib/personal/scope";
 import { decideMatchWrite, libraryMatchId, originOf, type LibraryOrigin } from "@/lib/library/ids";
 import { getSeason } from "@/lib/seasons";
@@ -438,11 +441,65 @@ export function useAllLibraryMatches(enabled: boolean = true, options: { include
   const includeUnpublished = options.includeUnpublished ?? false;
   const [matches, setMatches] = useState<LibraryMatch[]>([]);
   const [loaded, setLoaded] = useState(() => !isFirebaseConfigured());
-  const portActive = useProgramData()?.library != null;
-  const portState = usePortLibraryMatches(portActive && enabled ? { includeUnpublished } : null);
+  const port = useProgramData()?.library ?? null;
+  const portActive = port != null;
+  const program = useProgram();
+  const profileTeam = useAuth().profile?.teamId ?? null;
+
+  // Read reduction 2a: a reader that wants PUBLISHED matches (scout-facing pages, analytics, dashboards) is served the library snapshot when its switch is on; an admin
+  // screen that asks for drafts always reads Firestore itself, so an admin sees their own change at once. Nothing is read while the switch is still unknown (`wait`).
+  const decision = useSnapshotDecision("library");
+  const [snapshotFailed, setSnapshotFailed] = useState(false);
+  const [snap, setSnap] = useState<{ key: string; rows: SnapshotDoc[] } | null>(null);
+  const snapshotCapable = enabled && !includeUnpublished && (!portActive || port.snapshotRows !== undefined);
+  const mode: "wait" | "snapshot" | "direct" = !snapshotCapable ? "direct" : decision === "pending" ? "wait" : decision === "on" && !snapshotFailed ? "snapshot" : "direct";
+  const portState = usePortLibraryMatches(portActive && enabled && mode === "direct" ? { includeUnpublished } : null);
 
   useEffect(() => {
-    if (portActive) return;
+    if (mode !== "snapshot") return;
+    // A program whose library holds a team's own matches needs the team to be known before the answer can be matched to it.
+    if (portActive && !profileTeam) return;
+    let alive = true;
+    const key = `${program}|${profileTeam ?? ""}`;
+    const accept = (load: SnapshotLoad) => {
+      // The server answers for the caller's ACTIVE team. A different team than this browser's profile (a switch not caught up yet) is not used.
+      if (load.teamId !== null && load.teamId !== profileTeam) throw new SnapshotMismatch("The snapshot is for another team.");
+      if (alive) setSnap({ key, rows: load.rows as SnapshotDoc[] });
+    };
+    loadSnapshot("library", program, profileTeam).then(
+      (load) => {
+        try {
+          accept(load);
+        } catch {
+          if (alive) setSnapshotFailed(true);
+        }
+      },
+      (err) => {
+        if (!alive) return;
+        // The daily quota keeps what is on screen (the banner is up); any other failure reads Firestore directly.
+        if (isQuotaFailure(err)) setSnap((prev) => prev ?? { key, rows: [] });
+        else {
+          console.warn("library snapshot failed, reading Firestore directly:", err instanceof Error ? err.message : err);
+          setSnapshotFailed(true);
+        }
+      }
+    );
+    const off = onSnapshotRefreshed((dataset, refreshedProgram, load) => {
+      if (dataset !== "library" || refreshedProgram !== program) return;
+      try {
+        accept(load);
+      } catch {
+        // another team's rows: ignore
+      }
+    });
+    return () => {
+      alive = false;
+      off();
+    };
+  }, [mode, program, profileTeam, portActive]);
+
+  useEffect(() => {
+    if (portActive || mode !== "direct") return;
     // `enabled: false` (P13: a dashboard role that doesn't show practice matches) skips the subscription entirely.
     if (!enabled || !isFirebaseConfigured()) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -463,11 +520,26 @@ export function useAllLibraryMatches(enabled: boolean = true, options: { include
       }
     );
     return unsubscribe;
-  }, [enabled, includeUnpublished, portActive]);
+  }, [enabled, includeUnpublished, portActive, mode]);
 
   // D1: scout-facing lists (no drafts) also show CS's imported practice matches, read-only; an admin table (drafts included) does not.
   const imported = useCsImportedMatches(enabled && !includeUnpublished && !portActive);
-  const merged = useMemo(() => (imported.length > 0 ? mergeLibraryMatches(matches, imported) : matches), [matches, imported]);
+  // The snapshot's rows converted by the same converter the direct read always used (the port's own for a program with one; `{ id, ...data }` for the root).
+  const snapshotMatches = useMemo(() => {
+    if (!snap) return { matches: [] as LibraryMatch[], unreadable: 0 };
+    const seen = new Set<string>();
+    const rows = snap.rows.filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true)));
+    return port?.snapshotRows ? port.snapshotRows(rows) : { matches: rows.map((r) => ({ id: r.id, ...r.data }) as LibraryMatch), unreadable: 0 };
+  }, [snap, port]);
+  const base = mode === "snapshot" ? snapshotMatches.matches : matches;
+  const merged = useMemo(() => (imported.length > 0 ? mergeLibraryMatches(base, imported) : base), [base, imported]);
+
+  if (mode === "snapshot") {
+    const ready = snap !== null || (portActive && !profileTeam);
+    if (portActive) return { matches: snapshotMatches.matches, loaded: ready, error: null as FirestoreFailure | null, retry: () => {} };
+    return { matches: merged, loaded: ready, error: null as FirestoreFailure | null, retry: () => {} };
+  }
+  if (mode === "wait") return { matches: [] as LibraryMatch[], loaded: false, error: null as FirestoreFailure | null, retry: () => {} };
   if (portActive) return { matches: portState.matches, loaded: enabled ? portState.loaded : true, error: portState.error, retry: portState.retry };
   return { matches: merged, loaded, error: null as FirestoreFailure | null, retry: () => {} };
 }

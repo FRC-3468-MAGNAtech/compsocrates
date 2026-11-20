@@ -82,7 +82,7 @@ export default function AssignmentsPage() {
   const resolvedSelectedName = useEventName(eventCode ?? "", { name: selectedEventHint });
   const selectedEventName = eventCode ? resolvedSelectedName.displayName : "Pick an event";
 
-  const { members, loaded: membersLoaded } = useTeamMembers(teamId);
+  const { members, loaded: membersLoaded } = useTeamMembers(teamId, { live: true });
   const { attendance, loaded: attendanceLoaded } = useEventAttendance(teamId, eventCode);
   const { assignments, loaded: assignmentsLoaded } = useAssignments(teamId, eventCode);
 

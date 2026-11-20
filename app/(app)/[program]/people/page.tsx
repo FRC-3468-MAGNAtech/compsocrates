@@ -15,6 +15,7 @@ import { useTeamMembers } from "@/lib/team-members";
 import { useAccountTeamChoice } from "@/lib/our-team";
 import { membersOfSelectedTeam } from "@/lib/member-scope";
 import { getRole, ROLES } from "@/lib/roles";
+import { SnapshotFreshness } from "@/components/snapshot/snapshot-freshness";
 
 export default function PeoplePage() {
   const { profile } = useAuth();
@@ -40,6 +41,7 @@ export default function PeoplePage() {
           <p className="text-sm text-[var(--muted-foreground)]">Team roster &amp; directory.</p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <SnapshotFreshness datasets={["roster"]} />
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}

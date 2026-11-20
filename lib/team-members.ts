@@ -12,6 +12,7 @@ import { csUserToMember, profilePatchToCsUser } from "@/data/cs/users";
 import { DEFAULT_PROGRAM, type ProgramId } from "@/config/programs/types";
 import { programData, useProgramData } from "@/lib/program/data";
 import { useProgram } from "@/lib/program/context";
+import { SnapshotMismatch, isQuotaFailure, loadSnapshot, onSnapshotRefreshed, snapshotEnabled, type SnapshotLoad } from "@/lib/snapshot/client";
 import { describeFirestoreError, type FirestoreFailure } from "@/lib/firestore-errors";
 import { mergeMembers, useRosterExtras } from "@/lib/team-roster";
 import { membershipApi, membershipsEnabled } from "@/lib/memberships/client";
@@ -40,13 +41,13 @@ export type TeamMember = {
 // `users where teamId ==` listener and was billed for the whole roster again (the Team Coach dashboard mounts three).
 // ---------------------------------------------------------------------------------------------------------------------
 
-type RosterState = { members: TeamMember[]; loaded: boolean; error: FirestoreFailure | null };
+type RosterState = { members: TeamMember[]; loaded: boolean; error: FirestoreFailure | null; /** Where the rows came from: the snapshot route, or a Firestore listener (only rows from a listener still need the memberships half merged in by the browser). */ source: "snapshot" | "direct" | null };
 type RosterFeed = { listeners: Set<(s: RosterState) => void>; state: RosterState; stop: () => void; lingerTimer: ReturnType<typeof setTimeout> | null };
 const rosterFeeds = new Map<string, RosterFeed>();
 
 /** How long a feed with no component left keeps listening, so moving between pages does not start it again. */
 const ROSTER_LINGER_MS = 20_000;
-const rosterKey = (program: string, teamId: string) => `${program}|${teamId}`;
+const rosterKey = (program: string, teamId: string, mode: "direct" | "snapshot") => `${program}|${teamId}|${mode}`;
 
 /** Test hook: forget every shared roster feed (a reload does this). */
 export function resetRosterFeedsForTests(): void {
@@ -58,13 +59,13 @@ export function resetRosterFeedsForTests(): void {
 }
 
 /**
- * `start` opens the one source (a data port's subscription, or the root `users where teamId ==` listener) and reports to `emit`. The feed is shared by key; the
- * last subscriber leaving stops it after the linger. A failed source ends the feed (the next mount starts a fresh one, so a retry is just a remount).
+ * `start` opens the one source (a data port's subscription, the root `users where teamId ==` listener, or the snapshot route) and reports to `emit`. The feed is shared by
+ * key; the last subscriber leaving stops it after the linger. A failed source ends the feed (the next mount starts a fresh one, so a retry is just a remount).
  */
 function subscribeRosterFeed(key: string, start: (emit: (s: RosterState) => void) => () => void, listener: (s: RosterState) => void): () => void {
   let feed = rosterFeeds.get(key);
   if (!feed) {
-    const created: RosterFeed = { listeners: new Set(), state: { members: [], loaded: false, error: null }, stop: () => {}, lingerTimer: null };
+    const created: RosterFeed = { listeners: new Set(), state: { members: [], loaded: false, error: null, source: null }, stop: () => {}, lingerTimer: null };
     rosterFeeds.set(key, created);
     feed = created;
     created.stop = start((s) => {
@@ -94,14 +95,24 @@ function subscribeRosterFeed(key: string, start: (emit: (s: RosterState) => void
   };
 }
 
+export type TeamMembersOptions = {
+  /**
+   * Read straight from Firestore, live, never from a snapshot: for the screens where an admin edits the roster (Team Management's member editor, page access, ownership,
+   * approvals) and must see their own change at once. Every other reader (scout-facing pages, analytics, dashboards) may be served a snapshot when the switch is on.
+   */
+  live?: boolean;
+};
+
 /** Realtime roster for a team — backs both Team Management (editable, admin-only) and People (read-only). */
-export function useTeamMembers(teamId: string | null) {
+export function useTeamMembers(teamId: string | null, options: TeamMembersOptions = {}) {
   // A namespaced program reads its roster through its data port; the root program's read below is untouched.
   const data = useProgramData();
   const program = useProgram();
-  const [state, setState] = useState<RosterState>({ members: [], loaded: false, error: null });
-  // The roster seam (lib/team-roster.ts): the team's active memberships, merged in. Always empty (and no read) while the memberships kill switch is OFF.
-  const extras = useRosterExtras(teamId);
+  const live = options.live === true;
+  const [state, setState] = useState<RosterState>({ members: [], loaded: false, error: null, source: null });
+  // The roster seam (lib/team-roster.ts): the team's active memberships, merged in. Always empty (and no read) while the memberships kill switch is OFF. A snapshot
+  // already carries the merged roster, so the browser asks only when its rows came from Firestore.
+  const extras = useRosterExtras(state.source === "direct" ? teamId : null);
   const merged = useMemo(() => mergeMembers(state.members, extras), [state.members, extras]);
 
   useEffect(() => {
@@ -110,31 +121,86 @@ export function useTeamMembers(teamId: string | null) {
       // the profile doc hasn't loaded yet), so a previous team's members
       // never linger on screen for a different (or no) team.
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setState({ members: [], loaded: true, error: null });
+      setState({ members: [], loaded: true, error: null, source: "direct" });
       return;
     }
-    const start = (emit: (s: RosterState) => void): (() => void) => {
+    const startDirect = (emit: (s: RosterState) => void): (() => void) => {
       if (data) {
         return data.members.subscribe(
           teamId,
-          (next) => emit({ members: next, loaded: true, error: null }),
+          (next) => emit({ members: next, loaded: true, error: null, source: "direct" }),
           // already reported by the port
-          (failure) => emit({ members: [], loaded: true, error: failure })
+          (failure) => emit({ members: [], loaded: true, error: failure, source: "direct" })
         );
       }
       const q = query(collection(db, "users"), where("teamId", "==", teamId));
       return onSnapshot(
         q,
-        (snap) => emit({ members: snap.docs.map((d) => csUserToMember(d.id, d.data() as CsUserDoc)), loaded: true, error: null }),
+        (snap) => emit({ members: snap.docs.map((d) => csUserToMember(d.id, d.data() as CsUserDoc)), loaded: true, error: null, source: "direct" }),
         (err) => {
           console.error("team members subscription failed:", err);
           // A source that fails says so (the page names it); `loaded` still flips so nothing hangs on "loading".
-          emit({ members: [], loaded: true, error: describeFirestoreError("Couldn't load team members", err, "users where teamId == ours") });
+          emit({ members: [], loaded: true, error: describeFirestoreError("Couldn't load team members", err, "users where teamId == ours"), source: "direct" });
         }
       );
     };
-    return subscribeRosterFeed(rosterKey(program, teamId), start, setState);
-  }, [teamId, data, program]);
+    if (live) return subscribeRosterFeed(rosterKey(program, teamId, "direct"), startDirect, setState);
+
+    // Read reduction 2a: the snapshot route when its switch is on, else exactly the direct read. Nothing is read until the switch is known.
+    const startSnapshot = (emit: (s: RosterState) => void): (() => void) => {
+      let stopped = false;
+      let last: TeamMember[] = [];
+      let fallback: (() => void) | null = null;
+      const apply = (load: SnapshotLoad) => {
+        // The server answered for the caller's ACTIVE team; if that is not the team this hook was asked about (a switch the profile has not caught up with), the rows are not used.
+        if (load.teamId !== teamId) throw new SnapshotMismatch("The snapshot is for another team.");
+        last = load.rows as TeamMember[];
+        emit({ members: last, loaded: true, error: null, source: "snapshot" });
+      };
+      const failToDirect = (err: unknown) => {
+        if (stopped) return;
+        if (isQuotaFailure(err)) {
+          // The daily quota: keep what is on screen; the banner is already up (authedApi).
+          emit({ members: last, loaded: true, error: describeFirestoreError("Couldn't load team members", err, "snapshot roster"), source: "snapshot" });
+          return;
+        }
+        console.warn("roster snapshot failed, reading Firestore directly:", err instanceof Error ? err.message : err);
+        fallback = startDirect(emit);
+      };
+      loadSnapshot("roster", program, teamId).then((load) => {
+        if (stopped) return;
+        try {
+          apply(load);
+        } catch (err) {
+          failToDirect(err);
+        }
+      }, failToDirect);
+      const offRefresh = onSnapshotRefreshed((dataset, refreshedProgram, load) => {
+        if (stopped || dataset !== "roster" || refreshedProgram !== program) return;
+        try {
+          apply(load);
+        } catch {
+          // another team's rows: ignore
+        }
+      });
+      return () => {
+        stopped = true;
+        offRefresh();
+        fallback?.();
+      };
+    };
+
+    let cancelled = false;
+    let release: (() => void) | null = null;
+    void snapshotEnabled("roster").then((on) => {
+      if (cancelled) return;
+      release = on ? subscribeRosterFeed(rosterKey(program, teamId, "snapshot"), startSnapshot, setState) : subscribeRosterFeed(rosterKey(program, teamId, "direct"), startDirect, setState);
+    });
+    return () => {
+      cancelled = true;
+      release?.();
+    };
+  }, [teamId, data, program, live]);
 
   return { members: merged, loaded: state.loaded, error: state.error };
 }

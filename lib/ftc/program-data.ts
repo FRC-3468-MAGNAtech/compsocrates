@@ -12,6 +12,7 @@ import { claimLobby, heartbeatHost, heartbeatPlayer, joinLobby, leaveLobbyPlayer
 import { ftcDocToFormDoc, ftcDocToFormVersion } from "@/data/ftc/forms";
 import { readFtcBackup } from "@/data/ftc/backup";
 import { fetchFtcSchedule } from "@/lib/ftc/library-import";
+import { ftcDocsToLibraryMatches } from "@/lib/ftc/library";
 import { lookupTeamName } from "@/lib/ftc/team-lookup-client";
 import { approveJoinRequest, denyJoinRequest, subscribePendingJoinRequests } from "@/data/ftc/join-requests";
 import { getFormVersion, getScoutEntriesForEvent, getScoutEntriesForSession, subscribeAssignments, subscribeFormDocs, subscribeFormEntries, subscribePickList, subscribeTeamAssignments, subscribeTeamAttendance, subscribeTeamDoc, subscribeTeamMembers, subscribeTeamScoutEntries, subscribeUserProfile } from "@/data/ftc/read";
@@ -75,6 +76,7 @@ export const ftcProgramData: ProgramData = {
   library: {
     subscribeEvents: subscribeLibraryEvents,
     subscribeMatches: subscribeLibraryMatches,
+    snapshotRows: ftcDocsToLibraryMatches,
     fetchSharedMatches: fetchSharedLibraryMatches,
     createEvent: createManualEvent,
     deleteEvent: deleteManualEvent,

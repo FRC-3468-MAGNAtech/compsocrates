@@ -29,7 +29,7 @@ export function useFormAdmin(): {
   const uid = user?.uid ?? null;
   const name = profile?.name ?? "";
   const { entries, loaded: entriesLoaded } = useTeamScoutEntries(teamId);
-  const { members } = useTeamMembers(teamId);
+  const { members } = useTeamMembers(teamId, { live: true });
   const usage = useMemo(() => usageByForm(entries), [entries]);
   const store = useMemo(() => (teamId && uid ? createFirestoreFormStore(teamId, { uid }, program) : null), [teamId, uid, program]);
   const actor = useMemo<FormActor | null>(() => (teamId && uid ? { teamId, uid, name, program } : null), [teamId, uid, name, program]);

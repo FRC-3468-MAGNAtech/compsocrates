@@ -15,7 +15,7 @@ vi.mock("@/lib/program/data", () => ({ useProgramData: () => null, programData: 
 vi.mock("@/lib/program/context", () => ({ useProgram: () => "frc", useProgramConfig: () => ({ connection: { features: { live: true, practice: true } } }) }));
 vi.mock("@/lib/team-roster", async (orig) => ({ ...(await orig<typeof import("@/lib/team-roster")>()), loadRosterExtras: async () => ({ members: [], denied: false }), useRosterExtras: () => [] }));
 vi.mock("@/lib/personal/scope", () => ({ personalScopeUid: () => null }));
-vi.mock("@/lib/memberships/client", () => ({ membershipsEnabled: async () => false, useMembershipsEnabled: () => false, membershipApi: {} }));
+vi.mock("@/lib/memberships/client", () => ({ membershipsEnabled: async () => false, useMembershipsEnabled: () => false, membershipApi: {}, publicConfigOnce: async () => null }));
 vi.mock("@/lib/auth", () => ({ useAuth: () => ({ profile: null, user: { uid: "u0" } }) }));
 
 import * as fake from "@/test-stubs/fake-firestore";

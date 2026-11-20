@@ -32,7 +32,7 @@ export function AccountTeamsSection() {
   const port = useProgramData();
   const teamId = profile?.teamId ?? null;
   const { team, loaded } = useTeamDoc(teamId);
-  const { members, loaded: membersLoaded, error: membersError } = useTeamMembers(teamId);
+  const { members, loaded: membersLoaded, error: membersError } = useTeamMembers(teamId, { live: true });
   const teams: AccountTeam[] = team?.accountTeams ?? [];
 
   const [editing, setEditing] = useState<Editing | null>(null);

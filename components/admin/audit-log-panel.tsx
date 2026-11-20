@@ -81,7 +81,7 @@ export function AuditLogPanel() {
   const { profile } = useAuth();
   const teamId = profile?.teamId ?? null;
   const { entries } = useAuditLog(teamId);
-  const { members } = useTeamMembers(teamId);
+  const { members } = useTeamMembers(teamId, { live: true });
 
   const [actorFilter, setActorFilter] = useState("all");
   const [actionFilter, setActionFilter] = useState<AuditAction | "all">("all");

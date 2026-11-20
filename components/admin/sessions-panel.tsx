@@ -41,7 +41,7 @@ export function SessionsPanel() {
   const program = useProgram();
   const { connection } = useProgramConfig();
   const { sessions: allSessions, loaded, error } = useAllTeamPracticeSessions(teamId);
-  const { members } = useTeamMembers(teamId);
+  const { members } = useTeamMembers(teamId, { live: true });
 
   const [lookupId, setLookupId] = useState("");
   const [lookupResult, setLookupResult] = useState<PracticeSession | null | undefined>(undefined);

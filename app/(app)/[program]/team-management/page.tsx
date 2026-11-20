@@ -29,7 +29,7 @@ export default function TeamManagementPage() {
   const { features } = useProgramConfig().connection;
   const { team, loaded: teamLoaded } = useTeamDoc(profile?.teamId ?? null);
   const { isAdmin, isOwner } = usePermissions();
-  const { members, loaded: membersLoaded } = useTeamMembers(profile?.teamId ?? null);
+  const { members, loaded: membersLoaded } = useTeamMembers(profile?.teamId ?? null, { live: true });
   const [showJoinCode, setShowJoinCode] = useState(false);
   const [copied, setCopied] = useState(false);
   const [editing, setEditing] = useState<TeamMember | null>(null);
