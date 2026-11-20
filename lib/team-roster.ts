@@ -7,9 +7,12 @@ import { programCollection } from "@/lib/firebase/paths";
 import { isFirestoreDenied } from "@/lib/team-roster-errors";
 import { membershipsEnabled, useMembershipsEnabled } from "@/lib/memberships/client";
 import { readMembership, type MembershipDoc, type ProgramId } from "@/lib/memberships/model";
-import { DEFAULT_ROLE_ID, isRoleId, normalizeLegacyRole, type RoleId } from "@/lib/roles";
 import type { TeamMember } from "@/lib/team-members";
 import { useProgram } from "@/lib/program/context";
+import { membershipToMember } from "@/lib/memberships/roster-member";
+
+// The pure mapper lives in lib/memberships/roster-member.ts so the server (snapshot roster) can use it too; re-exported here for the existing importers.
+export { membershipToMember };
 
 /**
  * THE roster seam (browser side): who is on a team, for every reader that used to ask `users where teamId ==` alone.
@@ -37,22 +40,6 @@ const readActiveMemberships: RosterDeps["readActiveMemberships"] = async (progra
 };
 
 export const defaultRosterDeps: RosterDeps = { enabled: membershipsEnabled, readActiveMemberships };
-
-/** A roster row from a membership (a person whose ACTIVE team is another one). No email is stored on a membership, so none is shown. */
-export function membershipToMember(m: MembershipDoc): TeamMember {
-  const primary: RoleId = m.role ? normalizeLegacyRole(m.role) : DEFAULT_ROLE_ID;
-  return {
-    uid: m.uid,
-    name: m.name || "Member",
-    email: "",
-    primaryRole: primary,
-    secondaryRoles: (m.secondaryRoles ?? []).filter((r): r is RoleId => isRoleId(r) && r !== primary),
-    isAdmin: m.isAdmin === true,
-    isOwner: m.isOwner === true,
-    ...(m.joinedAt > 0 ? { joinedAtMs: m.joinedAt } : {}),
-    ...(m.fieldTeamIds && m.fieldTeamIds.length > 0 ? { assignedTeamIds: m.fieldTeamIds } : {}),
-  };
-}
 
 /** The union: every user row, then each membership row for a uid the user rows do not have. */
 export function mergeMembers(users: readonly TeamMember[], extras: readonly TeamMember[]): TeamMember[] {
