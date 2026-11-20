@@ -26,10 +26,10 @@ export async function GET() {
   if (!db) {
     // Firebase Admin isn't configured — fail closed (no Create option)
     // rather than guessing, same convention as lib/server/require-user.ts.
-    return NextResponse.json({ teamCreationEnabled: false, adminsSeeAllProfiles: true, avatarUploadsEnabled: false, membershipsEnabled: false, accountDeletionEnabled: false, readMeterEnabled: false, avatarBlobHost });
+    return NextResponse.json({ teamCreationEnabled: false, adminsSeeAllProfiles: true, avatarUploadsEnabled: false, membershipsEnabled: false, accountDeletionEnabled: false, readMeterEnabled: false, snapshots: { roster: false, library: false, flags: false, sessions: false, entries: false }, avatarBlobHost });
   }
   // ONE shared, cached read of appSettings/global serves every flag (about 30 s per server instance; a failed read answers the fail-closed defaults and is not cached).
   const settings = await getPublicSettings(meterDb(db, "api/public/config")).catch(() => null);
-  if (!settings) return NextResponse.json({ teamCreationEnabled: false, adminsSeeAllProfiles: true, avatarUploadsEnabled: false, membershipsEnabled: false, accountDeletionEnabled: false, readMeterEnabled: false, avatarBlobHost });
+  if (!settings) return NextResponse.json({ teamCreationEnabled: false, adminsSeeAllProfiles: true, avatarUploadsEnabled: false, membershipsEnabled: false, accountDeletionEnabled: false, readMeterEnabled: false, snapshots: { roster: false, library: false, flags: false, sessions: false, entries: false }, avatarBlobHost });
   return NextResponse.json({ ...settings, avatarBlobHost });
 }

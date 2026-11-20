@@ -85,17 +85,21 @@ export type DayDoc = {
   day: string;
   total: number;
   client?: { total?: number; pages?: Counts };
-  server?: { total?: number; routes?: Counts };
+  /** `snapshots`: dataset -> counter -> n (read reduction 2a). Not documents read, so never part of `total`. */
+  server?: { total?: number; routes?: Counts; snapshots?: Counts };
 };
 
 export type DaySummary = { day: string; total: number; client: number; server: number };
 export type Source = { source: string; docs: number };
+/** One snapshot dataset's day: how the shared cache behaved. `hitRate` is hits over requests that were not refresh throttles; null with no requests. */
+export type SnapshotRow = { dataset: string; requests: number; hits: number; misses: number; rebuilds: number; throttled: number; stale: number; oversize: number; bytes: number; rows: number; hitRate: number | null };
 export type UsageSummary = {
   days: DaySummary[];
   today: DaySummary;
   byPage: Source[];
   byCollection: Source[];
   top: Source[];
+  snapshots: SnapshotRow[];
 };
 
 const numberOr0 = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
@@ -121,8 +125,16 @@ export function summarizeUsage(docs: { day: string; data: DayDoc | null }[]): Us
   };
   walk("", today?.client?.pages);
   walk("server: ", today?.server?.routes);
+  const snapshots: SnapshotRow[] = Object.entries(today?.server?.snapshots ?? {})
+    .map(([dataset, c]) => {
+      const n = (k: string) => numberOr0((c as Record<string, unknown>)[k]);
+      const requests = n("requests");
+      return { dataset, requests, hits: n("hits"), misses: n("misses"), rebuilds: n("rebuilds"), throttled: n("throttled"), stale: n("stale"), oversize: n("oversize"), bytes: n("bytes"), rows: n("rows"), hitRate: requests > 0 ? n("hits") / requests : null };
+    })
+    .sort((a, b) => a.dataset.localeCompare(b.dataset));
   return {
     days,
+    snapshots,
     today: days[0] ?? { day: "", total: 0, client: 0, server: 0 },
     byPage: sortDesc(byPage),
     byCollection: sortDesc(byCollection),

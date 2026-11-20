@@ -14,6 +14,9 @@ export const READ_METER_COLLECTION = "readMeter";
 const SERVER_FLUSH_EVERY_MS = 60_000;
 
 let serverPending: Counts = {}; // route -> collection -> documents
+/** Snapshot routes (read reduction 2a): dataset -> counter -> n. Requests, hits, misses, rebuilds, refresh throttles, stale answers, oversize chunks, bytes and rows served. */
+let snapshotPending: Counts = {};
+export type SnapshotCounter = "requests" | "hits" | "misses" | "rebuilds" | "throttled" | "stale" | "oversize" | "bytes" | "rows";
 let lastServerFlush = 0;
 
 type Counted = { ref?: { parent?: { path?: string } }; exists?: boolean; docs?: unknown[] };
@@ -62,6 +65,17 @@ function wrap<T extends object>(target: T, route: string, rawDb: Firestore): T {
   });
 }
 
+/** Count one snapshot-route event under its dataset. Inert while the meter is OFF (a boolean read). Flushes with the server counts, at most once a minute per instance. */
+export function countSnapshot(rawDb: Firestore | null, dataset: string, counter: SnapshotCounter, n: number = 1): void {
+  if (!isReadMeterOnSync()) return;
+  try {
+    addCount(snapshotPending, sanitizeKey(dataset), counter, n);
+    if (rawDb && Date.now() - lastServerFlush >= SERVER_FLUSH_EVERY_MS) void flushServerMeter(rawDb).catch((err) => console.error("read meter flush failed:", err instanceof Error ? err.message : "unknown error"));
+  } catch {
+    // counting is best effort and must never break the route
+  }
+}
+
 /**
  * The database for one instrumented route. While the meter is OFF (the default; the answer is the last one the shared appSettings snapshot gave this instance, so
  * asking costs nothing) the real database is returned and nothing is counted. ON, reads through the returned database are counted under `route`.
@@ -92,12 +106,15 @@ export async function applyClientFlush(db: Firestore, counts: Counts, at: Date =
 /** Add what the instrumented routes counted since the last flush to today's document. At most one write per minute per server instance. */
 export async function flushServerMeter(db: Firestore, at: Date = new Date()): Promise<void> {
   const counts = serverPending;
+  const snapshots = snapshotPending;
   const docs = totalOf(counts);
   lastServerFlush = at.getTime();
-  if (docs <= 0) return;
+  if (docs <= 0 && totalOf(snapshots) <= 0) return;
   serverPending = {};
+  snapshotPending = {};
   try {
-    await db.doc(`${READ_METER_COLLECTION}/${pacificDayKey(at)}`).set({ day: pacificDayKey(at), total: FieldValue.increment(docs), updatedAt: at.getTime(), server: { total: FieldValue.increment(docs), routes: increments(counts) } }, { merge: true });
+    // `total` is DOCUMENTS read from Firestore only: the snapshot counters (requests, hits, bytes...) are not reads and never add to it.
+    await db.doc(`${READ_METER_COLLECTION}/${pacificDayKey(at)}`).set({ day: pacificDayKey(at), total: FieldValue.increment(docs), updatedAt: at.getTime(), server: { total: FieldValue.increment(docs), routes: increments(counts), ...(totalOf(snapshots) > 0 ? { snapshots: increments(snapshots) } : {}) } }, { merge: true });
   } catch (err) {
     console.error("read meter server flush dropped:", err instanceof Error ? err.message : "unknown error"); // log and drop: the meter never breaks the app
   }
@@ -113,6 +130,8 @@ export async function readUsageDays(db: Firestore, at: Date = new Date()): Promi
 /** Test hook. */
 export function resetServerMeterForTests(): void {
   serverPending = {};
+  snapshotPending = {};
   lastServerFlush = 0;
 }
 export const pendingServerCountsForTests = (): Counts => serverPending;
+export const pendingSnapshotCountsForTests = (): Counts => snapshotPending;

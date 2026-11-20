@@ -2,6 +2,7 @@ import "server-only";
 import type { Firestore, Transaction } from "firebase-admin/firestore";
 import { generateTeamCode } from "@/data/cs/join-requests";
 import { DEFAULT_RUN_WRITES, MAX_RUN_WRITES } from "@/lib/deletion/constants";
+import { parseSnapshotSettings, publicSnapshotFlags, type SnapshotSettings } from "@/lib/snapshot/model";
 
 export const APP_SETTINGS_PATH = "appSettings/global";
 
@@ -79,7 +80,14 @@ export async function getPublicSettings(db: Firestore, nowMs: number = Date.now(
     membershipsEnabled: data.membershipsEnabled === true,
     accountDeletionEnabled: data.accountDeletionEnabled === true,
     readMeterEnabled: data.readMeterEnabled === true,
+    // Read reduction 2a: which snapshot datasets are on (the master switch AND the dataset's own), as booleans only. The browser picks its read source from this.
+    snapshots: publicSnapshotFlags(parseSnapshotSettings(data)),
   };
+}
+
+/** The snapshot routes' switches and TTLs (appSettings/global; missing = OFF and the code defaults), from the same shared 30 s snapshot as every other setting. */
+export async function getSnapshotSettings(db: Firestore, nowMs: number = Date.now()): Promise<SnapshotSettings> {
+  return parseSnapshotSettings(await readAppSettings(db, nowMs));
 }
 
 /** appSettings/global.readMeterEnabled (missing = OFF): the read meter. Asked only by the meter's own routes; the answer rides on the shared snapshot above. */
